@@ -5,7 +5,25 @@
 ;; 1. Base pointers and indirect addressing
 ;; 2. Non-bitwise operations for input-independent types
 
-(defpackage :pcf2-bc (:use :common-lisp :sb-mop))
+(defpackage :pcf2-bc 
+  (:use :common-lisp :sb-mop)
+  (:export call
+           ret
+           branch
+           add
+           sub
+           mul
+           gate
+           bits
+           const
+           label
+           copy
+           copy-indir
+           indir-copy
+           make-and
+           make-xor
+           make-not
+           make-gate))
 (in-package :pcf2-bc)
 
 (defclass instruction ()
@@ -52,6 +70,26 @@
    )
   )
 
+(defun make-gate (tab d x y)
+  "Shorthand for creating a gate"
+  (make-instance 'gate :dest d :op1 x :op2 y :truth-table tab)
+  )
+
+(defun make-xor (d x y)
+  "Shorthand for creating an XOR gate"
+  (make-gate #*0110 d x y)
+  )
+
+(defun make-and (d x y)
+  "Shorthand for an AND gate"
+  (make-gate #*0001 d x y)
+  )
+
+(defun make-not (d x)
+  "Shorthand for a NOT gate"
+  (make-gate #*1100 d x x)
+  )
+
 (defclass branch (instruction)
   ((cnd :initarg :cnd)
    (targ :initarg :targ)
@@ -93,6 +131,11 @@
   (:documentation "Instructions that take one argument")
   )
 
+(defclass bits (one-op)
+  ()
+  (:documentation "Split an integer value into its two's complement representation")
+  )
+
 (defclass copy (one-op)
   ()
   (:documentation "Copies a value from one position to another")
@@ -112,3 +155,4 @@
   ()
   (:documentation "Copy a value to the location pointed to by a pointer (*x = y)")
   )
+

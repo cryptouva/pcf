@@ -5,4 +5,5 @@
 ;;
 ;; Author: Benjamin Kreuter
 
-(defpackage :lccyao-main (:use :common-lisp))
+(defpackage :lccyao-main (:use :lcc-translator :pcf2-bc :common-lisp))
+(in-package :lccyao-main)
