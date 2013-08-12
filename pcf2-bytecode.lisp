@@ -6,8 +6,9 @@
 ;; 2. Non-bitwise operations for input-independent types
 
 (defpackage :pcf2-bc 
-  (:use :common-lisp :sb-mop)
-  (:export call
+  (:use :common-lisp #+sbcl :sb-mop #+cmu :mop)
+  (:export instruction
+           call
            ret
            branch
            add
@@ -20,10 +21,22 @@
            copy
            copy-indir
            indir-copy
+           mkptr
            make-and
            make-xor
            make-not
-           make-gate))
+           make-gate
+           dest
+           op1
+           op2
+           truth-table
+           value
+           newbase
+           fname
+           cnd
+           targ
+           str
+           read-bytecode))
 (in-package :pcf2-bc)
 
 (defclass instruction ()
@@ -35,13 +48,34 @@
          (obj-slots (class-slots obj-class))
          )
       (labels ((print-slot (slot)
-             (format stream "(~A ~A) " (slot-definition-name slot) (slot-value-using-class obj-class object slot))
+             (format stream ":~A ~A " (slot-definition-name slot) (slot-value-using-class obj-class object slot))
              )
            )
-        (format stream "~A " (class-name obj-class))
+        (format stream "(~A " (class-name obj-class))
         (mapc #'print-slot obj-slots)
+        (format stream ")")
         )
       )
+  )
+
+(defun parse-object (str)
+  (let ((*read-eval* nil))
+    (let ((tokens (read-from-string str))
+          )
+      (apply #'make-instance tokens)
+      )
+    )
+  )
+
+(defun read-bytecode (&optional (stream *standard-input*) (lst nil))
+  "Read bytecode from a file, returning the results as a list"
+  (let ((ln (read-line stream nil))
+        )
+    (if ln
+        (read-bytecode stream (cons (parse-object ln) lst))
+        (reverse lst)
+        )
+    )
   )
 
 (defclass call (instruction)
