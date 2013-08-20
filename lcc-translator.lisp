@@ -11,7 +11,10 @@
             (:export
              parse-instruction
              read-instructions
-             exec-instructions))
+             exec-instructions)
+            (:shadow
+             export
+             import))
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
@@ -245,7 +248,7 @@ only temporary and can be safely overwritten by future instructions."
 
 (defmethod add-label ((op labelv) idx labs)
   (with-slots (s-args) op
-    (setf (gethash (first s-args) labs) idx)
+    (setf (gethash (second s-args) labs) idx)
     labs
     )
   )
@@ -262,10 +265,12 @@ only temporary and can be safely overwritten by future instructions."
     )
   )
 
-(defgeneric exec-instruction (op stack wires instrs labels targets)
+(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize)
   (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
 
-This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.")
+This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
+
+The \"argbase\" parameter represents the list of arguments for the next function call.  When a call instruction is emitted, these arguments will be copied to the base of the next stack frame.  \"argsize\" is the number of arguments for the current function, which we use for addrfp instructions and as an offset for addrlp instructions.")
   )
 
 (defun exec-instructions (ops)
@@ -274,16 +279,11 @@ This method should return the updated stack, wires, and instructions.  Instructi
   (let ((lbls (find-labels ops))
         )
     (let ((rvl 
-           (skew-reduce (lambda (st op) (let ((stack (first st))
-                                              (wires (second st))
-                                              (instrs (third st))
-                                              (targs (fourth st))
-                                              )
-                                          (exec-instruction op stack wires instrs lbls targs)
-                                          )
-                                )
+           (skew-reduce (lambda (st op) 
+                          (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
+                          )
                         ops
-                        (list nil 0 nil nil)
+                        (list nil 0 nil nil nil 0)
                         )
             )
           )
@@ -322,7 +322,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
     )
   )
 
-(defmethod exec-instruction ((op cnstu) stack wires instrs labels targets)
+(defmethod exec-instruction ((op cnstu) labels stack wires instrs targets arglist argsize)
   (with-slots (s-args) op
     (let ((width (* 8 (parse-integer (first s-args))))
           (value (parse-integer (second s-args)))
@@ -338,7 +338,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
               (wires (+ wires width))
               )
           (push-stack stack width dwires
-            (list stack wires instrs targets)
+            (list stack wires instrs targets arglist argsize)
             )
           )
         )
@@ -346,7 +346,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
     )
   )
 
-(defmethod exec-instruction ((op addu) stack wires instrs labels targets)
+(defmethod exec-instruction ((op addu) labels stack wires instrs targets arglist argsize)
   (with-slots (width) op
     (let* ((width (* 8 width))
            (rwires (loop for i from wires to (+ wires width -1) collect i))
@@ -357,7 +357,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
             (let ((retins (append (reverse (adder-chain arg1 arg2 rwires (+ wires width 1) (+ wires width 2) (+ wires width 3) (+ wires width 4))) instrs))
                   (retwires (+ wires width))
                   )
-              (list stack retwires retins targets)
+              (list stack retwires retins targets arglist argsize)
               )
             )
           )
@@ -366,7 +366,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
     )
   )
 
-(defmethod exec-instruction ((op bandu) stack wires instrs labels targets)
+(defmethod exec-instruction ((op bandu) labels stack wires instrs targets arglist argsize)
   (with-slots (width) op
     (let* ((width (* 8 width))
            (rwires (loop for i from wires to (+ wires width -1) collect i))
@@ -378,7 +378,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
                                   instrs))
                   (retwires (+ wires width))
                   )
-              (list stack retwires retins targets)
+              (list stack retwires retins targets arglist argsize)
               )
             )
           )
@@ -387,26 +387,123 @@ This method should return the updated stack, wires, and instructions.  Instructi
     )
   )
 
-(defmethod exec-instruction ((op addrlp) stack wires instrs labels targets)
-  (with-slots (s-args) op
-    (let ((addr (parse-integer (second s-args)))
+(defstruct arg 
+  (len)
+  (loc)
+  )
+
+(defmethod exec-instruction ((op callv) labels stack wires instrs targets arglist argsize)
+  (pop-arg stack fname
+    (let ((retins (append (list (make-instance 'call :newbase wires :fname (first fname)))
+                          (let ((i 0))
+                            (loop for arg in arglist collect
+                                 (prog1
+;                                     (loop for j in (arg-loc arg) for k from 0 collect
+                                     (make-instance 'copy 
+                                                    :dest (+ wires i)
+                                                    :op1 (first (arg-loc arg))
+                                                    :op2 (arg-len arg))
+;                                   )
+                                   (incf i (arg-len arg))
+                                   )
+                                 )
+                            )
+                          instrs))
           )
-      (let ((retins (append (list 
-                             (make-instance 'mkptr :dest wires)
-                             (make-instance 'const :dest wires :op1 (* 8 addr))
-                             )
-                            instrs))
-            (retwires (1+ wires))
+      (list stack wires retins targets nil argsize)
+      )    
+    )
+  )
+
+(defmethod exec-instruction ((op callu) labels stack wires instrs targets arglist argsize)
+  (with-slots (width) op
+    (let ((width (* 8 width))
+          )
+      (pop-arg stack fname
+        (let ((retins (append (list (make-instance 'call :newbase wires :fname (first fname)))
+                              (let ((i 0))
+                                (loop for arg in arglist collect
+                                     (prog1
+;                                         (loop for j in (arg-loc arg) for k from 0 collect
+                                              (make-instance 'copy 
+                                                             :dest (+ wires i)
+                                                             :op1 (first (arg-loc arg))
+                                                             :op2 (arg-len arg))
+;                                              )
+                                       (incf i (arg-len arg))
+                                       )
+                                     )
+                                )
+                              instrs))
+              )
+          (push-stack stack width (loop for i from wires to (+ wires width -1) collect i)
+            (list stack wires retins targets nil argsize)
             )
-        (push-stack stack 1 (list wires)
-          (list stack retwires retins targets)
           )
         )
       )
     )
   )
 
-(defmethod exec-instruction ((op asgnu) stack wires instrs labels targets)
+(defmethod exec-instruction ((op argu) labels stack wires instrs targets arglist argsize)
+  (with-slots (width) op
+    (pop-arg stack arg
+      (list stack wires instrs targets (append arglist (list (make-arg :len (* 8 width) :loc arg))) argsize)
+      )
+    )
+  )
+
+(defmethod exec-instruction ((op addrgp) labels stack wires instrs targets arglist argsize)
+  (declare (optimize (debug 3) (speed 0)))
+  (with-slots (s-args) op
+    (let ((addr (if (gethash (second s-args) labels nil)
+                    (gethash (second s-args) labels nil)
+                    (second s-args))
+            )
+          )
+      (push-stack stack 1 (list addr)
+        (list stack wires instrs targets arglist argsize)
+        )
+      )
+    )
+  )
+
+(defmethod exec-instruction ((op addrlp) labels stack wires instrs targets arglist argsize)
+  (with-slots (s-args) op
+    (let ((addr (parse-integer (second s-args)))
+          )
+      (let ((retins (append (list 
+                             (make-instance 'mkptr :dest wires)
+                             (make-instance 'const :dest wires :op1 (+ argsize (* 8 addr)))
+                             )
+                            instrs))
+            (retwires (1+ wires))
+            )
+        (push-stack stack 1 (list wires)
+          (list stack retwires retins targets arglist argsize)
+          )
+        )
+      )
+    )
+  )
+
+(defmethod exec-instruction ((op indiru) labels stack wires instrs targets arglist argsize)
+  ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
+  (with-slots (width) op
+    (pop-arg stack ptr
+      (let ((instrs (append (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* 8 width)))
+                            instrs)
+              )
+            )
+        (push-stack stack (* 8 width) (loop for i from wires to (+ wires (* 8 width) -1) collect i)
+          (list stack (+ wires (* 8 width)) instrs targets arglist argsize)
+          )
+        )
+      )
+    )
+  )
+
+(defmethod exec-instruction ((op asgnu) labels stack wires instrs targets arglist argsize)
   (with-slots (width) op
     (let* ((width (* 8 width))
            )
@@ -416,7 +513,7 @@ This method should return the updated stack, wires, and instructions.  Instructi
           (let ((retins (cons (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 width) instrs)
                   )
                 )
-            (list stack wires retins targets)
+            (list stack wires retins targets arglist argsize)
             )
           )
         )
@@ -424,13 +521,35 @@ This method should return the updated stack, wires, and instructions.  Instructi
     )
   )
 
-(defmethod exec-instruction ((op proc) stack wires instrs labels targets)
+(defmethod exec-instruction ((op proc) labels stack wires instrs targets arglist argsize)
   (with-slots (s-args) op
     (let ((local-size (parse-integer (second s-args)))
           (args-size (parse-integer (third s-args)))
           )
-      (declare (ignorable args-size))
-      (list stack (+ wires (* 8 local-size)) instrs targets)
+      (list stack (+ wires (* 8 local-size)) instrs targets arglist (* 8 args-size))
       )
+    )
+  )
+
+(defmethod exec-instruction ((op endproc) labels stack wires instrs targets arglist argsize)
+  (assert (null stack))
+  (list stack 0 instrs targets arglist argsize)
+  )
+
+(defmethod exec-instruction ((op import) labels stack wires instrs targets arglist argsize)
+  (list stack wires instrs targets arglist argsize)
+  )
+
+(defmethod exec-instruction ((op export) labels stack wires instrs targets arglist argsize)
+  (list stack wires instrs targets arglist argsize)
+  )
+
+(defmethod exec-instruction ((op code) labels stack wires instrs targets arglist argsize)
+  (list stack wires instrs targets arglist argsize)
+  )
+
+(defmethod exec-instruction ((op labelv) labels stack wires instrs targets arglist argsize)
+  (with-slots (s-args) op
+    (list stack wires (cons (make-instance 'pcf2-bc:label :str (first s-args)) instrs) targets arglist argsize)
     )
   )

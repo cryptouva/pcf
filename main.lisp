@@ -18,13 +18,8 @@
 ;  (let* ((ops (read-bytecode (open "test.pcf2"))
 ;          )
   (let* ((ops (first 
-               (with-input-from-string (strm "proc main 8 4
-ADDRLP4 0
-CNSTU4 15
-CNSTU4 23
-ADDU4
-ASGNU4") (exec-instructions (read-instructions strm)))))
-         (state (setup-labels ops (init-state 200 ops)))
+               (with-open-file (strm "and.lcc" :direction :input) (exec-instructions (read-instructions strm)))))
+         (state (setup-labels ops (init-state 1000 ops)))
          )
     (run-opcodes state)
     )
