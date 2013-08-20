@@ -149,6 +149,7 @@ of the trees if the first tree has more than one element."
   )
 
 (defun skew-reduce* (fn lst &optional (init 0))
+  (declare (optimize (debug 3) (speed 0)))
   (if (null lst)
       init
       (funcall fn (skew-reduce* fn (skew-rest lst) init) (skew-first lst))

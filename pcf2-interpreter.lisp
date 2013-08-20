@@ -119,6 +119,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defun run-opcodes (state)
   (declare (type pcf2-state state)
+           (optimize (speed 0) (debug 3))
            )
   (let ((opcodes (pcf2-state-iptr state))
         )
@@ -269,26 +270,42 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmethod run-opcode ((state pcf2-state) (opcode copy-indir)
                        )
-  (with-slots (dest op1) opcode
+  (with-slots (dest op1 op2) opcode
     (let ((true-op1 (+ op1 (pcf2-state-baseptr state)))
           (true-dest (+ dest (pcf2-state-baseptr state)))
           )
-      (set-state-val state true-dest
-                     (get-state-val state
-                                    (get-state-val state
-                                                   true-op1)))
+      (reduce (lambda (state i) 
+                (set-state-val state (+ i true-dest)
+                               (get-state-val state
+                                              (+ i (get-state-val state
+                                                                  true-op1))))
+                )
+              (loop for i from 0 to (1- op2) collect i) :initial-value state)
       )
     )
   )
 
 (defmethod run-opcode ((state pcf2-state) (opcode indir-copy))
-  (with-slots (dest op1) opcode
+  (with-slots (dest op1 op2) opcode
     (let ((true-op1 (+ op1 (pcf2-state-baseptr state)))
-          (true-dest (+ dest (pcf2-state-baseptr state)))
+          (true-dest (get-state-val state (+ dest (pcf2-state-baseptr state))))
           )
-      (set-state-val state
-                     (get-state-val state true-dest)
-                     (get-state-val state true-op1)
+      (reduce (lambda (st i) 
+                (set-state-val st
+                               (+ i true-dest)
+                               (get-state-val st (+ i true-op1))
+                               )
+                ) (loop for i from 0 to (1- op2) collect i) :initial-value state)
+      )
+    )
+  )
+
+(defmethod run-opcode ((state pcf2-state) (opcode mkptr))
+  (with-slots (dest) opcode
+    (let ((true-dest (+ dest (pcf2-state-baseptr state)))
+          )
+      (set-state-val state true-dest
+                     (+ (pcf2-state-baseptr state) (get-state-val state true-dest))
                      )
       )
     )

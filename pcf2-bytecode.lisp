@@ -23,6 +23,8 @@
            indir-copy
            mkptr
            make-and
+           make-or
+           make-xnor
            make-xor
            make-not
            make-gate
@@ -109,6 +111,14 @@
   (make-instance 'gate :dest d :op1 x :op2 y :truth-table tab)
   )
 
+(defun make-or (d x y)
+  (make-gate #*0111 d x y)
+  )
+
+(defun make-xnor (d x y)
+  (make-gate #*1001 d x y)
+  )
+
 (defun make-xor (d x y)
   "Shorthand for creating an XOR gate"
   (make-gate #*0110 d x y)
@@ -170,7 +180,7 @@
   (:documentation "Split an integer value into its two's complement representation")
   )
 
-(defclass copy (one-op)
+(defclass copy (two-op)
   ()
   (:documentation "Copies a value from one position to another")
   )
@@ -180,12 +190,12 @@
   (:documentation "Creates a constant value")
   )
 
-(defclass copy-indir (one-op)
+(defclass copy-indir (two-op)
   ()
   (:documentation "Dereference a pointer and copy the derefenced value to a location (x = *y)")
   )
 
-(defclass indir-copy (one-op)
+(defclass indir-copy (two-op)
   ()
   (:documentation "Copy a value to the location pointed to by a pointer (*x = y)")
   )
