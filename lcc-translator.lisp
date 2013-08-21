@@ -1,5 +1,16 @@
 ;; Translate LCC opcodes to PCF2 opcodes.  Also removes forward jumps
 ;; and creates the appropriate muxes.
+;;
+;; Each function should take an extra parameter, the pointer to the
+;; mux condition wire.  This ensures that a function can be called
+;; conditionally, as its assignments will all use multiplexers.  We
+;; will eventually use an interprocedural dataflow analysis framework
+;; to handle the removal of these muxes from functions that are never
+;; called conditionally.
+;;
+;; Since the use of a pointer to the condition wire will carry some
+;; cost, we should also have a points-to analysis framework that can
+;; be used to remove extraneous copy and multiplexer operations.
 
 (defpackage :lcc-translator (:use 
                              :skew-list
@@ -182,15 +193,15 @@ only temporary and can be safely overwritten by future instructions."
   (:documentation "This is a conditional branch instruction because it might occur when the targets queue is not empty.  In such a case, this is a conditional branch whose condition is the current mux condition wire.  This is a template for emitting code for this instruction, although it would be better to not emit muxes all over the place like that.")
   )
 
-(defclass ltu (cnd-jump-instruction)
+(defclass ltu (cnd-jump-instruction two-arg-instruction)
   ()
   )
 
-(defclass leu (cnd-jump-instruction)
+(defclass leu (cnd-jump-instruction two-arg-instruction)
   ()
   )
 
-(defclass neu (cnd-jump-instruction)
+(defclass neu (cnd-jump-instruction two-arg-instruction)
   ()
   )
 
@@ -317,6 +328,23 @@ The \"argbase\" parameter represents the list of arguments for the next function
       )
   )
 
+(defmacro close-instr ()
+  "This macro will finalize an instruction translator method.  It is a
+convenience macro that ensures the returned list has the right length."
+  `(progn
+     (list stack wires instrs targets arglist argsize)
+     )
+  )
+
+(defmacro definstr (type &body body)
+  "Instruction translator methods are defined with this macro.  It is
+a convenience macro that ensures that the method takes the right
+number of arguments."
+  `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize)
+     ,@body
+     )
+  )
+
 (defmacro push-stack (stack width val &body body)
   `(let ((,stack (append ,val ,stack))
          )
@@ -340,42 +368,86 @@ The \"argbase\" parameter represents the list of arguments for the next function
     )
   )
 
-(defmethod exec-instruction ((op cnstu) labels stack wires instrs targets arglist argsize)
+(defmacro add-instrs (inslst &body body)
+  (let ((inslstsym (gensym))
+        )
+    `(let* ((,inslstsym ,inslst)
+            (instrs (append (reverse ,inslstsym) instrs))
+            )
+       (mapc #'(lambda (x) (assert (typep x 'pcf2-bc:instruction))) ,inslstsym)
+       ,@body
+       )
+    )
+  )
+
+(defmacro add-target (target-label cnd-value &body body)
+  `(let ((t-idx (gethash ,target-label labels nil))
+         )
+     (assert t-idx)
+     (let ((targets (enqueue (cons t-idx ,cnd-value) targets))
+           )
+       ,@body
+       )
+     )
+  )
+
+(defun eql-gates (arg1 arg2 dest tmp1)
+  (assert (= (length arg1) (length arg2)))
+  (append (list (make-xnor tmp1 
+                           (first arg1)
+                           (first arg2))
+                (make-and dest tmp1 dest)
+                )
+          (eql-gates (rest arg1) (rest arg2) dest tmp1)
+          )
+  )
+
+(definstr neu
+  (with-slots (s-args width) op
+    (let ((width (* 8 width))
+          (targ (second s-args))
+          )
+      (declare (type string targ))
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (assert (and (= width (length arg1) (length arg2))))
+          (add-instrs (append 
+                       (list (make-instance 'copy-indir :dest wires :op1 0 :op2 1))
+                       ;; This will update the value of the global condition wire appropriately,
+                       ;; as it ANDs on the value of comparing all these gates.  This is a hack
+                       ;; and should not be used in other comparison methods.
+                       (eql-gates arg1 arg2 wires (1+ wires))
+                       (list (make-not (+ 2 wires) (+ 1 wires))
+                             (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                             (make-instance 'branch :cnd (+ 2 wires) :targ targ)
+                             )
+                       )
+            (add-target targ (+ 2 wires)
+              (let ((wires (+ 3 wires))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr cnstu
   (with-slots (s-args) op
     (let ((width (* 8 (parse-integer (first s-args))))
           (value (parse-integer (second s-args)))
           )
       (let ((dwires (loop for i from wires to (+ wires width -1) collect i))
             )
-        (let ((instrs (append (list 
-                               (make-instance 'bits :dest dwires :op1 wires)
-                               (make-instance 'const :dest wires :op1 value)
-                               )
-                              instrs)
+        (add-instrs (list (make-instance 'const :dest wires :op1 value)
+                          (make-instance 'bits :dest dwires :op1 wires))
+          (let ((wires (+ wires width))
                 )
-              (wires (+ wires width))
-              )
-          (push-stack stack width dwires
-            (list stack wires instrs targets arglist argsize)
-            )
-          )
-        )
-      )
-    )
-  )
-
-(defmethod exec-instruction ((op addu) labels stack wires instrs targets arglist argsize)
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
-           )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (let ((retins (append (reverse (adder-chain arg1 arg2 rwires (+ wires width 1) (+ wires width 2) (+ wires width 3) (+ wires width 4))) instrs))
-                  (retwires (+ wires width))
-                  )
-              (list stack retwires retins targets arglist argsize)
+            (push-stack stack width dwires
+              (close-instr)
               )
             )
           )
@@ -384,7 +456,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
     )
   )
 
-(defmethod exec-instruction ((op bandu) labels stack wires instrs targets arglist argsize)
+(definstr addu
   (with-slots (width) op
     (let* ((width (* 8 width))
            (rwires (loop for i from wires to (+ wires width -1) collect i))
@@ -392,11 +464,39 @@ The \"argbase\" parameter represents the list of arguments for the next function
       (pop-arg stack arg1
         (pop-arg stack arg2
           (push-stack stack width rwires
-            (let ((retins (append (reverse (and-chain arg1 arg2 rwires))
-                                  instrs))
-                  (retwires (+ wires width))
-                  )
-              (list stack retwires retins targets arglist argsize)
+            (add-instrs (adder-chain 
+                         arg1 
+                         arg2 
+                         rwires 
+                         (+ wires width 1) 
+                         (+ wires width 2) 
+                         (+ wires width 3) 
+                         (+ wires width 4))
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr bandu
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           (rwires (loop for i from wires to (+ wires width -1) collect i))
+           )
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (push-stack stack width rwires
+            (add-instrs (and-chain arg1 arg2 rwires)
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
               )
             )
           )
@@ -410,10 +510,13 @@ The \"argbase\" parameter represents the list of arguments for the next function
   (loc)
   )
 
-(defmethod exec-instruction ((op callv) labels stack wires instrs targets arglist argsize)
+(definstr callv
   (pop-arg stack fname
-    (let ((retins (append (list (make-instance 'call :newbase wires :fname (first fname)))
-                          (let ((i 0))
+    (assert (and (= 1 (length fname))
+                 (typep (first fname) 'string)
+                 )
+            )
+    (add-instrs (append (let ((i 0))
                             (loop for arg in arglist collect
                                  (prog1
 ;                                     (loop for j in (arg-loc arg) for k from 0 collect
@@ -426,36 +529,33 @@ The \"argbase\" parameter represents the list of arguments for the next function
                                    )
                                  )
                             )
-                          instrs))
-          )
-      (list stack wires retins targets nil argsize)
+                        (list (make-instance 'call :newbase wires :fname (first fname)))
+                        )
+      (close-instr)
       )    
     )
   )
 
-(defmethod exec-instruction ((op callu) labels stack wires instrs targets arglist argsize)
+(definstr callu
   (with-slots (width) op
     (let ((width (* 8 width))
           )
       (pop-arg stack fname
-        (let ((retins (append (list (make-instance 'call :newbase wires :fname (first fname)))
-                              (let ((i 0))
+        (add-instrs (append (let ((i 0))
                                 (loop for arg in arglist collect
                                      (prog1
-;                                         (loop for j in (arg-loc arg) for k from 0 collect
-                                              (make-instance 'copy 
-                                                             :dest (+ wires i)
-                                                             :op1 (first (arg-loc arg))
-                                                             :op2 (arg-len arg))
-;                                              )
+                                         (make-instance 'copy 
+                                                        :dest (+ wires i)
+                                                        :op1 (first (arg-loc arg))
+                                                        :op2 (arg-len arg))
                                        (incf i (arg-len arg))
                                        )
                                      )
                                 )
-                              instrs))
-              )
+                            (list (make-instance 'call :newbase wires :fname (first fname)))
+                            )
           (push-stack stack width (loop for i from wires to (+ wires width -1) collect i)
-            (list stack wires retins targets nil argsize)
+            (close-instr)
             )
           )
         )
@@ -463,15 +563,18 @@ The \"argbase\" parameter represents the list of arguments for the next function
     )
   )
 
-(defmethod exec-instruction ((op argu) labels stack wires instrs targets arglist argsize)
+(definstr argu
   (with-slots (width) op
     (pop-arg stack arg
-      (list stack wires instrs targets (append arglist (list (make-arg :len (* 8 width) :loc arg))) argsize)
+      (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
+            )
+        (close-instr)
+        )
       )
     )
   )
 
-(defmethod exec-instruction ((op addrgp) labels stack wires instrs targets arglist argsize)
+(definstr addrgp
   (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
     (let ((addr (if (gethash (second s-args) labels nil)
@@ -480,58 +583,56 @@ The \"argbase\" parameter represents the list of arguments for the next function
             )
           )
       (push-stack stack 1 (list addr)
-        (list stack wires instrs targets arglist argsize)
+        (close-instr)
         )
       )
     )
   )
 
-(defmethod exec-instruction ((op addrlp) labels stack wires instrs targets arglist argsize)
+(definstr addrlp
   (with-slots (s-args) op
     (let ((addr (parse-integer (second s-args)))
           )
-      (let ((retins (append (list 
-                             (make-instance 'mkptr :dest wires)
-                             (make-instance 'const :dest wires :op1 (+ argsize (* 8 addr)))
-                             )
-                            instrs))
-            (retwires (1+ wires))
+      (push-stack stack 1 (list wires)
+        (add-instrs (list 
+                     (make-instance 'const :dest wires :op1 (+ argsize (* 8 addr)))
+                     (make-instance 'mkptr :dest wires)
+                     )
+          (let ((wires (1+ wires))
+                )
+            (close-instr)
             )
-        (push-stack stack 1 (list wires)
-          (list stack retwires retins targets arglist argsize)
           )
         )
       )
     )
   )
 
-(defmethod exec-instruction ((op indiru) labels stack wires instrs targets arglist argsize)
+(definstr indiru
   ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
   (with-slots (width) op
     (pop-arg stack ptr
-      (let ((instrs (append (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* 8 width)))
-                            instrs)
-              )
-            )
+      (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* 8 width)))
         (push-stack stack (* 8 width) (loop for i from wires to (+ wires (* 8 width) -1) collect i)
-          (list stack (+ wires (* 8 width)) instrs targets arglist argsize)
+          (let ((wires (+ wires (* 8 width)))
+                )
+            (close-instr)
+            )
           )
         )
       )
     )
   )
 
-(defmethod exec-instruction ((op asgnu) labels stack wires instrs targets arglist argsize)
+(definstr asgnu
   (with-slots (width) op
     (let* ((width (* 8 width))
            )
       (pop-arg stack val
         (pop-arg stack ptr
           (assert (= 1 (length ptr)))
-          (let ((retins (cons (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 width) instrs)
-                  )
-                )
-            (list stack wires retins targets arglist argsize)
+          (add-instrs (list (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 width))
+            (close-instr)
             )
           )
         )
@@ -539,35 +640,44 @@ The \"argbase\" parameter represents the list of arguments for the next function
     )
   )
 
-(defmethod exec-instruction ((op proc) labels stack wires instrs targets arglist argsize)
+(definstr proc
   (with-slots (s-args) op
     (let ((local-size (parse-integer (second s-args)))
           (args-size (parse-integer (third s-args)))
           )
-      (list stack (+ wires (* 8 local-size)) instrs targets arglist (* 8 args-size))
+      (let ((wires (+ wires (* 8 local-size)))
+            (argsize (* 8 args-size))
+            )
+        (close-instr)
+        )
       )
     )
   )
 
-(defmethod exec-instruction ((op endproc) labels stack wires instrs targets arglist argsize)
+(definstr endproc
   (assert (null stack))
-  (list stack 0 instrs targets arglist argsize)
+  (let ((wires 0)
+        )
+    (close-instr)
+    )
   )
 
-(defmethod exec-instruction ((op import) labels stack wires instrs targets arglist argsize)
-  (list stack wires instrs targets arglist argsize)
+(definstr import
+  (close-instr)
   )
 
-(defmethod exec-instruction ((op export) labels stack wires instrs targets arglist argsize)
-  (list stack wires instrs targets arglist argsize)
+(definstr export
+  (close-instr)
   )
 
-(defmethod exec-instruction ((op code) labels stack wires instrs targets arglist argsize)
-  (list stack wires instrs targets arglist argsize)
+(definstr code
+  (close-instr)
   )
 
-(defmethod exec-instruction ((op labelv) labels stack wires instrs targets arglist argsize)
+(definstr labelv
   (with-slots (s-args) op
-    (list stack wires (cons (make-instance 'pcf2-bc:label :str (first s-args)) instrs) targets arglist argsize)
+    (add-instrs (list (make-instance 'pcf2-bc:label :str (first s-args)))
+      (close-instr)
+      )
     )
   )
