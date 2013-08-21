@@ -172,7 +172,25 @@ only temporary and can be safely overwritten by future instructions."
   (:documentation "The base class of instructions that pop one argument off the stack.")
   )
 
-(defclass jumpv (one-lcc-instruction)
+(defclass cnd-jump-instruction (static-arg-instruction)
+  ()
+  (:documentation "The base class of instructions that cause conditional branches.")
+  )
+
+(defclass jumpv (cnd-jump-instruction one-arg-instruction)
+  ()
+  (:documentation "This is a conditional branch instruction because it might occur when the targets queue is not empty.  In such a case, this is a conditional branch whose condition is the current mux condition wire.  This is a template for emitting code for this instruction, although it would be better to not emit muxes all over the place like that.")
+  )
+
+(defclass ltu (cnd-jump-instruction)
+  ()
+  )
+
+(defclass leu (cnd-jump-instruction)
+  ()
+  )
+
+(defclass neu (cnd-jump-instruction)
   ()
   )
 
