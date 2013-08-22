@@ -193,15 +193,19 @@ only temporary and can be safely overwritten by future instructions."
   (:documentation "This is a conditional branch instruction because it might occur when the targets queue is not empty.  In such a case, this is a conditional branch whose condition is the current mux condition wire.  This is a template for emitting code for this instruction, although it would be better to not emit muxes all over the place like that.")
   )
 
-(defclass ltu (cnd-jump-instruction two-arg-instruction)
+(defclass cmp-jump-instruction (cnd-jump-instruction)
+  ((width :initarg :width))
+  )
+
+(defclass ltu (cmp-jump-instruction)
   ()
   )
 
-(defclass leu (cnd-jump-instruction two-arg-instruction)
+(defclass leu (cmp-jump-instruction)
   ()
   )
 
-(defclass neu (cnd-jump-instruction two-arg-instruction)
+(defclass neu (cmp-jump-instruction)
   ()
   )
 
@@ -250,6 +254,7 @@ only temporary and can be safely overwritten by future instructions."
                                  (ecase (class-name (car scls))
                                    ((one-arg-instruction two-arg-instruction) (list ':width (parse-integer (second tokens))))
                                    (static-arg-instruction (list ':s-args (rest tokens)))
+                                   (cmp-jump-instruction (list ':width (parse-integer (second tokens)) ':s-args (cddr tokens)))
                                    (lcc-instruction nil)
                                    )
                                  )
@@ -277,12 +282,12 @@ only temporary and can be safely overwritten by future instructions."
 
 (defmethod add-label ((op labelv) idx labs)
   (with-slots (s-args) op
-    (setf (gethash (second s-args) labs) idx)
+    (setf (gethash (first s-args) labs) idx)
     labs
     )
   )
 
-(defun find-labels (instructions &optional (idx 0) (labs (make-hash-table)))
+(defun find-labels (instructions &optional (idx 0) (labs (make-hash-table :test 'equalp)))
   "Find the index of all labels in the list of instructions, returning a hash table"
   (declare (type hash-table labs))
   (if (null instructions)
@@ -312,7 +317,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
                           (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
                           )
                         ops
-                        (list nil 0 nil nil nil 0)
+                        (list nil 0 nil (make-queue) nil 0)
                         )
             )
           )
@@ -393,19 +398,22 @@ number of arguments."
 
 (defun eql-gates (arg1 arg2 dest tmp1)
   (assert (= (length arg1) (length arg2)))
-  (append (list (make-xnor tmp1 
-                           (first arg1)
-                           (first arg2))
-                (make-and dest tmp1 dest)
-                )
-          (eql-gates (rest arg1) (rest arg2) dest tmp1)
-          )
+  (if (and arg1 arg2)
+      (append (list (make-xnor tmp1 
+                               (first arg1)
+                               (first arg2))
+                    (make-and dest tmp1 dest)
+                    )
+              (eql-gates (rest arg1) (rest arg2) dest tmp1)
+              )
+      )
   )
 
 (definstr neu
+  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
-          (targ (second s-args))
+          (targ (first s-args))
           )
       (declare (type string targ))
       (pop-arg stack arg1

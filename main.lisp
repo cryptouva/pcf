@@ -18,7 +18,7 @@
 ;  (let* ((ops (read-bytecode (open "test.pcf2"))
 ;          )
   (let* ((ops (first 
-               (with-open-file (strm "and.lcc" :direction :input) (exec-instructions (read-instructions strm)))))
+               (with-open-file (strm "neq.lcc" :direction :input) (exec-instructions (read-instructions strm)))))
          (state (setup-labels ops (init-state 1000 ops)))
          )
     (run-opcodes state)
