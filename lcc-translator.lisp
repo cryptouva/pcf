@@ -631,6 +631,12 @@ number of arguments."
       (pop-arg stack val
         (pop-arg stack ptr
           (assert (= 1 (length ptr)))
+          ;; TODO:  Should add muxes here
+          ;;
+          ;; To deal with pointers that might not have values that can
+          ;; be determined at compile time, the mux should first copy
+          ;; the old value to a temporary location, then mux with the
+          ;; new value, then assign to the location.
           (add-instrs (list (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 width))
             (close-instr)
             )
