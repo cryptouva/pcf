@@ -5,68 +5,83 @@
                      heap-delmin
                      heap-getmin
                      make-queue
+                     peek-queue
+                     queue-emptyp
                      enqueue
                      dequeue)
             (:nicknames :priority-queue))
 (in-package :pairing-heap)
 
-(defmacro heap-min (heap)
-  `(car ,heap)
+(defstruct heap
+  (min)
+  (children nil :type list)
+  (empty nil :type boolean)
   )
 
-(defmacro heap-children (heap)
-  `(cdr ,heap)
+(defmacro make-empty-heap ()
+  `(make-heap :empty t)
   )
 
 (defmacro singleton-heap (x)
-  `(cons ,x nil)
+  `(make-heap :min ,x :children nil)
   )
 
 (defmacro new-min (x heap)
-  `(cons ,x ,heap)
+  `(make-heap :min ,x :children ,heap)
   )
 
 (defmacro add-child (heap1 heap2)
-  `(cons (heap-min ,heap1)
-         (cons ,heap2 (heap-children ,heap1))
-         )
+  `(make-heap :min (heap-min ,heap1)
+              :children (cons ,heap2 (heap-children ,heap1))
+              )
   )
 
 (defun heap-insert (x heap &key (comp #'<))
   "Insert \"x\" into thea heap \"heap\""
+  (declare (type heap heap)
+           (optimize (debug 3) (speed 0)))
   (cond
-    ((null heap) (singleton-heap x))
+    ((heap-empty heap) (singleton-heap x))
     ((funcall comp x (heap-min heap))
-     (new-min x heap)
+     (new-min x (list heap))
      )
     (t (add-child heap (singleton-heap x))
        )
     )
   )
 
-(defun heap-getmin (heap)
+(defun heap-getmin (heap1)
   "Retrieve the minimum value from the heap"
-  (heap-min heap)
+  (heap-min heap1)
   )
 
 (defun heap-merge (heap1 heap2 &key (comp #'<))
-  (cond
-    ((null heap1) heap2)
-    ((null heap2) heap1)
-    ((funcall comp (heap-min heap1) (heap-min heap2))
-     (add-child heap1 heap2)
-     )
-    (t (add-child heap2 heap1))
+  (declare (type heap heap1 heap2))
+  (the heap
+    (cond
+      ((heap-empty heap1) heap2)
+      ((heap-empty heap2) heap1)
+      ((funcall comp (heap-min heap1) (heap-min heap2))
+       (add-child heap1 heap2)
+       )
+      (t (add-child heap2 heap1))
+      )
     )
   )
 
 (defun merge-pairs (heaps &key (comp #'<))
-  (cond
-    ((null heaps)
-     nil)
-    ((null (rest heaps))
-     (first heaps))
-    (t (heap-merge (heap-merge (first heaps) (second heaps) :comp comp) (merge-pairs (cddr heaps) :comp comp) :comp comp))
+  (declare (type list heaps)
+           (optimize (debug 3) (speed 0))
+           )
+  (the heap
+    (cond
+      ((null heaps)
+       (make-empty-heap))
+      ((null (rest heaps))
+       (first heaps))
+      (t (heap-merge (heap-merge (first heaps) (second heaps) :comp comp) 
+                     (merge-pairs (cddr heaps) :comp comp) :comp comp))
+      )
     )
   )
 
@@ -74,36 +89,66 @@
   "Remove the minimum element from the heap \"heap\""
   (if (null heap)
       nil
-      (merge-pairs (heap-children heap) :comp comp)
+      (the heap (merge-pairs (heap-children heap) :comp comp))
       )
   )
 
 (defstruct priority-queue
-  (heap)
+  (heap nil :type heap)
   (comp)
   )
 
+(defstruct priority-queue-item 
+  (priority)
+  (value)
+  )
+
 (defun make-queue (&key (comp #'<))
-  (make-priority-queue :heap nil :comp (lambda (x y) (funcall comp (car x) (car y))))
+  (make-priority-queue :heap (make-empty-heap) :comp (lambda (x y) (funcall comp 
+                                                              (priority-queue-item-priority x) 
+                                                              (priority-queue-item-priority y))))
+  )
+
+(defun queue-emptyp (queue)
+  (heap-empty (priority-queue-heap queue))
+  )
+
+(defun peek-queue (queue)
+  (declare (type priority-queue queue)
+           (optimize (debug 3) (speed 0)))
+  (let ((min (heap-min (priority-queue-heap queue)))
+        )
+    (declare (type (or null priority-queue-item) min))
+    (if min
+        (priority-queue-item-value min)
+        )
+    )
   )
 
 (defun enqueue (x queue)
   "Insert \"x\" intp \"queue\".  \"x\" should be of the form (key . value)"
-  (declare (type priority-queue queue))
+  (declare (type priority-queue queue)
+           (type cons x)
+           (optimize (debug 3) (speed 0)))
   (make-priority-queue :heap 
-                       (heap-insert x (priority-queue-heap queue) :comp (priority-queue-comp queue))
+                       (heap-insert (make-priority-queue-item :priority (car x)
+                                                              :value (cdr x))
+                                    (priority-queue-heap queue) :comp (priority-queue-comp queue))
                        :comp (priority-queue-comp queue))
   )
 
 (defun dequeue (queue)
   "Remove the minimum element from \"queue\""
-  (declare (type priority-queue queue))
+  (declare (type priority-queue queue)
+           (optimize (debug 3) (speed 0)))
   (let ((ret (heap-min (priority-queue-heap queue)))
         )
-    (values (make-priority-queue :heap 
-                                 (heap-delmin (priority-queue-heap queue) 
-                                              :comp (priority-queue-comp queue))
-                                 :comp (priority-queue-comp queue))
-            ret)
+    (declare (type priority-queue-item ret))
+;    (values 
+     (make-priority-queue :heap 
+                          (heap-delmin (priority-queue-heap queue) 
+                                       :comp (priority-queue-comp queue))
+                          :comp (priority-queue-comp queue))
+     ;ret)
     )
   )

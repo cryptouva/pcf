@@ -8,6 +8,7 @@
 (defpackage :pcf2-bc 
   (:use :common-lisp #+sbcl :sb-mop #+cmu :mop)
   (:export instruction
+           initbase
            call
            ret
            branch
@@ -16,6 +17,7 @@
            mul
            gate
            bits
+           join
            const
            label
            copy
@@ -38,7 +40,8 @@
            cnd
            targ
            str
-           read-bytecode))
+           read-bytecode
+           base))
 (in-package :pcf2-bc)
 
 (defclass instruction ()
@@ -78,6 +81,11 @@
         (reverse lst)
         )
     )
+  )
+
+(defclass initbase (instruction)
+  ((base :initarg :base))
+  (:documentation "This instruction initializes the base pointer.  It should only appear once, at the very beginning of the program.")
   )
 
 (defclass call (instruction)
@@ -178,6 +186,11 @@
 (defclass bits (one-op)
   ()
   (:documentation "Split an integer value into its two's complement representation")
+  )
+
+(defclass join (one-op)
+  ()
+  (:documentation "Coelesce a vector of wires into a single unsigned integer value")
   )
 
 (defclass copy (two-op)

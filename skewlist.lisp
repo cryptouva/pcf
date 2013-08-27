@@ -102,6 +102,7 @@ of the trees if the first tree has more than one element."
 
 (defun skew-update (idx y lst)
   "Replace the element at position idx in lst with y"
+  (declare (optimize (debug 3) (speed 0)))
   (labels ((tree-update (w i y tr)
              (cond
                ((and (= 1 w) (zerop i)) (lf y))
@@ -149,7 +150,7 @@ of the trees if the first tree has more than one element."
   )
 
 (defun skew-reduce* (fn lst &optional (init 0))
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 0) (speed 3)))
   (if (null lst)
       init
       (funcall fn (skew-reduce* fn (skew-rest lst) init) (skew-first lst))
@@ -167,7 +168,17 @@ of the trees if the first tree has more than one element."
 
 (defun skew-reduce (fn lst &optional (init 0))
   "Reduce operation for skew-binary random access lists."
-  (skew-reduce* fn (skew-reverse lst) init)
+;  (skew-reduce* fn (skew-reverse lst) init)
+  (declare 
+   (type function fn)
+   (optimize (debug 0) (speed 3)))
+  (if (null lst)
+      init
+      (let ((init (funcall fn init (skew-first lst)))
+            )
+        (skew-reduce fn (skew-rest lst) init)
+        )
+      )
   )
 
 (defun skew-append (lst1 lst2)

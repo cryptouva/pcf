@@ -29,25 +29,66 @@
   (iptr)
   (lbls)
   (call-stack)
+  (alice-inputs)
+  (bob-inputs)
   (:documentation "The memory random access list is the wire table + pointers + constant values.  The baseptr is the pointer in the memory array to the beginning of the current stack frame.  The iptr is the pointer to the next opcode.  The lbls slot is the hash table of labels to the beginning of the list of opcodes they correspond to.
 
 The functions that operate on pcf2-state objects should treat these objects as immutable.  Thus we use a random access list rather than an array, and a linked list to create stack frames.  In doing so we can support debugging much effectively and potentially even allow reversible debugging of PCF2 programs.")
   )
 
-(defun init-state (memsize opcodes)
-  "Initialize a PCF2 state object with \"memsize\" memory elements"
-  (let ((newstate (make-pcf2-state :memory
-                                   (let ((m nil))
-                                     (loop for i from 1 to memsize do
-                                          (setf m (skew-cons 0 m))
-                                          )
-                                     m)
-                                   :baseptr 0
-                                   :iptr opcodes
-                                   :lbls (make-hash-table :test 'equalp)
-                                   :call-stack nil))
+(defun init-state (memsize opcodes inputs-file alice-input-size bob-input-size)
+  "Initialize a PCF2 state object with \"memsize\" memory elements.  Alice and Bob inputs are read from the inputs-file parameter, which should be a stream"
+  (declare (type stream inputs-file)
+           (optimize (debug 3) (speed 0)))
+  (let ((alice-input (parse-integer (read-line inputs-file) :radix 16))
+        (bob-input (parse-integer (read-line inputs-file) :radix 16))
         )
-    newstate
+    (let ((newstate (make-pcf2-state :memory
+                                     (let ((m nil))
+                                       (loop for i from 2 to memsize do
+                                            (setf m (skew-cons 0 m))
+                                            )
+                                       (setf m (skew-cons 1 m))
+                                       m)
+                                     :baseptr 1
+                                     :iptr opcodes
+                                     :lbls (make-hash-table :test 'equalp)
+                                     :call-stack nil
+                                     :alice-inputs (skew-reverse
+                                                    (cdr (reduce (lambda (st x)
+                                                                   (declare (ignore x))
+                                                                   (let ((val (car st))
+                                                                         (lst (cdr st))
+                                                                         )
+                                                                     (cons (ash val -1) (skew-cons (mod val 2) lst))
+                                                                     )
+                                                                   )
+                                                                 (loop for i from 1 to alice-input-size collect i)
+                                                                 :initial-value (cons alice-input nil))))
+                                     :bob-inputs (skew-reverse
+                                                  (cdr (reduce (lambda (st x)
+                                                                 (declare (ignore x))
+                                                                 (let ((val (car st))
+                                                                       (lst (cdr st))
+                                                                       )
+                                                                   (cons (ash val -1) (skew-cons (mod val 2) lst))
+                                                                   )
+                                                                 )
+                                                               (loop for i from 1 to bob-input-size collect i)
+                                                               :initial-value (cons bob-input nil))))
+                                     )
+            )
+          )
+      newstate
+      )
+    )
+  )
+
+(defun get-party-input (state idx party)
+  (declare (optimize (debug 3) (speed 0)))
+  (cond
+    ((equalp party "alice") (skew-ref idx (pcf2-state-alice-inputs state)))
+    ((equalp party "bob") (skew-ref idx (pcf2-state-bob-inputs state)))
     )
   )
 
@@ -84,7 +125,12 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                       :iptr (pcf2-state-iptr st)
                                       :lbls (pcf2-state-lbls st)
                                       :call-stack (pcf2-state-call-stack st)
-                                      :memory (skew-update ,idx ,val (pcf2-state-memory st)))))
+                                      :memory (skew-update ,idx ,val (pcf2-state-memory st))
+                                      :alice-inputs (pcf2-state-alice-inputs ,state)
+                                      :bob-inputs (pcf2-state-bob-inputs ,state)
+                                      )
+             )
+           )
        newstate)
      )
   )
@@ -106,7 +152,11 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                       :iptr (pcf2-state-iptr st)
                                       :lbls (pcf2-state-lbls st)
                                       :call-stack (pcf2-state-call-stack st)
-                                      :memory (pcf2-state-memory st)))
+                                      :memory (pcf2-state-memory st)
+                                      :alice-inputs (pcf2-state-alice-inputs st)
+                                      :bob-inputs (pcf2-state-bob-inputs st)
+                                      )
+             )
            )
        ,(if memory
             `(setf (pcf2-state-memory newstate) ,memory)
@@ -126,7 +176,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defun run-opcodes (state)
   (declare (type pcf2-state state)
-           (optimize (speed 0) (debug 3))
+           (optimize (speed 3) (debug 0))
            )
   (let ((opcodes (pcf2-state-iptr state))
         )
@@ -151,6 +201,12 @@ The functions that operate on pcf2-state objects should treat these objects as i
   (:documentation "Each PCF2 opcode will take in a program state and update it in some way")
   )
 
+(defmethod run-opcode ((state pcf2-state) (opcode initbase))
+  (with-slots (base) opcode
+    (update-state state nil (+ (pcf2-state-baseptr state) base) nil nil)
+    )
+  )
+
 (defmethod run-opcode ((state pcf2-state) (opcode call))
   (declare (optimize (debug 3) (speed 0)))
   (with-slots (newbase fname) opcode
@@ -160,12 +216,28 @@ The functions that operate on pcf2-state objects should treat these objects as i
         ((or (string-equal fname "alice")
              (string-equal fname "bob"))
                                         ;(update-state state nil nil nil nil)
-         (reduce
-          #'(lambda (st x)
-              (set-state-val st (+ newbase x) (random 2))
-              )
-          (loop for i from 0 to 31 collect i)
-          :initial-value state)
+         (let ((input-pos (reduce (lambda (val b)
+                                    (declare (type bit b))
+                                    (+ (ash val 1) b)
+                                    )
+                                  (loop for i from 31 downto 0 collect
+                                       (get-state-val state (+ newbase i))
+                                       )
+                                  )
+                 )
+               )
+           (let ((state (reduce
+                         #'(lambda (st x)
+                             (set-state-val st (+ newbase x) (get-party-input state (+ input-pos x) fname))
+                             )
+                         (loop for i from 0 to 31 collect i)
+                         :initial-value state)
+                   )
+                 )
+             ;(format t "~&Input for ~A: ~A~%" fname (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
+             state
+             )
+           )
          )
         ((string-equal fname "output_alice")
          (format t "~&Output for Alice: ~A~%" (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
@@ -226,6 +298,24 @@ The functions that operate on pcf2-state objects should treat these objects as i
        )
      )
    )
+
+(defmethod run-opcode ((state pcf2-state) (opcode join))
+  (with-slots (dest op1) opcode
+    (let ((true-op1 (mapcar (lambda (x) (+ x (pcf2-state-baseptr state))) op1))
+          (true-dest (+ dest (pcf2-state-baseptr state)))
+          )
+      (set-state-val state true-dest
+                     (reduce (lambda (v x)
+                               (declare (type bit x))
+                               (+ (ash v 1) x)
+                               )
+                             (reverse true-op1)
+                             :initial-value 0
+                             )
+                     )
+      )
+    )
+  )
 
  (defmethod run-opcode ((state pcf2-state) (opcode bits))
    (with-slots (dest op1) opcode
@@ -350,16 +440,19 @@ The functions that operate on pcf2-state objects should treat these objects as i
   )
 
 (defmethod run-opcode ((state pcf2-state) (opcode gate))
+  (declare (optimize (debug 3) (speed 0)))
   (with-slots (dest op1 op2 truth-table) opcode
-    (let* ((true-op1 (+ op1 (pcf2-state-baseptr state)))
-           (true-op2 (+ op2 (pcf2-state-baseptr state)))
-           (true-dest (+ dest (pcf2-state-baseptr state)))
-           (op1val (get-state-val state true-op1))
-           (op2val (get-state-val state true-op2))
-           )
-      (declare (type bit op1val op2val))
-      (set-state-val state true-dest
-                     (bit truth-table (+ op1val (* 2 op2val))))
+    (let ((true-op1 (+ op1 (pcf2-state-baseptr state)))
+          (true-op2 (+ op2 (pcf2-state-baseptr state)))
+          (true-dest (+ dest (pcf2-state-baseptr state)))
+          )
+      (let ((op1val (get-state-val state true-op1))
+            (op2val (get-state-val state true-op2))
+            )
+        (declare (type bit op1val op2val))
+        (set-state-val state true-dest
+                       (bit truth-table (+ op1val (* 2 op2val))))
+        )
       )
     )
   )
