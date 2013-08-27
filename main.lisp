@@ -17,9 +17,9 @@
 (defun test-interp (fname)
   (let* ((ops (first 
                (with-open-file (strm fname :direction :input) (exec-instructions (read-instructions strm)))))
-         (state (setup-labels ops (with-open-file (inputs "inp.txt" :direction :input) (init-state 3000 ops inputs 16384 16384))))
+         (state (setup-labels ops (with-open-file (inputs "inp.txt" :direction :input) (init-state 10000 ops inputs 16384 16384))))
          )
-    (print ops)
+    (assert (typep (first ops) 'pcf2-bc:initbase))
     (run-opcodes state)
     )
   )

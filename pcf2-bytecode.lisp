@@ -102,9 +102,9 @@
   )
 
 (defclass two-op (instruction)
-  ((dest :initarg :dest)
-   (op1 :initarg :op1)
-   (op2 :initarg :op2)
+  ((dest :initarg :dest :type (integer 0))
+   (op1 :initarg :op1 :type (integer 0))
+   (op2 :initarg :op2 :type (integer 0))
    )
   (:documentation "This class is for instructions that take two operands and produce one result")
   )
