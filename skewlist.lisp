@@ -102,7 +102,7 @@ of the trees if the first tree has more than one element."
 
 (defun skew-update (idx y lst)
   "Replace the element at position idx in lst with y"
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 0) (speed 3)))
   (labels ((tree-update (w i y tr)
              (cond
                ((and (= 1 w) (zerop i)) (lf y))

@@ -301,7 +301,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmethod run-opcode ((state pcf2-state) (opcode join))
   (with-slots (dest op1) opcode
-    (let ((true-op1 (mapcar (lambda (x) (+ x (pcf2-state-baseptr state))) op1))
+    (let ((true-op1 (mapcar (lambda (x) (get-state-val state (+ x (pcf2-state-baseptr state)))) op1))
           (true-dest (+ dest (pcf2-state-baseptr state)))
           )
       (set-state-val state true-dest

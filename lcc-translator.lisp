@@ -298,6 +298,10 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass indiri (one-arg-instruction)
+  ()
+  )
+
 (defclass two-arg-instruction (stack-arg-instruction)
   ()
   (:documentation "The base class of instructions that pop two arguments off the stack.")
@@ -307,11 +311,19 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass asgni (two-arg-instruction)
+  ()
+  )
+
 (defclass bandu (two-arg-instruction)
   ()
   )
 
 (defclass addu (two-arg-instruction)
+  ()
+  )
+
+(defclass subu (two-arg-instruction)
   ()
   )
 
@@ -403,7 +415,8 @@ The \"argbase\" parameter represents the list of arguments for the next function
                           (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
                           )
                         ops
-                        (list nil 0 nil (make-queue) nil 0 0 nil 0)
+                        ;; baseinit starts at 1, so that the global mux condition is not overwritten
+                        (list nil 0 nil (make-queue) nil 0 0 nil 1)
                         )
             )
           )
@@ -1032,6 +1045,34 @@ number of arguments."
     )
   )
 
+(definstr subu
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           (rwires (loop for i from wires to (+ wires width -1) collect i))
+           )
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (push-stack stack width rwires
+            (add-instrs (subtractor-chain
+                         arg1 
+                         arg2 
+                         rwires 
+                         (+ wires width 1) 
+                         (+ wires width 2) 
+                         (+ wires width 3) 
+                         (+ wires width 4))
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
 (defmacro right-or-left-shift (zero-concat &body body)
   `(with-slots (width) op
     (let ((width (* 8 width))
@@ -1057,7 +1098,9 @@ number of arguments."
                          )
               (let ((wires (+ wires width 3))
                     )
-                ,@body
+                (push-stack stack width rwires
+                  ,@body
+                  )
                 )
               )
             )
@@ -1282,6 +1325,22 @@ number of arguments."
     )
   )
 
+(definstr indiri
+  ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
+  (with-slots (width) op
+    (pop-arg stack ptr
+      (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* 8 width)))
+        (push-stack stack (* 8 width) (loop for i from wires to (+ wires (* 8 width) -1) collect i)
+          (let ((wires (+ wires (* 8 width)))
+                )
+            (close-instr)
+            )
+          )
+        )
+      )
+    )
+  )
+
 (definstr indirp
   (pop-arg stack ptr
     (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 1))
@@ -1329,6 +1388,28 @@ number of arguments."
   )
 
 (definstr asgnu
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           )
+      (pop-arg stack val
+        (pop-arg stack ptr
+          (assert (= 1 (length ptr)))
+          ;; TODO:  Should add muxes here
+          ;;
+          ;; To deal with pointers that might not have values that can
+          ;; be determined at compile time, the mux should first copy
+          ;; the old value to a temporary location, then mux with the
+          ;; new value, then assign to the location.
+          (asgn-mux
+           (close-instr)
+           )
+          )
+        )
+      )
+    )
+  )
+
+(definstr asgni
   (with-slots (width) op
     (let* ((width (* 8 width))
            )
@@ -1413,6 +1494,7 @@ number of arguments."
   )
 
 (definstr skip
+  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
     (let ((baseinit (+ baseinit (* 8 (parse-integer (first s-args)))))
           )
@@ -1445,6 +1527,7 @@ number of arguments."
               )
             )
           )
+        (close-instr)
         )
     )
   )
