@@ -232,7 +232,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                     (declare (type bit b))
                                     (+ (ash val 1) b)
                                     )
-                                  (loop for i from 31 downto 0 collect
+                                  (loop for i from 32 downto 1 collect
                                        (get-state-val state (+ newbase i))
                                        )
                                   )
@@ -252,11 +252,11 @@ The functions that operate on pcf2-state objects should treat these objects as i
            )
          )
         ((string-equal fname "output_alice")
-         (format t "~&Output for Alice: ~A~%" (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
+         (format t "~&Output for Alice: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (+ newbase i))))
          state
          )
         ((string-equal fname "output_bob")
-         (format t "~&Output for Bob: ~A~%" (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
+         (format t "~&Output for Bob: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (+ newbase i))))
          state
          )
         (t 
@@ -312,6 +312,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
             (y (get-state-val state true-op2))
             )
        (declare (type integer x y))
+       (format *error-output* "Add(~A,~A,~A): ~A + ~A = ~A~%" op1 op2 dest x y (+ x y))
        (set-state-val state true-dest (+ x y))
        )
      )
