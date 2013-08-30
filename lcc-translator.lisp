@@ -429,7 +429,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
                         )
             )
           )
-      (assert (> (ninth rvl) 1))
+      (assert (>= (ninth rvl) 1))
       (cons (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl))) (rest rvl))
       )
     )
@@ -567,6 +567,7 @@ number of arguments."
     (pop-arg stack targ
       (assert (and (= 1 (length targ))
                    (typep (first targ) 'string)
+                   (queue-emptyp targets)
                    )
               )
       (let ((targ (first targ))
@@ -1216,54 +1217,62 @@ number of arguments."
   (pop-arg stack fname
     (assert (and (= 1 (length fname))
                  (typep (first fname) 'string)
+                 (queue-emptyp targets)
                  )
             )
     (format t "callv ~A with newbase ~A with args: ~A~%" fname wires arglist)
-    (add-instrs (append (let ((i 1))
-                            (loop for arg in arglist collect
-                                 (prog1
-;                                     (loop for j in (arg-loc arg) for k from 0 collect
-                                     (make-instance 'copy 
-                                                    :dest (+ wires i)
-                                                    :op1 (first (arg-loc arg))
-                                                    :op2 (arg-len arg))
-;                                   )
-                                   (incf i (arg-len arg))
-                                   )
-                                 )
-                            )
-                        (list (make-instance 'call :newbase wires :fname (first fname)))
-                        )
-      (let ((arglist nil))
-        (close-instr)
-        )
-      )    
+    (let ((i 0)) (add-instrs 
+                  (append (print
+                           (loop for arg in (reverse arglist) collect
+                                (prog1
+                                        ;                                     (loop for j in (arg-loc arg) for k from 0 collect
+                                    (make-instance 'copy 
+                                                   :dest (+ wires i)
+                                                   :op1 (first (arg-loc arg))
+                                                   :op2 (arg-len arg))
+                                        ;                                   )
+                                  (incf i (arg-len arg))
+                                  )
+                                )
+                           )
+                          (progn (print (+ wires i)) nil)
+                          (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
+                          )
+                   (let ((arglist nil)
+                         (wires (+ i wires))
+                         )
+                     (close-instr)
+                     )
+                   )
+         )    
     )
   )
 
 (definstr callu
   (with-slots (width) op
+    (assert (queue-emptyp targets))
     (let ((width (* 8 width))
           )
       (pop-arg stack fname
-        (add-instrs (append (let ((i 1))
-                                (loop for arg in arglist collect
-                                     (prog1
-                                         (make-instance 'copy 
-                                                        :dest (+ wires i)
-                                                        :op1 (first (arg-loc arg))
-                                                        :op2 (arg-len arg))
-                                       (incf i (arg-len arg))
-                                       )
-                                     )
-                                )
-                            (list (make-instance 'call :newbase wires :fname (first fname)))
-                            )
-          (push-stack stack width (loop for i from wires to (+ wires width -1) collect i)
-            (let ((wires (+ wires width))
-                  (arglist nil)
-                  )
-              (close-instr)
+        (let ((i 0)) 
+          (add-instrs  
+              (append (loop for arg in (reverse arglist) collect
+                           (prog1
+                               (make-instance 'copy 
+                                              :dest (+ wires i)
+                                              :op1 (first (arg-loc arg))
+                                              :op2 (arg-len arg))
+                             (incf i (arg-len arg))
+                             )
+                           )
+                      (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
+                      )
+            (push-stack stack width (loop for j from (+ 1 i wires) to (+ wires width i) collect j)
+              (let ((wires (+ wires width i 1))
+                    (arglist nil)
+                    )
+                (close-instr)
+                )
               )
             )
           )
@@ -1284,11 +1293,13 @@ number of arguments."
   )
 
 (definstr argp
-  (pop-arg stack arg
-    (assert (= 1 (length arg)))
-    (let ((arglist (append arglist (list (make-arg :len 1 :loc arg))))
-          )
-      (close-instr)
+  (with-slots (width) op
+    (pop-arg stack arg
+      (assert (= 1 (length arg)))
+      (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
+            )
+        (close-instr)
+        )
       )
     )
   )
@@ -1337,7 +1348,7 @@ number of arguments."
           )
       (push-stack stack 1 (list wires)
         (add-instrs (list 
-                     (make-instance 'const :dest wires :op1 (+ 1 argsize (* 8 addr)))
+                     (make-instance 'const :dest wires :op1 (+ 1 (* 8 addr)))
                      (make-instance 'mkptr :dest wires)
                      )
           (let ((wires (1+ wires))
@@ -1352,10 +1363,11 @@ number of arguments."
 
 (definstr addrfp
   (with-slots (s-args) op
-    (let ((addr (parse-integer (second s-args)))
+    (let ((width (* 8 (parse-integer (first s-args))))
+          (addr (parse-integer (second s-args)))
           )
-      (format t "addrfp: ~A (to ~A)~%" (* 8 addr) wires)
-      (add-instrs (list (make-instance 'const :dest wires :op1 (1+ (* 8 addr)))
+      (format t "addrfp: ~A (to ~A)~%" (- (* -8 addr) width) wires)
+      (add-instrs (list (make-instance 'const :dest wires :op1 (- (* -8 addr) width))
                         (make-instance 'mkptr :dest wires)
                         )
 
@@ -1515,11 +1527,13 @@ number of arguments."
 
 (definstr proc
   (with-slots (s-args) op
-    (let ((local-size (parse-integer (second s-args)))
+    (assert (queue-emptyp targets))
+    (let (;(local-size (parse-integer (second s-args)))
           (args-size (parse-integer (third s-args)))
           )
-      (let ((wires (+ 1 wires (* 8 local-size)))
+      (let ((wires (+ 1 wires)); (* 8 local-size)))
             (argsize (* 8 args-size))
+            (arglist nil)
             )
         ;; We add instructions to set up the pointer to the global position wire
         ;;
@@ -1580,12 +1594,12 @@ number of arguments."
   )
 
 (definstr labelv
-;  (format t "~&Targets: ~A~%" targets) 
+  ;(format t "~&Targets: ~A~%" targets) 
   (with-slots (s-args) op
     (if (not bss)
         (get-target (first s-args) cnd
           (add-instrs (cons (make-instance 'pcf2-bc:label :str (first s-args))
-                            (if cnd
+                            (if (not (queue-emptyp targets))
                                 (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
                                       (make-not (1+ wires) cnd)
                                       (make-or (+ 2 wires) wires (1+ wires))

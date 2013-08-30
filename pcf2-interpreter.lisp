@@ -223,7 +223,8 @@ The functions that operate on pcf2-state objects should treat these objects as i
   (with-slots (newbase fname) opcode
     (let ((newbase (+ newbase (pcf2-state-baseptr state)))
           )
-      ;(format *error-output* "~%Calling: ~A~%" fname)
+      (assert (not (zerop (get-state-val state 0))))
+      (format *error-output* "~%Calling: ~A (baseptr: ~A)~%" fname newbase)
       (cond
         ((or (string-equal fname "alice")
              (string-equal fname "bob"))
@@ -232,12 +233,13 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                     (declare (type bit b))
                                     (+ (ash val 1) b)
                                     )
-                                  (loop for i from 32 downto 1 collect
-                                       (get-state-val state (+ newbase i))
+                                  (loop for i from 1 to 32 collect
+                                       (get-state-val state (- newbase i))
                                        )
                                   )
                  )
                )
+           (format t "~&Getting input ~A for ~A~%" input-pos fname)
            (let ((state (reduce
                          #'(lambda (st x)
                              (set-state-val st (+ newbase x) (get-party-input state (+ input-pos x) fname))
@@ -246,22 +248,22 @@ The functions that operate on pcf2-state objects should treat these objects as i
                          :initial-value state)
                    )
                  )
-             (format t "~&Input for ~A: ~A~%" fname (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
+             (format t "~&Input ~A for ~A: ~A~%" input-pos fname (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
              state
              )
            )
          )
         ((string-equal fname "output_alice")
-         (format t "~&Output for Alice: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (+ newbase i))))
+         (format t "~&Output for Alice: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (- newbase i))))
          state
          )
         ((string-equal fname "output_bob")
-         (format t "~&Output for Bob: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (+ newbase i))))
+         (format t "~&Output for Bob: ~A~%" (loop for i from 1 to 32 collect (get-state-val state (- newbase i))))
          state
          )
         (t 
          (let ((new-iptr (find-label state fname))
-               (call-stack (cons (cons (rest (pcf2-state-iptr state))
+               (call-stack (cons (cons (pcf2-state-iptr state)
                                        (pcf2-state-baseptr state))
                                  (pcf2-state-call-stack state)))
                )
@@ -281,7 +283,8 @@ The functions that operate on pcf2-state objects should treat these objects as i
          (let ((iptrbaseptr (first (pcf2-state-call-stack state)))
                (call-stack (rest (pcf2-state-call-stack state)))
                )
-           ;(format t "~&Returning from funcall.  Setting base ptr to: ~A~%" (cdr iptrbaseptr))
+           ;(format t "~&Returning from funcall.  Setting base ptr to: ~A~%Next instr:~A~%" (cdr iptrbaseptr) (list (first (car iptrbaseptr)) (second (car iptrbaseptr))))
+           (assert (not (zerop (get-state-val state 0))))
            (update-state state nil (cdr iptrbaseptr) (car iptrbaseptr) call-stack) 
            )
          state
@@ -312,7 +315,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
             (y (get-state-val state true-op2))
             )
        (declare (type integer x y))
-       (format *error-output* "Add(~A,~A,~A): ~A + ~A = ~A~%" op1 op2 dest x y (+ x y))
+       ;(format *error-output* "Add(~A,~A,~A): ~A + ~A = ~A~%" op1 op2 dest x y (+ x y))
        (set-state-val state true-dest (+ x y))
        )
      )
@@ -384,7 +387,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
             (y (get-state-val state true-op2))
             )
        (declare (type integer x y))
-       (format t "mul: ~A * ~A = ~A~&" x y (* x y))
+       ;(format t "mul: ~A * ~A = ~A~&" x y (* x y))
        (set-state-val state true-dest (* x y))
        )
      )
@@ -394,6 +397,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
    (with-slots (dest op1) opcode
      (let* ((true-dest (+ dest (pcf2-state-baseptr state)))
             )
+;       (format t "const: ~A to ~A~%" op1 true-dest)
        (set-state-val state true-dest op1)
        )
      )
@@ -452,6 +456,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
   (with-slots (dest) opcode
     (let ((true-dest (+ dest (pcf2-state-baseptr state)))
           )
+;      (format t "~&mkptr: ~A -> ~A~%" (get-state-val state true-dest) (+ (get-state-val state true-dest) (pcf2-state-baseptr statE)))
       (set-state-val state true-dest
                      (+ (pcf2-state-baseptr state) (get-state-val state true-dest))
                      )
