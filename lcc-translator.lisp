@@ -585,7 +585,7 @@ number of arguments."
     (pop-arg stack targ
       (assert (and (= 1 (length targ))
                    (typep (first targ) 'string)
-                   (queue-emptyp targets)
+;                   (queue-emptyp targets)
                    )
               )
       (let ((targ (first targ))

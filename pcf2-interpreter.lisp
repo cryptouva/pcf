@@ -21,6 +21,8 @@
                 (format stream "Insptr: ~A~%" (pcf2-state-iptr struct))
                 (format stream "Call stack: ~A~%" (pcf2-state-call-stack struct))
                 (format stream "Labels: ~A~%" (pcf2-state-lbls struct))
+                (format stream "Total gates emitted: ~A~%" (pcf2-state-gates-emitted struct))
+                (format stream "Total non-xor gates emitted: ~A~%" (pcf2-state-non-xor-gates-emitted struct))
                 )
               )
              )
@@ -31,9 +33,23 @@
   (call-stack)
   (alice-inputs)
   (bob-inputs)
+  (gates-emitted 0 :type (integer 0))
+  (non-xor-gates-emitted 0 :type (integer 0))
   (:documentation "The memory random access list is the wire table + pointers + constant values.  The baseptr is the pointer in the memory array to the beginning of the current stack frame.  The iptr is the pointer to the next opcode.  The lbls slot is the hash table of labels to the beginning of the list of opcodes they correspond to.
 
 The functions that operate on pcf2-state objects should treat these objects as immutable.  Thus we use a random access list rather than an array, and a linked list to create stack frames.  In doing so we can support debugging much effectively and potentially even allow reversible debugging of PCF2 programs.")
+  )
+
+(defstruct (input-bit
+             (:print-function
+              (lambda (struct stream depth)
+                (declare (ignore depth))
+                (format stream "[~A]" (input-bit-val struct))
+                )
+              )
+             )
+  (val 0 :type bit)
+  (:documentation "This type represents an \"unknown\" bit that is an input from a party.")
   )
 
 (defun init-state (memsize opcodes inputs-file alice-input-size bob-input-size)
@@ -65,7 +81,10 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                                                    (let ((val (car st))
                                                                          (lst (cdr st))
                                                                          )
-                                                                     (cons (ash val -1) (skew-cons (mod val 2) lst))
+                                                                     (cons (ash val -1) (skew-cons 
+                                                                                         (make-input-bit
+                                                                                          :val (mod val 2))
+                                                                                         lst))
                                                                      )
                                                                    )
                                                                  (loop for i from 1 to alice-input-size collect i)
@@ -76,7 +95,10 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                                                  (let ((val (car st))
                                                                        (lst (cdr st))
                                                                        )
-                                                                   (cons (ash val -1) (skew-cons (mod val 2) lst))
+                                                                   (cons (ash val -1) (skew-cons 
+                                                                                       (make-input-bit
+                                                                                        :val (mod val 2))
+                                                                                       lst))
                                                                    )
                                                                  )
                                                                (loop for i from 1 to bob-input-size collect i)
@@ -91,9 +113,12 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defun get-party-input (state idx party)
   (declare (optimize (debug 0) (speed 3)))
-  (cond
-    ((equalp party "alice") (skew-ref idx (pcf2-state-alice-inputs state)))
-    ((equalp party "bob") (skew-ref idx (pcf2-state-bob-inputs state)))
+  (the input-bit
+    (cond
+      ((equalp party "alice") (skew-ref idx (pcf2-state-alice-inputs state)))
+      ((equalp party "bob") (skew-ref idx (pcf2-state-bob-inputs state)))
+      (t (error 'unknown-party))
+      )
     )
   )
 
@@ -138,6 +163,8 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                         )
                                       :alice-inputs (pcf2-state-alice-inputs ,state)
                                       :bob-inputs (pcf2-state-bob-inputs ,state)
+                                      :gates-emitted (pcf2-state-gates-emitted ,state)
+                                      :non-xor-gates-emitted (pcf2-state-non-xor-gates-emitted ,state)
                                       )
              )
            )
@@ -165,6 +192,8 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                       :memory (pcf2-state-memory st)
                                       :alice-inputs (pcf2-state-alice-inputs st)
                                       :bob-inputs (pcf2-state-bob-inputs st)
+                                      :gates-emitted (pcf2-state-gates-emitted st)
+                                      :non-xor-gates-emitted (pcf2-state-non-xor-gates-emitted st)
                                       )
              )
            )
@@ -187,6 +216,45 @@ The functions that operate on pcf2-state objects should treat these objects as i
      )
   )
 
+(defmacro incf-non-xor (state)
+  `(let ((st ,state))
+     (let ((newstate (make-pcf2-state :baseptr (pcf2-state-baseptr st)
+                                      :iptr (pcf2-state-iptr st)
+                                      :lbls (pcf2-state-lbls st)
+                                      :call-stack (pcf2-state-call-stack st)
+                                      :memory (pcf2-state-memory st)
+                                      :alice-inputs (pcf2-state-alice-inputs st)
+                                      :bob-inputs (pcf2-state-bob-inputs st)
+                                      :gates-emitted (pcf2-state-gates-emitted st)
+                                      :non-xor-gates-emitted (pcf2-state-non-xor-gates-emitted st)
+                                      )
+             )
+           )
+       (incf (pcf2-state-gates-emitted newstate))
+       (incf (pcf2-state-non-xor-gates-emitted newstate))
+       newstate)
+     )
+  )
+
+(defmacro incf-xor (state)
+  `(let ((st ,state))
+     (let ((newstate (make-pcf2-state :baseptr (pcf2-state-baseptr st)
+                                      :iptr (pcf2-state-iptr st)
+                                      :lbls (pcf2-state-lbls st)
+                                      :call-stack (pcf2-state-call-stack st)
+                                      :memory (pcf2-state-memory st)
+                                      :alice-inputs (pcf2-state-alice-inputs st)
+                                      :bob-inputs (pcf2-state-bob-inputs st)
+                                      :gates-emitted (pcf2-state-gates-emitted st)
+                                      :non-xor-gates-emitted (pcf2-state-non-xor-gates-emitted st)
+                                      )
+             )
+           )
+       (incf (pcf2-state-gates-emitted newstate))
+       newstate)
+     )
+  )
+
 (defun run-opcodes (state)
   (declare (type pcf2-state state)
            (optimize (speed 3) (debug 0))
@@ -195,7 +263,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
              (let ((opcodes (pcf2-state-iptr state))
                    )
                (if (null opcodes)
-                   (loop for i from 65 to (+ 65 31) collect (aref (pcf2-state-memory state) i))
+                   state;(loop for i from 65 to (+ 65 31) collect (aref (pcf2-state-memory state) i))
                    (let* ((op (first opcodes))
                           (newstate (run-opcode state op))
                           (state (update-state newstate
@@ -228,12 +296,23 @@ The functions that operate on pcf2-state objects should treat these objects as i
     )
   )
 
+(defmacro check-mux-cnd ()
+  '(assert (not (zerop (let ((s-val (get-state-val state 0))
+                            )
+                        (etypecase s-val
+                          (bit s-val)
+                          (input-bit (input-bit-val s-val))
+                          )
+                        )
+                      )))
+  )
+
 (defmethod run-opcode ((state pcf2-state) (opcode call))
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 3) (speed 0) (safety 3)))
   (with-slots (newbase fname) opcode
     (let ((newbase (+ newbase (pcf2-state-baseptr state)))
           )
-      (assert (not (zerop (get-state-val state 0))))
+      (check-mux-cnd)
 ;      (format *error-output* "~%Calling: ~A (baseptr: ~A)~%" fname newbase)
       (cond
         ((or (string-equal fname "alice")
@@ -244,7 +323,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
                                     (+ (ash val 1) b)
                                     )
                                   (loop for i from 1 to 32 collect
-                                       (get-state-val state (- newbase i))
+                                       (the bit (get-state-val state (- newbase i)))
                                        )
                                   )
                  )
@@ -294,7 +373,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
                (call-stack (rest (pcf2-state-call-stack state)))
                )
            ;(format t "~&Returning from funcall.  Setting base ptr to: ~A~%Next instr:~A~%" (cdr iptrbaseptr) (list (first (car iptrbaseptr)) (second (car iptrbaseptr))))
-           (assert (not (zerop (get-state-val state 0))))
+           (check-mux-cnd)
            (update-state state nil (cdr iptrbaseptr) (car iptrbaseptr) call-stack) 
            )
          state
@@ -489,9 +568,39 @@ The functions that operate on pcf2-state objects should treat these objects as i
       (let ((op1val (get-state-val state true-op1))
             (op2val (get-state-val state true-op2))
             )
-        (declare (type bit op1val op2val))
-        (set-state-val state true-dest
-                       (bit truth-table (+ op1val (* 2 op2val))))
+        (let ((op1val (etypecase op1val
+                        (bit op1val)
+                        (input-bit (input-bit-val op1val))
+                        )
+                )
+              (op2val (etypecase op2val
+                        (bit op2val)
+                        (input-bit (input-bit-val op2val))
+                        )
+                )
+              (rval (if (or (typep op1val 'input-bit) (typep op2val 'input-bit))
+                        0
+                        1))
+              )
+          (let ((state (ecase rval
+                         (0 (if (equalp truth-table #*0110)
+                                (incf-xor state)
+                                (incf-non-xor state)
+                                )
+                            )
+                         (1 state)
+                         )
+                  )
+                )
+            (declare (type bit op1val op2val))
+            (set-state-val state true-dest
+                           (ecase rval
+                             (1 (bit truth-table (+ op1val (* 2 op2val))))
+                             (0 (make-input-bit :val (bit truth-table (+ op1val (* 2 op2val)))))
+                             )
+                           )
+            )
+          )
         )
       )
     )
