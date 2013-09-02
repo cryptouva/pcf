@@ -41,7 +41,9 @@
            targ
            str
            read-bytecode
-           base))
+           base
+           two-op
+           one-op))
 (in-package :pcf2-bc)
 
 (defclass instruction ()
@@ -53,7 +55,23 @@
          (obj-slots (class-slots obj-class))
          )
       (labels ((print-slot (slot)
-             (format stream ":~A ~A " (slot-definition-name slot) (slot-value-using-class obj-class object slot))
+                 (let ((type (slot-definition-type slot))
+                       )
+                   (cond
+                     ;; We need to treat strings in a special manner,
+                     ;; so that we can read them back in as strings
+                     ;; later.  This makes type definitions all the
+                     ;; more important!
+                     ((equalp type 'string) (format stream ":~A ~S "
+                                                   (slot-definition-name slot)
+                                                   (slot-value-using-class obj-class object slot)
+                                                   )
+                      )
+                     (t (format stream ":~A ~A " 
+                                (slot-definition-name slot)                     
+                                (slot-value-using-class obj-class object slot)))
+                     )
+                   )
              )
            )
         (format stream "(~A " (class-name obj-class))
@@ -65,9 +83,10 @@
 
 (defun parse-object (str)
   (let ((*read-eval* nil))
-    (let ((tokens (read-from-string str))
-          )
-      (apply #'make-instance tokens)
+    (let* ((tokens (read-from-string str))
+           (op (intern (map 'string #'char-upcase (symbol-name (first tokens))) :pcf2-bc))
+           )
+      (apply #'make-instance (cons op (rest tokens)))
       )
     )
   )
@@ -90,7 +109,7 @@
 
 (defclass call (instruction)
   ((newbase :initarg :newbase)
-   (fname :initarg :fname)
+   (fname :initarg :fname :type string)
    )
   (:documentation "Call a function")
   )
@@ -144,13 +163,13 @@
 
 (defclass branch (instruction)
   ((cnd :initarg :cnd)
-   (targ :initarg :targ)
+   (targ :initarg :targ :type string)
    )
   (:documentation "Branch instructions should only be used for loops")
   )
 
 (defclass label (instruction)
-  ((str :initarg :str)
+  ((str :type string :initarg :str)
    )
   (:documentation "Placeholder instruction for assigning a label")
   )
@@ -193,7 +212,15 @@
   (:documentation "Coelesce a vector of wires into a single unsigned integer value")
   )
 
-(defclass copy (two-op)
+(defclass copy-base (instruction)
+  ((dest :initarg :dest)
+   (op1 :initarg :op1)
+   (op2 :initarg :op2)
+   )
+  (:documentation "Base class for instructions that copy data")
+  )
+
+(defclass copy (copy-base)
   ()
   (:documentation "Copies a value from one position to another")
   )
@@ -203,12 +230,12 @@
   (:documentation "Creates a constant value")
   )
 
-(defclass copy-indir (two-op)
+(defclass copy-indir (copy-base)
   ()
   (:documentation "Dereference a pointer and copy the derefenced value to a location (x = *y)")
   )
 
-(defclass indir-copy (two-op)
+(defclass indir-copy (copy-base)
   ()
   (:documentation "Copy a value to the location pointed to by a pointer (*x = y)")
   )

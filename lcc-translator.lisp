@@ -437,7 +437,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
             )
           )
       (assert (>= (ninth rvl) 1))
-      (cons (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl))) (rest rvl))
+      (cons (cons (make-instance 'label :str "pcfentry") (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl)))) (rest rvl))
       )
     )
   )
@@ -453,12 +453,12 @@ The \"argbase\" parameter represents the list of arguments for the next function
   "This macro will finalize an instruction translator method.  It is a
 convenience macro that ensures the returned list has the right length."
   `(progn
-     (add-instrs (list (make-instance 'label :str (with-output-to-string (str) 
-                                                    (format str "~A~A" (class-name (class-of op)) icnt)
-                                                    str
-                                                    )))
+     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str) 
+     ;;                                                (format str "~A~A" (class-name (class-of op)) icnt)
+     ;;                                                str
+     ;;                                                )))
        (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit)
-       )
+;       )
      )
   )
 
@@ -468,13 +468,13 @@ a convenience macro that ensures that the method takes the right
 number of arguments."
   `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit)
 ;     (declare (optimize (debug 3) (speed 0)))
-     (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
-                                                    (format str "begin~A~A" (class-name (class-of op)) icnt)
-                                                    )
-                                      )
-                       )
-       ,@body
-       )
+     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
+     ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
+     ;;                                                )
+     ;;                                  )
+     ;;                   )
+     ,@body
+;       )
      )
   )
 

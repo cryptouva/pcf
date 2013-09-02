@@ -17,7 +17,8 @@
                      map-map
                      map-reduce
                      map-empty
-                     empty-set)
+                     empty-set
+                     avl-set)
             )
 (in-package :setmap)
 
@@ -36,8 +37,8 @@
   (:documentation "A key/value map based on an AVL tree.")
   )
 
-(defmacro empty-set (&key (comp #'<))
-  `(make-avl-set :tree nil :comp ,comp)
+(defmacro empty-set (&key (comp '<))
+  `(make-avl-set :tree nil :comp #',comp)
   )
 
 (defun set-member (x st)
@@ -127,16 +128,17 @@
   `(lambda (x y) (funcall ,fn (car x) (car y)))
   )
 
-(defmacro map-empty (&key (comp #'<))
-  `(make-avl-set :tree nil :comp (carcomp ,comp))
+(defmacro map-empty (&key (comp '<))
+  `(make-avl-set :tree nil :comp (carcomp #',comp))
   )
 
 (defun map-insert (x y mp)
   "Insert \"x -> y\" into the map \"mp\""
+  (declare (optimize (debug 3) (speed 0)))
   (let ((comp (avl-set-comp mp))
         )
     (make-avl-set :tree
-                  (avl-tree-insert-unique (cons x y) (avl-set-tree mp) :comp (carcomp comp))
+                  (avl-tree-insert-unique (cons x y) (avl-set-tree mp) :comp comp)
                   :comp comp)
     )
   )
@@ -155,7 +157,7 @@
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
   (let ((comp (avl-set-comp mp))
         )
-    (multiple-value-bind (found value) (avl-tree-search x 
+    (multiple-value-bind (found value) (avl-tree-search (cons x nil)
                                                         (avl-set-tree mp) 
                                                         :comp comp)
       (declare (ignore found))

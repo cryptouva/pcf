@@ -120,32 +120,33 @@
       (if (funcall comp x (avl-data lst))
           (avl-balance (avl-cons
                         (avl-data lst)
-                        (avl-tree-insert x (avl-left lst))
+                        (avl-tree-insert x (avl-left lst) :comp comp)
                         (avl-right lst)))
           (avl-balance (avl-cons
                         (avl-data lst)
                         (avl-left lst)
-                        (avl-tree-insert x (avl-right lst))))
+                        (avl-tree-insert x (avl-right lst) :comp comp)))
           )
       )
   )
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
   "Insert a new value into an AVL if the value is not already present"
+  (declare (optimize (debug 3) (speed 0)))
   (if (null lst)
       (avl-cons x nil nil)
       (cond
         ((funcall comp x (avl-data lst))
          (avl-balance (avl-cons
                         (avl-data lst)
-                        (avl-tree-insert-unique x (avl-left lst))
+                        (avl-tree-insert-unique x (avl-left lst) :comp comp)
                         (avl-right lst)))
          )
         ((funcall comp (avl-data lst) x)
           (avl-balance (avl-cons
                         (avl-data lst)
                         (avl-left lst)
-                        (avl-tree-insert-unique x (avl-right lst))))
+                        (avl-tree-insert-unique x (avl-right lst) :comp comp)))
          )
         ;; To allow maps to be updated, we create a node with this input value
         (t (avl-cons x
