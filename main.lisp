@@ -14,11 +14,16 @@
 (in-package :lccyao-main)
 (use-package :lcc-translator)
 
-(defun test-interp (fname)
+(defun test-interp (fname inpname)
   (let* ((ops (first 
                (with-open-file (strm fname :direction :input) (exec-instructions (read-instructions strm)))))
-         (state (setup-labels ops (with-open-file (inputs "inp.txt" :direction :input) (init-state 10000 ops inputs 16384 16384))))
+         (state (setup-labels ops (with-open-file (inputs inpname :direction :input) (init-state 20000 ops inputs 16384 16384))))
          )
+    ;; (with-open-file (dump (concatenate 'string fname ".pcf2") :direction :output)
+    ;;   (loop for op in ops do
+    ;;        (format dump "~A~%" op)
+    ;;        )
+    ;;   )
     (assert (typep (first ops) 'pcf2-bc:initbase))
     (run-opcodes state)
     )

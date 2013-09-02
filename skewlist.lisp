@@ -142,11 +142,16 @@ of the trees if the first tree has more than one element."
 
 (defun skew-map (fn lst)
   "Perform a map operation on a skew-binary random access list."
-  (if (null lst)
-      nil
-      (skew-cons (funcall fn (skew-first lst))
-                 (skew-map fn (skew-rest lst)))
-      )
+  (declare (optimize (debug 0) (speed 3)) (type function fn))
+  (labels ((skew-map* (lst res)
+             (if (null lst)
+                 (skew-reverse res)
+                 (skew-map* (skew-rest lst) (skew-cons (funcall fn (skew-first lst)) res))
+                 )
+             )
+           )
+    (skew-map* lst nil)
+    )
   )
 
 (defun skew-reduce* (fn lst &optional (init 0))

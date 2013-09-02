@@ -3,7 +3,7 @@ unsigned int bob(unsigned int);
 void output_alice(unsigned int);
 void output_bob(unsigned int);
 
-#define N 1
+#define N 2
 
 unsigned int a[2*N], b[2*N], s[2*N];
 

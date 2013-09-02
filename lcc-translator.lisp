@@ -83,7 +83,10 @@ only temporary and can be safely overwritten by future instructions."
                )
              )
            )
-    (mapcan #'full-subtractor xs ys zs)
+    (cons
+     (make-instance 'const :dest c-in :op1 0)
+     (mapcan #'full-subtractor xs ys zs)
+     )
     )
   )
 
@@ -218,6 +221,10 @@ only temporary and can be safely overwritten by future instructions."
   )
 
 (defclass boru (two-arg-instruction)
+  ()
+  )
+
+(defclass bxoru (two-arg-instruction)
   ()
   )
 
@@ -446,7 +453,12 @@ The \"argbase\" parameter represents the list of arguments for the next function
   "This macro will finalize an instruction translator method.  It is a
 convenience macro that ensures the returned list has the right length."
   `(progn
-     (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit)
+     (add-instrs (list (make-instance 'label :str (with-output-to-string (str) 
+                                                    (format str "~A~A" (class-name (class-of op)) icnt)
+                                                    str
+                                                    )))
+       (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit)
+       )
      )
   )
 
@@ -455,8 +467,14 @@ convenience macro that ensures the returned list has the right length."
 a convenience macro that ensures that the method takes the right
 number of arguments."
   `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit)
-     (declare (optimize (debug 3) (speed 0)))
-     ,@body
+;     (declare (optimize (debug 3) (speed 0)))
+     (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
+                                                    (format str "begin~A~A" (class-name (class-of op)) icnt)
+                                                    )
+                                      )
+                       )
+       ,@body
+       )
      )
   )
 
@@ -608,7 +626,7 @@ number of arguments."
   )
 
 (definstr neu
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -644,7 +662,7 @@ number of arguments."
                                         (make-not (1+ wires) wires)
                                         (make-instance 'branch :cnd (1+ wires) :targ targ)
                                         )
-                             (let ((wires (+ 3 wires))
+                             (let ((wires (+ 2 wires))
                                    )
                                (close-instr)
                                )
@@ -659,7 +677,7 @@ number of arguments."
   )
 
 (definstr equ
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -683,7 +701,7 @@ number of arguments."
                                 (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ wires
+                             (add-target targ (+ 1 wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -693,9 +711,9 @@ number of arguments."
                            )
                          (progn
                            (add-instrs (list 
-                                        (make-instance 'branch :cnd (1+ wires) :targ targ)
+                                        (make-instance 'branch :cnd wires :targ targ)
                                         )
-                             (let ((wires (+ 3 wires))
+                             (let ((wires (+ 1 wires))
                                    )
                                (close-instr)
                                )
@@ -713,10 +731,15 @@ number of arguments."
   (assert (= (length arg1) (length arg2)))
   (labels ((less-than (a1 a2)
              (list
-              (make-xor tmp2 a1 dest)
-              (make-xor tmp3 a2 dest)
-              (make-and tmp4 tmp2 tmp3)
-              (make-xor dest a2 tmp4)
+              ;(make-xor tmp2 a1 dest)
+              ;(make-xor tmp3 a2 dest)
+              ;(make-and tmp4 tmp2 tmp3)
+              ;(make-xor dest a2 tmp4)
+              (make-xnor tmp2 a1 a2)
+              (make-and tmp3 dest tmp2)
+              (make-not tmp2 a1)
+              (make-and tmp4 tmp2 a2)
+              (make-or dest tmp3 tmp4)
               )
              )
            )
@@ -728,7 +751,7 @@ number of arguments."
   )
 
 (definstr ltu
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -779,7 +802,7 @@ number of arguments."
   )
 
 (definstr leu
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -791,7 +814,7 @@ number of arguments."
           (add-instrs (append 
                        ;; AND in the fall-through case
                        (unsigned-less-than arg1 arg2 wires (1+ wires) (+ 2 wires) (+ 3 wires))
-                       (list (make-not wires wires))
+                       ;(list (make-not wires wires))
                                         ;
                        )
             (branch-case targ
@@ -833,7 +856,7 @@ number of arguments."
   )
 
 (definstr gtu
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -855,12 +878,12 @@ number of arguments."
                            ;; (print icnt)
                            (add-instrs
                                (list 
-                                (make-not wires wires)
+                                (make-not (+ 3 wires) wires)
                                 (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) wires (1+ wires))
+                                (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ wires
+                             (add-target targ (+ 3 wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -871,9 +894,9 @@ number of arguments."
                          (progn
                            (add-instrs (list 
                                         ;(make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd (1+ wires) :targ targ)
+                                        (make-instance 'branch :cnd wires :targ targ)
                                         )
-                             (let ((wires (+ 4 wires))
+                             (let ((wires (+ 1 wires))
                                    )
                                (close-instr)
                                )
@@ -888,7 +911,7 @@ number of arguments."
   )
 
 (definstr geu
-  (declare (optimize (speed 0) (debug 3)))
+;  (declare (optimize (speed 0) (debug 3)))
   (with-slots (s-args width) op
     (let ((width (* 8 width))
           (targ (first s-args))
@@ -910,12 +933,13 @@ number of arguments."
                            ;; (print icnt)
                            (add-instrs
                                (list 
+                                ;(make-not wires wires)
                                 (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
                                 (make-and (+ 2 wires) wires (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
                              (add-target targ wires
-                               (let ((wires (+ 4 wires))
+                               (let ((wires (+ 3 wires))
                                      )
                                  (close-instr)
                                  )
@@ -927,7 +951,7 @@ number of arguments."
                                         (make-not (1+ wires) wires)
                                         (make-instance 'branch :cnd (1+ wires) :targ targ)
                                         )
-                             (let ((wires (+ 4 wires))
+                             (let ((wires (+ 2 wires))
                                    )
                                (close-instr)
                                )
@@ -1070,8 +1094,8 @@ number of arguments."
     (let* ((width (* 8 width))
            (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
+      (pop-arg stack arg2
+        (pop-arg stack arg1
           (push-stack stack width rwires
             (add-instrs (subtractor-chain
                          arg1 
@@ -1124,8 +1148,8 @@ number of arguments."
                                              )
                                      )
                                    ) 
-                                 (subseq amount 0 (floor (log width 2))) 
-                                 (loop for i from 0 to (1- (floor (log width 2))) collect i)
+                                 (subseq amount 0 (1+ (floor (log width 2))) )
+                                 (loop for i from 0 to (floor (log width 2)) collect i)
                                  )
                          )
               (let ((wires (+ wires (* 2 width) 3))
@@ -1153,6 +1177,7 @@ number of arguments."
     )
   )
 
+
 (definstr rshu
   (right-or-left-shift
       (append
@@ -1174,6 +1199,30 @@ number of arguments."
           (pop-arg stack arg2
             (push-stack stack width rwires
               (add-instrs (or-chain arg1 arg2 rwires)
+                (let ((wires (+ wires width))
+                      )
+                  (close-instr)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr bxoru
+  (with-slots (width) op
+    (let ((width (* 8 width))
+          )
+      (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
+            )
+        (assert (= width (length rwires)))
+        (pop-arg stack arg1
+          (pop-arg stack arg2
+            (push-stack stack width rwires
+              (add-instrs (xor-chain arg1 arg2 rwires)
                 (let ((wires (+ wires width))
                       )
                   (close-instr)
@@ -1267,7 +1316,7 @@ number of arguments."
                            )
                       (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
                       )
-            (push-stack stack width (loop for j from (+ 1 i wires) to (+ wires width i) collect j)
+            (push-stack stack width (loop for j from (+ i wires) to (+ wires width i -1) collect j)
               (let ((wires (+ wires width i 1))
                     (arglist nil)
                     )
@@ -1305,31 +1354,34 @@ number of arguments."
   )
 
 (definstr addrgp
-  (declare (optimize (debug 3) (speed 0)))
+;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
-    (let ((a (gethash (second s-args) labels nil))
+    (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
           )
-      (declare (type (or null (cons symbol (integer 1))) a))
-      (format t "Address for ~A is ~A (at ~A)~%" (second s-args) a wires)
-      (let ((addr (if a
-                      (if (equalp (car a) 'glob)
-                          (cdr a)
-                          (second s-args)
-                          );(gethash (second s-args) labels nil)
-                      (second s-args)
-                      )
-              )
+      (let ((a (gethash (first addr*) labels nil))
             )
-        (add-instrs (if (equalp (car a) 'glob)
-                        (list (make-instance 'const :dest wires :op1 (cdr a)))
+        (declare (type (or null (cons symbol (integer 1))) a))
+        (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) a wires)
+        (let ((addr (if a
+                        (if (equalp (car a) 'glob)
+                            (+ (cdr a) (if (second addr*) (parse-integer (second addr*)) 0))
+                            (second s-args)
+                            );(gethash (second s-args) labels nil)
+                        (second s-args)
                         )
+                )
+              )
+          (add-instrs (if (equalp (car a) 'glob)
+                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (parse-integer (second addr*)) 0) (cdr a))))
+                          )
 
-          (push-stack stack 1 (if (equalp (car a) 'glob) 
-                                  (list wires) 
-                                  (list addr))
-            (let ((wires (if (equalp (car a) 'glob) (1+ wires) wires))
-                  )
-              (close-instr)
+            (push-stack stack 1 (if (equalp (car a) 'glob) 
+                                    (list wires) 
+                                    (list addr))
+              (let ((wires (if (equalp (car a) 'glob) (1+ wires) wires))
+                    )
+                (close-instr)
+                )
               )
             )
           )
@@ -1344,7 +1396,15 @@ number of arguments."
 ;; position 0
 (definstr addrlp
   (with-slots (s-args) op
-    (let ((addr (parse-integer (second s-args)))
+    (let ((addr (let ((nums (string-tokenizer:tokenize (second s-args) #\+))
+                      )
+                  ;(parse-integer (second s-args)))
+                  (if (< 2 (length nums))
+                      (parse-integer (first nums))
+                      (reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0)
+                      )
+                  )
+            )
           )
       (push-stack stack 1 (list wires)
         (add-instrs (list 
@@ -1580,7 +1640,7 @@ number of arguments."
   )
 
 (definstr skip
-  (declare (optimize (debug 3) (speed 0)))
+;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
     (let ((baseinit (+ baseinit (* 8 (parse-integer (first s-args)))))
           )
@@ -1594,26 +1654,30 @@ number of arguments."
   )
 
 (definstr labelv
-  ;(format t "~&Targets: ~A~%" targets) 
-  (with-slots (s-args) op
-    (if (not bss)
-        (get-target (first s-args) cnd
-          (add-instrs (cons (make-instance 'pcf2-bc:label :str (first s-args))
-                            (if (not (queue-emptyp targets))
-                                (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
-                                      (make-not (1+ wires) cnd)
-                                      (make-or (+ 2 wires) wires (1+ wires))
-                                      (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                      )
-                                )
-                            )
-            (let ((wires (+ wires (if cnd 3 0)))
-                  )
-              (close-instr)
+;  (format t "~&labelv Targets: ~A~%" targets) 
+  (let ((not-empty (not (queue-emptyp targets)))
+        )
+    (with-slots (s-args) op
+      (if (not bss)
+          (get-target (first s-args) cnd
+            (add-instrs (append
+                         (list  (make-instance 'pcf2-bc:label :str (first s-args)))
+                         (if not-empty
+                             (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
+                                   (make-not (1+ wires) cnd)
+                                   (make-or (+ 2 wires) wires (1+ wires))
+                                   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                   )
+                             )
+                         )
+              (let ((wires (+ wires (if not-empty 3 0)))
+                    )
+                (close-instr)
+                )
               )
             )
+          (close-instr)
           )
-        (close-instr)
-        )
+      )
     )
   )
