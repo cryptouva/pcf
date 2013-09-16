@@ -18,7 +18,6 @@
                      pcf-simulate
                      test-get-ops-from-cfg))
 (in-package :lccyao-main)
-(use-package :lcc-translator)
 
 (defun pcf-compile (fname)
   "Compile the bytecode in \"fname\" and return a list of PCF2 instructions"

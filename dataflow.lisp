@@ -8,7 +8,8 @@
   (:export make-cfg
            ops-from-cfg
            get-lbls-in-order
-           get-gen-kill)
+           get-gen-kill
+           live-update)
   )
 
 (in-package :dataflow)
@@ -103,6 +104,17 @@
     )
   )
 
+(defmethod find-basic-blocks ((op call) blocks curblock blkid)
+  (let ((new-block (make-basic-block))
+        )
+    (add-op op curblock
+      (add-succ (concatenate 'string "call" blkid) curblock
+        (list (map-insert blkid curblock blocks) new-block (concatenate 'string "call" blkid))
+        )
+      )
+    )
+  )
+
 (defmethod find-basic-blocks ((op ret) blocks curblock blkid)
   (let ((new-block (make-basic-block))
         )
@@ -166,6 +178,7 @@
                             str))
                    (branch (concatenate 'string "fall" c))
                    (ret (concatenate 'string "ret" c))
+                   (call (concatenate 'string "call" c))
                    (t c)
                    )
               )
@@ -178,6 +191,8 @@
                              (label
                               (cons str res))
                              (ret
+                              (cons str res))
+                             (call
                               (cons str res))
                              (t res))
                            str)
@@ -248,12 +263,6 @@
   (let ((gen (reduce #'set-union (mapcar #'gen (basic-block-ops bb)) :initial-value (empty-set))
           )
         (kill (reduce #'set-union (mapcar #'kill (basic-block-ops bb)) :initial-value (empty-set))
-         ;; (reduce (lambda (ikill x)
-         ;;                (declare (type avl-set ikill))
-         ;;                (set-union ikill (kill x))
-         ;;                )
-         ;;              (basic-block-ops bb)
-         ;;              :initial-value (empty-set))
           )
         )
     (list gen kill)
@@ -263,11 +272,11 @@
 (defmacro def-gen-kill (type &key gen kill)
   `(progn
      (defmethod gen ((op ,type))
-       ,gen
+       (the avl-set ,gen)
        )
 
      (defmethod kill ((op ,type))
-       ,kill
+       (the avl-set ,kill)
        )
      )
   )
@@ -306,11 +315,6 @@
            )
     :kill (with-slots (dest) op
             (declare (type list dest))
-            ;; (the avl-set 
-            ;;   (reduce #'(lambda (st x)
-            ;;               (set-union st (singleton x)))
-            ;;           dest :initial-value (empty-set))
-            ;;   )
             (set-from-list dest)
             )
     )
@@ -318,11 +322,6 @@
 (def-gen-kill join
     :gen (with-slots (op1) op
            (declare (type list op1))
-           ;; (the avl-set
-           ;;   (reduce #'(lambda (st x)
-           ;;               (set-union st (singleton x)))
-           ;;           op1 :initial-value (empty-set))
-           ;;   )
            (set-from-list op1)
            )
     :kill (with-slots (dest) op
@@ -335,29 +334,11 @@
     :gen (with-slots (op1 op2) op
            (declare (type (integer 0) op1)
                     (type (integer 1) op2))
-           ;; (the avl-set
-           ;;   (reduce
-           ;;    (lambda (st x)
-           ;;      (set-union st (singleton x))
-           ;;      )
-           ;;    (loop for i from 0 to (1- op2) collect (+ op1 i))
-           ;;    :initial-value (empty-set)
-           ;;    )
-           ;;   )
            (set-from-list (loop for i from 0 to (1- op2) collect (+ op1 i)))
            )
     :kill (with-slots (dest op2) op
             (declare (type (integer 0) dest)
                      (type (integer 1) op2))
-            ;; (the avl-set
-            ;;   (reduce
-            ;;    (lambda (st x)
-            ;;      (set-union st (singleton x))
-            ;;      )
-            ;;    (loop for i from 0 to (1- op2) collect (+ dest i))
-            ;;    :initial-value (empty-set)
-            ;;    )
-            ;;   )
             (set-from-list (loop for i from 0 to (1- op2) collect (+ dest i)))
             )
     )
@@ -373,15 +354,6 @@
     :kill (with-slots (dest op2) op
             (declare (type (integer 0) dest)
                      (type (integer 1) op2))
-            ;; (the avl-set
-            ;;   (reduce
-            ;;    (lambda (st x)
-            ;;      (set-union st (singleton x))
-            ;;      )
-            ;;    (loop for i from 0 to (1- op2) collect (+ dest i))
-            ;;    :initial-value (empty-set)
-            ;;    )
-            ;;   )
             (set-from-list (loop for i from 0 to (1- op2) collect (+ dest i)))
             )
     )
@@ -390,16 +362,63 @@
     :gen (with-slots (op1 op2) op
            (declare (type (integer 0) op1)
                     (type (integer 1) op2))
-           ;; (the avl-set
-           ;;   (reduce
-           ;;    (lambda (st x)
-           ;;      (set-union st (singleton x))
-           ;;      )
-           ;;    (loop for i from 0 to (1- op2) collect (+ op1 i))
-           ;;    :initial-value (empty-set)
-           ;;    )
-           ;;   )
            (set-from-list (loop for i from 0 to (1- op2) collect (+ op1 i)))
            )
     :kill (empty-set)
     )
+
+(defun live-update (blkid blocks live-ins live-outs gens kills)
+  (declare (optimize (debug 3) (speed 0)))
+  (cons
+   (map-insert blkid (set-union
+                      (cdr (map-find blkid gens))
+                      (set-diff
+                       (cdr (let ((l-o (map-find blkid live-outs))
+                                  )
+                              (if l-o
+                                  l-o
+                                  (cons blkid (empty-set))
+                                  )
+                              )
+                            )
+                       (cadr (map-find blkid kills))
+                       )
+                      )
+               live-ins
+               )
+   (let ((new-out (reduce #'(lambda (y x) 
+                                 (set-union (cdr (let ((l-i (map-find x live-ins))
+                                                       )
+                                                   (if l-i
+                                                       l-i
+                                                       (cons x (empty-set))
+                                                       )
+                                                   )
+                                                 )
+                                            y
+                                            )
+                                 )
+                             (basic-block-succs
+                              (cdr (map-find blkid blocks))
+                              )
+                             :initial-value (empty-set)
+                             )
+           )
+         )
+     (list (map-insert blkid 
+                       new-out
+                       live-outs
+                       )
+           (set-equalp new-out (cdr (let ((l-o (map-find blkid live-outs))
+                                          )
+                                      (if l-o
+                                          l-o
+                                          (cons blkid (empty-set))
+                                          )
+                                      )
+                                    )
+                       )
+           )
+     )
+   )
+  )

@@ -11,6 +11,7 @@
                      set-inter
                      set-map
                      set-from-list
+                     set-equalp
                      map-insert
                      map-remove
                      map-find
@@ -55,6 +56,7 @@
 
 (defun set-diff (set1 set2)
   "Compute the set containing only elements contained in \"set1\" but not \"set2\""
+  (declare (type avl-set set1 set2))
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
@@ -69,6 +71,26 @@
                                    nil)
                   :comp comp)
     )
+  )
+
+(defun set-subset (set1 set2)
+  (declare (type avl-set set1 set2))
+  (cond
+    ((not (equalp (avl-set-comp set1) (avl-set-comp set2))) nil)
+    (t (avl-tree-reduce (lambda (x y)
+                          (and x (set-member y set2))
+                          )
+                        (avl-set-tree set1)
+                        t)
+       )
+    )
+  )
+
+(defun set-equalp (set1 set2)
+  (declare (type avl-set set1 set2))
+  (and (set-subset set1 set2)
+       (set-subset set2 set1)
+       )
   )
 
 (defun set-union (set1 set2)
