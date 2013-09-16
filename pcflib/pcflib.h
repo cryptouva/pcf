@@ -65,6 +65,7 @@ struct activation_record {
 };
 
   struct activation_record * copy_activation_record(struct activation_record *);
+  void check_alloc(void * ptr);
 
 typedef struct PCFState {
   uint32_t PC;

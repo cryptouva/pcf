@@ -6,7 +6,9 @@
 #include <errno.h>
 #include <search.h>
 #include <assert.h>
+
 #include "pcflib.h"
+#include "opdefs.h"
 
 void check_alloc(void * ptr)
 {
@@ -65,9 +67,6 @@ const char * read_token(const char * line, char * bitr)
   return line;
 }
 
-void nop(struct PCFState * st, struct PCFOP * op)
-{}
-
 PCFOP * read_label(const char * line)
 {
   char buf[LINE_MAX], *bitr;
@@ -106,11 +105,6 @@ PCFOP * read_label(const char * line)
   return ret;
 }
 
-void initbase_op(struct PCFState * st, struct PCFOP * op)
-{
-  st->base = *((uint32_t*)op->data);
-}
-
 PCFOP * read_initbase(const char * line)
 {
   char buf[LINE_MAX], *bitr;
@@ -137,21 +131,6 @@ PCFOP * read_initbase(const char * line)
   *((uint32_t*)ret->data) = base;
 
   return ret;
-}
-
-struct const_op_data
-{
-  uint32_t dest, value;
-};
-
-void const_op(struct PCFState * st, struct PCFOP * op)
-{
-  struct const_op_data * data = op->data;
-  st->wires[data->dest].value = data->value;
-  if(st->wires[data->dest].keydata)
-    st->delete_key(st->wires[data->dest].keydata);
-  st->wires[data->dest].keydata = 0;
-  st->wires[data->dest].flags = KNOWN_WIRE;
 }
 
 PCFOP * read_const(const char * line)
