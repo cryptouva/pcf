@@ -92,18 +92,11 @@ typedef struct PCFState {
   PCFGate input_g;
 
   int32_t inp_i;
+  uint32_t inp_idx;
 
   struct activation_record * call_stack;
 
   uint8_t done;
-
-
-  /* 
-   * The writer thread
-   */
-  pthread_t *internal_thread;
-
-  pthread_mutex_t read_lock, write_lock, callback_lock;
 
   PCFGate g_copy;
 
@@ -151,7 +144,7 @@ typedef struct PCFState {
   uint32_t read_bob_length(const char *); 
   void make_internal_thread(PCFState * st);
 
-#ifdef __CPLUSPLUS
+#ifdef __cplusplus
 }
 #endif
 #endif //__PCFLIB_H
