@@ -71,11 +71,18 @@ void call_op (struct PCFState * st, struct PCFOP * op)
       // Get the argument to this function
       for(i = 0; i < 32; i++)
         {
-          st->wires[st->base + data->newbase + i].value = alice_inputs[i].value;
+          st->wires[st->base + data->newbase + i].value = st->alice_inputs[i].value;
         }
     }
   else if(strcmp(data->target->key, "bob") == 0)
     {
+
+      uint32_t i = 0;
+      // Get the argument to this function
+      for(i = 0; i < 32; i++)
+        {
+          st->wires[st->base + data->newbase + i].value = st->bob_inputs[i].value;
+        }
     }
   else
     {
