@@ -106,9 +106,16 @@ void call_op (struct PCFState * st, struct PCFOP * op)
           if(st->wires[st->input_g.reswire].keydata != 0)
             st->delete_key(st->wires[st->input_g.reswire].keydata);
 
-          st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
+          if(i < st->alice_in_size)
+            {
+              st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
+            }
+          else
+            {
+              st->wires[st->input_g.reswire].keydata = st->copy_key(st->constant_keys[0]);
+              st->curgate = &st->input_g;
+            }
           st->wires[st->input_g.reswire].flags = UNKNOWN_WIRE;
-          st->curgate = &st->input_g;
           // Not yet done with function call
           st->PC--;
         }
@@ -145,9 +152,16 @@ void call_op (struct PCFState * st, struct PCFOP * op)
           if(st->wires[st->input_g.reswire].keydata != 0)
             st->delete_key(st->wires[st->input_g.reswire].keydata);
 
-          st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
+          if(i < st->bob_in_size)
+            {
+              st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
+              st->curgate = &st->input_g;
+            }
+          else
+            {
+              st->wires[st->input_g.reswire].keydata = st->copy_key(st->constant_keys[0]);
+            }
           st->wires[st->input_g.reswire].flags = UNKNOWN_WIRE;
-          st->curgate = &st->input_g;
           // Not yet done with function call
           st->PC--;
         }

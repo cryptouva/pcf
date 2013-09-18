@@ -789,26 +789,37 @@ void set_key_delete_function(struct PCFState * st, void (*f)(void*))
 
 uint32_t read_alice_length(const char * fname)
 {
-  uint32_t alice_in = 32;
-  char * _fname = malloc(strlen(fname)+4);
+  uint32_t alice_in = -1;
+  char line[LINE_MAX];
   FILE * cnf;
-  strcpy(_fname, fname);
-  strcat(_fname, "cnf");
-  cnf = fopen(_fname, "r");
-  fscanf(cnf, "%d\n", &alice_in);
+  cnf = fopen(fname, "r");
+  // Assume that the inputs are all on one line -- probably a bad assumption, but whatever
+  fgets(line, LINE_MAX-1, cnf);
   fclose(cnf);
+  alice_in = (strlen(line) - 1) * 4;
   return alice_in;
 }
 
 uint32_t read_bob_length(const char * fname)
 {
-  uint32_t alice_in = 32, bob_in = 32;
-  char * _fname = malloc(strlen(fname)+4);
+  uint32_t bob_in = 32;
   FILE * cnf;
-  strcpy(_fname, fname);
-  strcat(_fname, "cnf");
-  cnf = fopen(_fname, "r");
-  fscanf(cnf, "%d %d\n", &alice_in, &bob_in);
+  char line[LINE_MAX];
+  cnf = fopen(fname, "r");
+  // Bob's input is on the second line
+  //
+  // The input file format should be like this:
+  //
+  // 0xALICEINPUTSINHEX
+  // 0x0000000000000000
+  //
+  // or
+  //
+  // 0x0000000000000000
+  // 0xBOBINPUTSINHEX00
+  fgets(line, LINE_MAX-1, cnf);
+  fgets(line, LINE_MAX-1, cnf);
   fclose(cnf);
+  bob_in = (strlen(line) - 1) * 4;
   return bob_in;
 }

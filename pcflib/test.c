@@ -76,6 +76,44 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
     }
 }
 
+void setup_alice_inputs_from_string(struct PCFState * st, const char * inputs)
+{
+  uint32_t i,j;
+  st->alice_inputs = (struct wire*)malloc(strlen(inputs) * 8 * sizeof(struct wire));
+  for(i = 0; i < strlen(inputs); i++)
+    {
+      uint8_t q = inputs[i];
+      for(j = 0; j < 8; j++)
+        {
+          st->alice_inputs[8*i + j].flags = UNKNOWN_WIRE;
+          st->alice_inputs[8*i + j].keydata = copy_key((q & 0x01) == 1 
+                                                       ? (st->constant_keys[1]) 
+                                                       : (st->constant_keys[0]));
+          q = q >> 1;
+        }
+    }
+  st->alice_in_size = 8 * strlen(inputs);
+}
+
+void setup_bob_inputs_from_string(struct PCFState * st, const char * inputs)
+{
+  uint32_t i,j;
+  st->bob_inputs = (struct wire*)malloc(strlen(inputs) * 8 * sizeof(struct wire));
+  for(i = 0; i < strlen(inputs); i++)
+    {
+      uint8_t q = inputs[i];
+      for(j = 0; j < 8; j++)
+        {
+          st->bob_inputs[8*i + j].flags = UNKNOWN_WIRE;
+          st->bob_inputs[8*i + j].keydata = copy_key((q & 0x01) == 1 
+                                                     ? (st->constant_keys[1]) 
+                                                     : (st->constant_keys[0]));
+          q = q >> 1;
+        }
+    }
+  st->bob_in_size = 8 * strlen(inputs);
+}
+
 void setup_alice_inputs_from_hex_string(struct PCFState * st, const char * inputs)
 {
   uint32_t i, j;
@@ -95,7 +133,9 @@ void setup_alice_inputs_from_hex_string(struct PCFState * st, const char * input
       for(j = 0; j < 4; j++)
         {
           st->alice_inputs[4*i + j].flags = UNKNOWN_WIRE;
-          st->alice_inputs[4*i + j].keydata = copy_key((q & 0x01) == 1 ? &key1 : &key0);
+          st->alice_inputs[4*i + j].keydata = copy_key((q & 0x01) == 1 
+                                                     ? (st->constant_keys[1])
+                                                     : (st->constant_keys[0]));
           q = q >> 1;
         }
     }
@@ -121,7 +161,9 @@ void setup_bob_inputs_from_hex_string(struct PCFState * st, const char * inputs)
       for(j = 0; j < 4; j++)
         {
           st->bob_inputs[4*i + j].flags = UNKNOWN_WIRE;
-          st->bob_inputs[4*i + j].keydata = copy_key((q & 0x01) == 1 ? &key1 : &key0);
+          st->bob_inputs[4*i + j].keydata = copy_key((q & 0x01) == 1 
+                                                     ? (st->constant_keys[1])
+                                                     : (st->constant_keys[0]));
           q = q >> 1;
         }
     }
@@ -140,8 +182,8 @@ int main(int argc, char**argv)
   st = load_pcf_file("../test.pcf2", &key0, &key1, copy_key);
   st->delete_key = delete_key;
   st->callback = m_callback;
-  setup_alice_inputs_from_hex_string(st, "AC000000");
-  setup_bob_inputs_from_hex_string(st, "BC000000");
+  setup_alice_inputs_from_string(st, "AC000000");
+  setup_bob_inputs_from_string(st, "BC000000");
 
   g = get_next_gate(st);
   while(g != 0)

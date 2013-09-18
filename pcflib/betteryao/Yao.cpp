@@ -15,8 +15,8 @@ Yao::Yao(EnvParams &params) : YaoBase(params), m_gcs(0)
 	m_rnds.resize(1);
 	m_gen_inp_masks.resize(1);
 	m_gcs.resize(1);
-	m_gen_inp_cnt = read_alice_length(Env::pcf_file());
-	m_evl_inp_cnt = read_bob_length(Env::pcf_file());
+	m_gen_inp_cnt = read_alice_length(Env::input_file());
+	m_evl_inp_cnt = read_bob_length(Env::input_file());
 
 	static byte MASK[8] = { 0xFF, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F};
 
@@ -351,6 +351,8 @@ void Yao::circuit_evaluate()
 	EVL_END
 
 	m_gcs[0].m_st = load_pcf_file(Env::pcf_file(), m_gcs[0].m_const_wire, m_gcs[0].m_const_wire+1, copy_key);
+        cct.m_st->alice_in_size = m_gen_inp_cnt;
+        cct.m_st->bob_in_size = m_evl_inp_cnt;
 
 	set_external_state(m_gcs[0].m_st, &m_gcs[0]);
 	set_key_copy_function(m_gcs[0].m_st, copy_key);

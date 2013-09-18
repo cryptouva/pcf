@@ -41,6 +41,9 @@ int main(int argc, char **argv)
 
 	params.port_base    = atoi(argv[6]);
 
+        // The special file that holds the inputs
+        params.input_file = argv[4];
+
 	YaoBase *sys = 0;
 
 	switch(atoi(argv[7]))

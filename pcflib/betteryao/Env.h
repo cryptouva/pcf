@@ -47,6 +47,8 @@ struct EnvParams
 	const char   *ipserve_addr;
 
 	const char   *pcf_file;
+
+  const char *input_file;
 };
 
 class Env
