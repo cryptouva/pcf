@@ -412,7 +412,7 @@ only temporary and can be safely overwritten by future instructions."
     )
   )
 
-(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit)
+(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit repeat)
   (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
 
 This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
@@ -432,7 +432,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
                           )
                         ops
                         ;; baseinit starts at 1, so that the global mux condition is not overwritten
-                        (list nil 0 nil (make-queue) nil 0 0 nil 1)
+                        (list nil 0 nil (make-queue) nil 0 0 nil 1 nil)
                         )
             )
           )
@@ -457,16 +457,20 @@ convenience macro that ensures the returned list has the right length."
      ;;                                                (format str "~A~A" (class-name (class-of op)) icnt)
      ;;                                                str
      ;;                                                )))
-       (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit)
+       (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit nil)
 ;       )
      )
+  )
+
+(defmacro repeat-instr ()
+  `(exec-instruction op labels stack wires instrs targets arglist argsize icnt bss baseinit t)
   )
 
 (defmacro definstr (type &body body)
   "Instruction translator methods are defined with this macro.  It is
 a convenience macro that ensures that the method takes the right
 number of arguments."
-  `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit)
+  `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit repeat)
 ;     (declare (optimize (debug 3) (speed 0)))
      ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
      ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
@@ -521,11 +525,11 @@ number of arguments."
     )
   )
 
-(defmacro add-target (target-label cnd-value &body body)
+(defmacro add-target (target-label cnd-value glob-cnd &body body)
   `(let ((t-idx (cdr (gethash ,target-label labels nil)))
          )
      (assert t-idx)
-     (let ((targets (enqueue (cons t-idx (cons ,target-label ,cnd-value)) targets))
+     (let ((targets (enqueue (cons t-idx (list ,target-label ,cnd-value ,glob-cnd)) targets))
            )
        ,@body
        )
@@ -581,45 +585,78 @@ number of arguments."
   )
 
 (definstr jumpv
-  (with-slots (s-args) op
-    (pop-arg stack targ
-      (assert (and (= 1 (length targ))
-                   (typep (first targ) 'string)
-;                   (queue-emptyp targets)
+  (labels ((list-crossed-conditions (queue targ &optional (ret nil))
+             (declare (optimize (debug 3) (speed 0)))
+             (if (queue-emptyp queue)
+                 ret
+                 (let ((ctarg (peek-queue queue))
+                       (rest (dequeue queue))
+                       )
+                   (list-crossed-conditions rest targ (if (>= targ (cdr (gethash (car ctarg) labels)))
+                                                          (cons (cadr ctarg) ret)
+                                                          ret))
                    )
-              )
-      (let ((targ (first targ))
-            )
-;        (print targets)
-        (if (queue-emptyp targets)
-            ;; If the priority queue is empty, then this jump should be unconditional
-            (add-instrs (list (make-instance 'const :dest wires :op1 1)
-                              (make-instance 'branch :cnd wires :targ targ)
-                              )
-              (let ((wires (1+ wires))
-                    )
-                (close-instr)
+                 )
+             )
+           (emit-and-lst (wires res &optional (ret nil))
+             (if (null wires)
+                 ret
+                 (emit-and-lst (rest wires)
+                               res
+                               (append (list (make-and res (first wires) res))
+                                       ret)
+                               )
+                 )
+             )
+           )
+    (with-slots (s-args) op
+      (pop-arg stack targ
+        (assert (and (= 1 (length targ))
+                     (typep (first targ) 'string)
+                                        ;                   (queue-emptyp targets)
+                     )
                 )
+        (let ((targ (first targ))
               )
-            (branch-case targ
-                         (progn
-                           (add-instrs
-                               (list
-                                (make-instance 'copy-indir :dest wires :op1 0 :op2 1)
-                                (make-not (1+ wires) wires)
-                                (make-instance 'indir-copy :dest 0 :op1 (1+ wires) :op2 1)
+                                        ;        (print targets)
+          (if (queue-emptyp targets)
+              ;; If the priority queue is empty, then this jump should be unconditional
+              (add-instrs (list (make-instance 'const :dest wires :op1 1)
+                                (make-instance 'branch :cnd wires :targ targ)
                                 )
-                             (add-target targ (1+ wires)
-                               (let ((wires (+ 2 wires))
-                                     )
-                                 (close-instr)
+                (let ((wires (1+ wires))
+                      )
+                  (close-instr)
+                  )
+                )
+              (branch-case targ
+                           (let ((crossed-conds (list-crossed-conditions targets (cdr (gethash targ labels))))
+                                 )
+                             (add-instrs
+                                 (append
+                                  (list
+                                   (make-instance 'copy-indir :dest wires :op1 0 :op2 1)
+                                   (make-instance 'const :dest (+ 2 wires) :op1 1)
+                                   )
+                                  (emit-and-lst crossed-conds (+ 2 wires))
+                                  (list
+                                   (make-not (+ 1 wires) (+ 2 wires))
+                                   (make-and (+ 2 wires) wires (+ 1 wires))
+                                   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                   )
+                                  )
+                               (add-target targ (+ 1 wires) wires
+                                 (let ((wires (+ 3 wires))
+                                       )
+                                   (close-instr)
+                                   )
                                  )
                                )
                              )
+                           (error 'unconditional-backwards-jump)
                            )
-                         (error 'unconditional-backwards-jump)
-                         )
-            )
+              )
+          )
         )
       )
     )
@@ -649,7 +686,7 @@ number of arguments."
                                 (make-and (+ 2 wires) wires (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ wires
+                             (add-target targ wires (1+ wires)
                                (let ((wires (+ 3 wires))
                                      )
                                  (close-instr)
@@ -701,7 +738,7 @@ number of arguments."
                                 (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ (+ 1 wires)
+                             (add-target targ (+ 1 wires) (+ 3 wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -774,7 +811,7 @@ number of arguments."
                                 (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ (+ 3 wires)
+                             (add-target targ (+ 3 wires) (1+ wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -828,7 +865,7 @@ number of arguments."
                                 (make-and (+ 2 wires) wires (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ wires
+                             (add-target targ wires (1+ wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -883,7 +920,7 @@ number of arguments."
                                 (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ (+ 3 wires)
+                             (add-target targ (+ 3 wires) (1+ wires)
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -938,7 +975,7 @@ number of arguments."
                                 (make-and (+ 2 wires) wires (1+ wires))
                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                 )
-                             (add-target targ wires
+                             (add-target targ wires (1+ wires)
                                (let ((wires (+ 3 wires))
                                      )
                                  (close-instr)
@@ -1654,6 +1691,7 @@ number of arguments."
   )
 
 (definstr labelv
+  (declare (optimize (debug 3) (speed 0)))
 ;  (format t "~&labelv Targets: ~A~%" targets) 
   (let ((not-empty (not (queue-emptyp targets)))
         )
@@ -1661,10 +1699,12 @@ number of arguments."
       (if (not bss)
           (get-target (first s-args) cnd
             (add-instrs (append
-                         (list  (make-instance 'pcf2-bc:label :str (first s-args)))
+                         (if (not repeat) (list (make-instance 'pcf2-bc:label :str (first s-args))))
                          (if not-empty
                              (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
-                                   (make-not (1+ wires) cnd)
+                                   (make-not (1+ wires) (first cnd))
+                                   ;; globcnd <- globcnd + (oldglobcnd)*(~cnd)
+                                   (make-and (1+ wires) (second cnd) (1+ wires))
                                    (make-or (+ 2 wires) wires (1+ wires))
                                    (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
                                    )
@@ -1672,7 +1712,12 @@ number of arguments."
                          )
               (let ((wires (+ wires (if not-empty 3 0)))
                     )
-                (close-instr)
+                (if (equalp (first s-args) (car (peek-queue targets)))
+                    ;; There are no other conditional assignments for this target
+                    (repeat-instr)
+                    (close-instr)
+                    ;(assert nil)
+                    )
                 )
               )
             )

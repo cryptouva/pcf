@@ -43,7 +43,14 @@ void const_op(struct PCFState * st, struct PCFOP * op)
 
   if(st->wires[idx].keydata != 0)
     st->delete_key(st->wires[idx].keydata);
-  st->wires[idx].keydata = 0;
+
+  if(data->value >= 2)
+    st->wires[idx].keydata = 0;
+  else
+    {
+      assert((data->value == 0) || (data->value == 1));
+      st->wires[idx].keydata = st->copy_key(st->constant_keys[data->value]);
+    }
   st->wires[idx].flags = KNOWN_WIRE;
 }
 
@@ -106,7 +113,7 @@ void call_op (struct PCFState * st, struct PCFOP * op)
           if(st->wires[st->input_g.reswire].keydata != 0)
             st->delete_key(st->wires[st->input_g.reswire].keydata);
 
-          if(i < st->alice_in_size)
+          if(st->inp_idx + i < st->alice_in_size)
             {
               st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
             }
@@ -152,7 +159,7 @@ void call_op (struct PCFState * st, struct PCFOP * op)
           if(st->wires[st->input_g.reswire].keydata != 0)
             st->delete_key(st->wires[st->input_g.reswire].keydata);
 
-          if(i < st->bob_in_size)
+          if(st->inp_idx + i < st->bob_in_size)
             {
               st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
               st->curgate = &st->input_g;
@@ -229,6 +236,28 @@ void call_op (struct PCFState * st, struct PCFOP * op)
     }
 }
 
+void branch_op(struct PCFState * st, struct PCFOP * op)
+{
+  struct branch_op_data * data = (struct branch_op_data *)op->data;
+  ENTRY * ent, * r;
+  ent = data->target;
+  if(hsearch_r(*ent, FIND, &r, st->labels) == 0)
+    {
+      fprintf(stderr, "Problem searching hash table for %s: %s\n", ent->key, strerror(errno));
+      abort();
+    }
+ 
+  uint32_t * target = r->data;
+
+  assert(st->wires[data->cnd_wire + st->base].flags == KNOWN_WIRE);
+  assert(st->wires[data->cnd_wire + st->base].value < 2);
+
+  fprintf(stderr, "Branch: to %s on w %x\n", data->target->key, st->wires[data->cnd_wire + st->base].value);
+
+  if(st->wires[data->cnd_wire + st->base].value == 1)
+    st->PC = *target;
+}
+
 void gate_op(struct PCFState * st, struct PCFOP * op)
 {
   struct PCFGate * data = (struct PCFGate*)op->data;
@@ -238,6 +267,8 @@ void gate_op(struct PCFState * st, struct PCFOP * op)
   uint8_t bits[4];
   int8_t i = 0;
   uint8_t tab = data->truth_table;
+  void * tmp = st->wires[destidx].keydata;
+
   for(i = 0; i < 4; i++)
     {
       bits[i] = tab & 0x01;
@@ -246,11 +277,6 @@ void gate_op(struct PCFState * st, struct PCFOP * op)
 
   assert(st->curgate == 0);
   assert(data->truth_table < 16);
-
-
-  if(st->wires[destidx].keydata != 0)
-    st->delete_key(st->wires[destidx].keydata);
-  st->wires[destidx].keydata = 0;
 
   if((st->wires[op1idx].flags != KNOWN_WIRE) || (st->wires[op2idx].flags != KNOWN_WIRE))
     {
@@ -264,8 +290,11 @@ void gate_op(struct PCFState * st, struct PCFOP * op)
       st->curgate->reswire = destidx;
       st->curgate->truth_table = data->truth_table;
       st->curgate->tag = TAG_INTERNAL;
-      
+
       st->wires[destidx].keydata = st->copy_key(st->callback(st, st->curgate));
+
+      if(tmp != 0) st->delete_key(tmp);
+
       st->wires[destidx].flags = UNKNOWN_WIRE;
     }
   else
@@ -276,7 +305,10 @@ void gate_op(struct PCFState * st, struct PCFOP * op)
       if((bits[(st->wires[op1idx].value) + (2*(st->wires[op2idx].value))]) >= 2)
         fprintf(stderr, "Problem!\n");
       assert((bits[(st->wires[op1idx].value) + (2*(st->wires[op2idx].value))]) < 2);
+
       st->wires[destidx].keydata = st->copy_key(st->constant_keys[bits[(st->wires[op1idx].value) + (2*(st->wires[op2idx].value))]]);
+
+      if(tmp != 0) st->delete_key(tmp);
       st->wires[destidx].value = bits[(st->wires[op1idx].value) + (2*(st->wires[op2idx].value))];
       st->wires[destidx].flags = KNOWN_WIRE;
     }
@@ -288,6 +320,8 @@ void copy_op(struct PCFState * st, struct PCFOP * op)
   uint32_t i;
   uint32_t dest = data->dest + st->base;
   uint32_t source = data->source + st->base;
+
+  assert(data->width > 0);
   for(i = 0; i < data->width; i++)
     {
       if(st->wires[dest+i].keydata != 0)
@@ -309,6 +343,7 @@ void indir_copy_op(struct PCFState * st, struct PCFOP * op)
   uint32_t dest = st->wires[data->dest + st->base].value;
   uint32_t source = data->source + st->base;
   uint32_t i;
+  assert(data->width > 0);
   for(i = 0; i < data->width; i++)
     {
       if(st->wires[dest+i].keydata != 0)
@@ -330,6 +365,7 @@ void copy_indir_op(struct PCFState * st, struct PCFOP * op)
   uint32_t dest = data->dest + st->base;
   uint32_t source = st->wires[data->source + st->base].value;
   uint32_t i;
+  assert(data->width > 0);
   for(i = 0; i < data->width; i++)
     {
       if(st->wires[dest+i].keydata != 0)

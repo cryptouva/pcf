@@ -34,13 +34,13 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
       uint8_t bits[4];
       int8_t i = 0;
       uint8_t tab = gate->truth_table;
+      uint32_t wire1val, wire2val;
       for(i = 0; i < 4; i++)
         {
           bits[i] = tab & 0x01;
           tab = tab >> 1;
         }
 
-      uint32_t wire1val, wire2val;
       if(st->wires[gate->wire1].flags == KNOWN_WIRE)
         wire1val = st->wires[gate->wire1].value;
       else
@@ -54,7 +54,10 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
       if(wire1val + 2 * wire2val >= 4)
         fprintf(stderr, "Problem!\n");
 
-      i_key = bits[(wire1val & 0x01) + 2*(wire2val & 0x01)];
+      assert(wire1val < 2);
+      assert(wire2val < 2);
+
+      i_key = bits[wire1val + 2*wire2val];
 
       return &i_key;
     }
@@ -65,13 +68,14 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
     }
   else if(gate->tag == TAG_INPUT_B)
     {
+
       printf("Bob input (%d) %x\n", gate->wire1, *((uint32_t*)st->bob_inputs[gate->wire1].keydata));
       return st->bob_inputs[gate->wire1].keydata;
     }
   else
     {
       i_key = 0;
-      printf("Output bit (wire = %d): %x %x\n", gate->wire1, st->wires[gate->wire1].value, *((uint32_t*)st->wires[gate->wire1].keydata));
+      printf("Output bit (wire = %d): %x [%x]\n", gate->wire1, st->wires[gate->wire1].value, *((uint32_t*)st->wires[gate->wire1].keydata));
       return &i_key;
     }
 }
@@ -183,7 +187,7 @@ int main(int argc, char**argv)
   st->delete_key = delete_key;
   st->callback = m_callback;
   setup_alice_inputs_from_string(st, "AC000000");
-  setup_bob_inputs_from_string(st, "BC000000");
+  setup_bob_inputs_from_string(st, "xy(S//NF)000000");
 
   g = get_next_gate(st);
   while(g != 0)

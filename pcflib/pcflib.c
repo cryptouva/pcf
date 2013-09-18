@@ -113,7 +113,14 @@ PCFOP * read_label(const char * line, struct PCFState * st, uint32_t iptr)
   check_alloc(newent->data);
   *((uint32_t*)newent->data) = iptr;
 
-  hsearch_r(*newent, ENTER, &r, st->labels);
+  //hsearch_r(*newent, ENTER, &r, st->labels);
+
+  if(hsearch_r(*newent, ENTER, &r, st->labels) == 0)
+    {
+      fprintf(stderr, "Problem inserting hash table for %s %d: %s\n", newent->key, *((uint32_t*)newent->data), strerror(errno));
+      abort();
+    }
+
 
   return ret;
 }
@@ -577,6 +584,65 @@ PCFOP * read_call(const char * line)
   return ret;
 }
 
+PCFOP * read_branch(const char * line)
+{
+  char buf[LINE_MAX], *bitr;
+  PCFOP * ret = (PCFOP*)malloc(sizeof(PCFOP));
+  uint32_t i = 0;
+
+  struct branch_op_data * data = (struct branch_op_data*)malloc(sizeof(struct call_op_data));
+
+  check_alloc(ret);
+  check_alloc(data);
+
+  ret->op = branch_op;
+  ret->data = data;
+  bitr = buf;
+
+  for(i = 0; i < 2; i++)
+    {
+      line = skip_to_colon(line);
+      line++;
+
+      bitr = buf;
+      line = read_token(line, bitr);
+
+      if(strcmp(buf, "CND") == 0)
+        {
+          bitr = buf;
+          line = read_token(line, bitr);
+          assert(sscanf(buf, "%d", &data->cnd_wire) == 1);
+        }
+      else if(strcmp(buf, "TARG") == 0)
+        {
+          ENTRY * ent = (ENTRY*)malloc(sizeof(ENTRY));
+          check_alloc(ent);
+
+          while((line[0] == ' ') || (line[0] == '"'))
+            {
+              assert(line[0] != '\0');
+              line++;
+            }
+
+          bitr = buf;
+          line = read_token(line, bitr);
+
+          assert(buf[strlen(buf)-1] == '"');
+          buf[strlen(buf)-1] = '\0';
+
+          ent->key = malloc(strlen(buf)+1);
+          strcpy(ent->key, buf);
+          data->target = ent;
+        }
+      else
+        {
+          assert(0);
+        }
+    }
+  
+  return ret;
+}
+
 PCFOP * read_ret(const char * line)
 {
   PCFOP * ret = (PCFOP*)malloc(sizeof(PCFOP));
@@ -623,6 +689,8 @@ PCFOP * read_instr(struct PCFState * st, const char * line, uint32_t iptr)
     return read_call(line);
   else if(strcmp(buf, "RET") == 0)
     return read_ret(line);
+  else if(strcmp(buf, "BRANCH") == 0)
+    return read_branch(line);
   assert(0);
 }
 
@@ -660,13 +728,6 @@ PCFState * load_pcf_file(const char * fname, void * key0, void * key1, void *(*c
 
   memset(ret->labels, 0, sizeof(struct hsearch_data));
 
-  if(hcreate_r(icount, ret->labels) == 0)
-    {
-      fprintf(stderr, "Unable to allocate hash table: %s\n", strerror(errno));
-      abort();
-      //      exit(-1);
-    }
-
   ret->done = 0;
   ret->base = 0;
   ret->PC = 0;
@@ -683,6 +744,13 @@ PCFState * load_pcf_file(const char * fname, void * key0, void * key1, void *(*c
     {
       fgets(line, LINE_MAX-1, input);
       icount++;
+    }
+
+  if(hcreate_r(icount, ret->labels) == 0)
+    {
+      fprintf(stderr, "Unable to allocate hash table: %s\n", strerror(errno));
+      abort();
+      //      exit(-1);
     }
 
   ret->icount = icount;

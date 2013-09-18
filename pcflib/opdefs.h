@@ -57,6 +57,14 @@ struct call_op_data
 void call_op(struct PCFState *, struct PCFOP*);
 void ret_op(struct PCFState *, struct PCFOP*);
 
+struct branch_op_data
+{
+  uint32_t cnd_wire;
+  ENTRY * target;
+};
+
+void branch_op(struct PCFState *, struct PCFOP*);
+
 struct arith_op_data
 {
   uint32_t dest;
