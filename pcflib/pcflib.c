@@ -772,6 +772,11 @@ PCFState * load_pcf_file(const char * fname, void * key0, void * key1, void *(*c
     }
 
   fclose(input);
+
+  ret->wires[0].value = 1;
+  ret->wires[0].keydata = ret->copy_key(ret->constant_keys[1]);
+  ret->wires[0].flags = KNOWN_WIRE;
+
   return ret;
 }
 

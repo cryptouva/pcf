@@ -571,15 +571,16 @@ number of arguments."
     )
   )
 
-(defun eql-gates (arg1 arg2 dest tmp1)
+(defun eql-gates (arg1 arg2 dest tmp1 tmp2)
   (assert (= (length arg1) (length arg2)))
   (if (and arg1 arg2)
       (append (list (make-xnor tmp1 
                                (first arg1)
                                (first arg2))
-                    (make-and dest tmp1 dest)
+                    (make-and tmp2 tmp1 dest)
+                    (make-instance 'copy :dest dest :op1 tmp2 :op2 1)
                     )
-              (eql-gates (rest arg1) (rest arg2) dest tmp1)
+              (eql-gates (rest arg1) (rest arg2) dest tmp1 tmp2)
               )
       )
   )
@@ -675,7 +676,7 @@ number of arguments."
           (add-instrs (append 
                        (list (make-instance 'const :dest wires :op1 1))
                        ;; AND in the fall-through case
-                       (eql-gates arg1 arg2 wires (1+ wires))
+                       (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
                                         ;
                        )
             (branch-case targ
@@ -726,7 +727,7 @@ number of arguments."
           (add-instrs (append 
                        (list (make-instance 'const :dest wires :op1 1))
                        ;; AND in the fall-through case
-                       (eql-gates arg1 arg2 wires (1+ wires))
+                       (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
                                         ;
                        )
             (branch-case targ

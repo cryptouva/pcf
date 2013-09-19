@@ -32,7 +32,14 @@ void mkptr_op(struct PCFState * st, struct PCFOP * op)
 {
   uint32_t idx = *((uint32_t*)op->data);
   assert(st->wires[idx + st->base].flags == KNOWN_WIRE);
-  st->wires[idx + st->base].value += st->base;
+  fprintf(stderr, "Making pointer %d -> %d\n", st->wires[idx + st->base].value, st->wires[idx+st->base].value + st->base);
+  if(st->wires[idx+st->base].keydata != 0)
+    {
+      st->delete_key(st->wires[idx+st->base].keydata);
+      st->wires[idx+st->base].keydata = 0;
+    }
+  st->wires[idx + st->base].value += st->wires[idx+st->base].value + st->base;
+  
 }
 
 void const_op(struct PCFState * st, struct PCFOP * op)
@@ -350,6 +357,9 @@ void indir_copy_op(struct PCFState * st, struct PCFOP * op)
         st->delete_key(st->wires[dest+i].keydata);
 
       if(st->wires[source+i].keydata != 0)
+        fprintf(stderr, "Copying value: %d %x\n", dest, *((uint32_t*)st->wires[source+i].keydata));
+
+      if(st->wires[source+i].keydata != 0)
         st->wires[dest+i].keydata = st->copy_key(st->wires[source+i].keydata);
       else
         st->wires[dest+i].keydata = 0;
@@ -368,6 +378,9 @@ void copy_indir_op(struct PCFState * st, struct PCFOP * op)
   assert(data->width > 0);
   for(i = 0; i < data->width; i++)
     {
+      if(st->wires[source+i].keydata != 0)
+        fprintf(stderr, "Copying value: %d %x\n", dest, *((uint32_t*)st->wires[source+i].keydata));
+
       if(st->wires[dest+i].keydata != 0)
         st->delete_key(st->wires[dest+i].keydata);
 

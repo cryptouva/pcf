@@ -41,14 +41,14 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
           tab = tab >> 1;
         }
 
-      if(st->wires[gate->wire1].flags == KNOWN_WIRE)
-        wire1val = st->wires[gate->wire1].value;
-      else
+      /* if(st->wires[gate->wire1].flags == KNOWN_WIRE) */
+      /*   wire1val = st->wires[gate->wire1].value; */
+      /* else */
         wire1val = *((uint32_t*)st->wires[gate->wire1].keydata);
 
-      if(st->wires[gate->wire2].flags == KNOWN_WIRE)
-        wire2val = st->wires[gate->wire2].value;
-      else
+      /* if(st->wires[gate->wire2].flags == KNOWN_WIRE) */
+      /*   wire2val = st->wires[gate->wire2].value; */
+      /* else */
         wire2val = *((uint32_t*)st->wires[gate->wire2].keydata);
 
       if(wire1val + 2 * wire2val >= 4)
