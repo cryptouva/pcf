@@ -8,6 +8,8 @@
 (defpackage :pcf2-bc 
   (:use :common-lisp #+sbcl :sb-mop #+cmu :mop)
   (:export instruction
+           clear
+           localsize
            initbase
            call
            ret
@@ -112,6 +114,12 @@
    (fname :initarg :fname :type string)
    )
   (:documentation "Call a function")
+  )
+
+(defclass clear (instruction)
+  ((localsize :initarg :localsize :type integer)
+   )
+  (:documentation "Set memory from baseptr to localsize to 0.  This is meant to be used at the entry to a function.")
   )
 
 (defclass ret (instruction)

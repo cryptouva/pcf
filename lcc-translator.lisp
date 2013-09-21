@@ -437,6 +437,7 @@ The \"argbase\" parameter represents the list of arguments for the next function
             )
           )
       (assert (>= (ninth rvl) 1))
+      (format *error-output* "~&Initial base pointer: ~D~%" (ninth rvl))
       (cons (cons (make-instance 'label :str "pcfentry") (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl)))) (rest rvl))
       )
     )
@@ -1612,7 +1613,9 @@ number of arguments."
 (definstr asgnp
   (pop-arg stack val
     (pop-arg stack ptr
-      (assert (and (= 1 (length ptr) (length val)) (queue-emptyp targets) (> (first val) 0)))
+      (assert (and (= 1 (length ptr) (length val)) 
+                   ;(queue-emptyp targets) 
+                   (> (first val) 0)))
                                         ;(asgn-mux
       (format t "asgnp ~A to ~A~%" val ptr)
       (add-instrs (list (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 1))
@@ -1626,10 +1629,10 @@ number of arguments."
 (definstr proc
   (with-slots (s-args) op
     (assert (queue-emptyp targets))
-    (let (;(local-size (parse-integer (second s-args)))
+    (let ((local-size (parse-integer (second s-args)))
           (args-size (parse-integer (third s-args)))
           )
-      (let ((wires (+ 1 wires)); (* 8 local-size)))
+      (let ((wires (+ 1 wires (* 8 local-size)))
             (argsize (* 8 args-size))
             (arglist nil)
             )
@@ -1638,7 +1641,8 @@ number of arguments."
         ;; We need no 'mkptr here, because we need an absolute pointer to wire 0
         (add-instrs (list 
                      (make-instance 'label :str (first s-args))
-                     (make-instance 'const :dest 0 :op1 0))
+                     (make-instance 'clear :localsize (* 8 local-size))
+                     )
           (close-instr)
           )
         )
@@ -1649,9 +1653,9 @@ number of arguments."
 (definstr endproc
   (assert (null stack))
   (assert (queue-emptyp targets))
-  (let ((wires 0)
-        )
-    (add-instrs (list (make-instance 'ret :value 0))
+  (add-instrs (list (make-instance 'ret :value wires))
+    (let ((wires 0)
+          )
       (close-instr)
       )
     )

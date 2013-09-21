@@ -155,7 +155,7 @@ of the trees if the first tree has more than one element."
   )
 
 (defun skew-reduce* (fn lst &optional (init 0))
-  (declare (optimize (debug 0) (speed 3)))
+  (declare (optimize (debug 3) (speed 0)))
   (if (null lst)
       init
       (funcall fn (skew-reduce* fn (skew-rest lst) init) (skew-first lst))
@@ -176,7 +176,7 @@ of the trees if the first tree has more than one element."
 ;  (skew-reduce* fn (skew-reverse lst) init)
   (declare 
    (type function fn)
-   (optimize (debug 0) (speed 3)))
+   (optimize (debug 3) (speed 0)))
   (if (null lst)
       init
       (let ((init (funcall fn init (skew-first lst)))

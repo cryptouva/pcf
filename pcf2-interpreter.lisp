@@ -150,8 +150,15 @@ The functions that operate on pcf2-state objects should treat these objects as i
   `(aref (pcf2-state-memory ,state) ,idx)
   )
 
+(defparameter *x* 0)
+
 (defmacro set-state-val (state idx val)
   `(let ((st ,state))
+     (if (= ,idx 2933)
+         (progn
+           (format *error-output* "675 <- ~A~%" ,val)
+           )
+         )
      (let ((newstate (make-pcf2-state :baseptr (pcf2-state-baseptr st)
                                       :iptr (pcf2-state-iptr st)
                                       :lbls (pcf2-state-lbls st)
@@ -279,8 +286,8 @@ The functions that operate on pcf2-state objects should treat these objects as i
              )
            )
     (let ((state (update-state state nil nil (cons (first (pcf2-state-iptr state)) 
-                                                   (gethash "main" (pcf2-state-lbls state) 
-                                                            (gethash "MAIN" (pcf2-state-lbls state) 'fail))) 
+                                                   (gethash "pcfentry" (pcf2-state-lbls state) 
+                                                            (gethash "PCFENTRY" (pcf2-state-lbls state) 'fail))) 
                                nil))
           )
       (run-opcodes* state)
@@ -295,7 +302,10 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmethod run-opcode ((state pcf2-state) (opcode initbase))
   (with-slots (base) opcode
-    (update-state state nil (+ (pcf2-state-baseptr state) base) nil nil)
+    (format *error-output* "~&Setting initial base pointer: ~D~%" base)
+    (update-state (update-state state nil (+ (pcf2-state-baseptr state) base) nil nil)
+                  nil nil (gethash "main" (pcf2-state-lbls state) 
+                                   (gethash "MAIN" (pcf2-state-lbls state) 'fail)) nil)
     )
   )
 
@@ -316,7 +326,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
     (let ((newbase (+ newbase (pcf2-state-baseptr state)))
           )
       (check-mux-cnd)
-;      (format *error-output* "~%Calling: ~A (baseptr: ~A)~%" fname newbase)
+      (format *error-output* "~&Calling: ~A (baseptr: ~A)~%" fname newbase)
       (cond
         ((or (string-equal fname "alice")
              (string-equal fname "bob"))
@@ -369,28 +379,52 @@ The functions that operate on pcf2-state objects should treat these objects as i
     )
   )
 
- (defmethod run-opcode ((state pcf2-state) (opcode ret))
-   (with-slots (value) opcode
-     (if (pcf2-state-call-stack state)
-         (let ((iptrbaseptr (first (pcf2-state-call-stack state)))
-               (call-stack (rest (pcf2-state-call-stack state)))
-               )
-           ;(format t "~&Returning from funcall.  Setting base ptr to: ~A~%Next instr:~A~%" (cdr iptrbaseptr) (list (first (car iptrbaseptr)) (second (car iptrbaseptr))))
-           (check-mux-cnd)
-           (update-state state nil (cdr iptrbaseptr) (car iptrbaseptr) call-stack) 
+(defmethod run-opcode ((st pcf2-state) (opcode clear))
+  (with-slots (localsize) opcode
+    (let ((state st))
+      (format *error-output* "~&Clearing region: ~D - ~D~%" 
+              (pcf2-state-baseptr state)
+              (+ (pcf2-state-baseptr state) localsize))
+      (loop for i from (pcf2-state-baseptr state) to 
+         (+ (pcf2-state-baseptr state) localsize) do
+           (set-state-val state i 0)
            )
-         state
-         )
+      state
+      )
+    )
+  )
+
+ (defmethod run-opcode ((st pcf2-state) (opcode ret))
+   (with-slots (value) opcode
+     (let ((state st)
+           )
+       (if (pcf2-state-call-stack state)
+           (let ((iptrbaseptr (first (pcf2-state-call-stack state)))
+                 (call-stack (rest (pcf2-state-call-stack state)))
+                 )
+             (format t "~&Returning from funcall.  Clearing region from ~D to ~D~%"
+                     (pcf2-state-baseptr state)
+                     value)
+             (check-mux-cnd)
+             (loop for i from (pcf2-state-baseptr state) to value do
+                  (setf state (set-state-val state i 0))
+                  )
+             (update-state state nil (cdr iptrbaseptr) (car iptrbaseptr) call-stack) 
+             )
+           state
+           )
+       )
      )
    )
 
  (defmethod run-opcode ((state pcf2-state) (opcode branch))
    (with-slots (cnd targ) opcode
+ ;    (if (string-equal targ "$27") (assert nil))
      (let ((cnd-v (get-state-val state (+ (pcf2-state-baseptr state) cnd)))
            (targ (find-label state targ))
            )
        (declare (type bit cnd-v))
-;       (format t "Branch: ~A~%" opcode)
+       (format t "~&Branch: ~A~%" opcode)
        (if (zerop cnd-v)
            state
            (update-state state nil nil targ nil)
@@ -408,7 +442,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
             (y (get-state-val state true-op2))
             )
        (declare (type integer x y))
-;       (format *error-output* "Add(~A,~A,~A): ~A + ~A = ~A~%" op1 op2 dest x y (+ x y))
+       (format *error-output* "~&Add(~A,~A,~A): ~A + ~A = ~A~%" op1 op2 dest x y (+ x y))
        (set-state-val state true-dest (+ x y))
        )
      )
@@ -481,7 +515,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
             (y (get-state-val state true-op2))
             )
        (declare (type integer x y))
-       ;(format t "mul: ~A * ~A = ~A~&" x y (* x y))
+       (format *error-output* "~&mul: ~A * ~A = ~A~&" x y (* x y))
        (set-state-val state true-dest (* x y))
        )
      )
@@ -521,7 +555,9 @@ The functions that operate on pcf2-state objects should treat these objects as i
           (true-dest (+ dest (pcf2-state-baseptr state)))
           )
 
-;      (format t "~A -> ~A~%" (get-state-val state true-op1) (loop for i from 0 to (1- op2) collect (get-state-val state (+ i (get-state-val state true-op1)))))
+      (format *error-output* "~A -> ~A~%" 
+              (get-state-val state true-op1) 
+              (loop for i from 0 to (1- op2) collect (get-state-val state (+ i (get-state-val state true-op1)))))
       (reduce (lambda (state i) 
                 (set-state-val state (+ i true-dest)
                                (get-state-val state
@@ -534,11 +570,12 @@ The functions that operate on pcf2-state objects should treat these objects as i
   )
 
 (defmethod run-opcode ((state pcf2-state) (opcode indir-copy))
+  (declare (optimize (debug 3) (speed 0)))
   (with-slots (dest op1 op2) opcode
     (let ((true-op1 (+ op1 (pcf2-state-baseptr state)))
           (true-dest (get-state-val state (+ dest (pcf2-state-baseptr state))))
           )
-;      (format t "~A <- ~A~%" true-dest (loop for i from 0 to (1- op2) collect (get-state-val state (+ true-op1 i))))
+      (format t "~A <- ~A~%" true-dest (loop for i from 0 to (1- op2) collect (get-state-val state (+ true-op1 i))))
       (reduce (lambda (st i) 
                 (set-state-val st
                                (+ i true-dest)
