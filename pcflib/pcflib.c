@@ -255,6 +255,61 @@ PCFOP * read_copy(const char * line)
   return ret;
 }
 
+PCFOP * read_arith(const char * line, void (*op)(struct PCFState *, struct PCFOP *))
+{
+  char buf[LINE_MAX], *bitr;
+  PCFOP * ret = malloc(sizeof(PCFOP));
+  struct arith_op_data * data = malloc(sizeof(struct arith_op_data));
+  uint32_t i = 0;
+  check_alloc(ret);
+  check_alloc(data);
+  bitr = buf;
+  ret->op = op;
+  ret->data = data;
+
+  bitr[0] = '\0';
+  for(i = 0; i < 3; i++)
+    {
+      line = skip_to_colon(line);
+      line++;
+
+      bitr = buf;
+      line = read_token(line, bitr);
+      if(strcmp(buf, "DEST") == 0)
+        {
+          bitr = buf;
+          line = read_token(line, bitr);
+          assert(sscanf(buf, "%d", &data->dest) == 1);
+        }
+      else if(strcmp(buf, "OP1") == 0)
+        {
+          bitr = buf;
+          line = read_token(line, bitr);
+          assert(sscanf(buf, "%d", &data->op1) == 1);
+        }
+
+      else if(strcmp(buf, "OP2") == 0)
+        {
+          bitr = buf;
+          line = read_token(line, bitr);
+          assert(sscanf(buf, "%d", &data->op2) == 1);
+        }
+      else assert(0);
+    }
+
+  return ret;
+}
+
+PCFOP * read_add(const char * line)
+{
+  return read_arith(line, add_op);
+}
+
+PCFOP * read_mul(const char * line)
+{
+  return read_arith(line, mul_op);
+}
+
 PCFOP * read_copy_indir(const char * line)
 {
   char buf[LINE_MAX], *bitr;
@@ -493,6 +548,82 @@ PCFOP * read_bits(const char * line)
   return ret;
 }
 
+PCFOP * read_join(const char * line)
+{
+  char buf[LINE_MAX], *bitr;
+  PCFOP * ret = (PCFOP*)malloc(sizeof(PCFOP));
+  uint32_t i = 0;
+
+  struct join_op_data * data = (struct join_op_data*)malloc(sizeof(struct join_op_data));
+
+  check_alloc(ret);
+  check_alloc(data);
+
+  ret->op = join_op;
+  ret->data = data;
+  bitr = buf;
+
+  for(i = 0; i < 2; i++)
+    {
+      line = skip_to_colon(line);
+      line++;
+
+      bitr = buf;
+      line = read_token(line, bitr);
+
+      if(strcmp(buf, "OP1") == 0)
+        {
+          int cnt = count_tokens_to_close_paren(line);
+          data->nsources = cnt;
+          char buf2[10];
+          int i, j, k;
+
+          data->sources = (uint32_t*)malloc(cnt * sizeof(uint32_t));
+          check_alloc(data->sources);
+          i = 0;
+          j = 0;
+          k = 0;
+          while(line[i] == '(') i++;
+          while(line[i] == ' ') i++;
+          while(line[i] == '(') i++;
+          while(line[i] != ')')
+            {
+              assert(line[i] != '\0');
+              while((line[i] != ' ') && (line[i] != ')'))
+                {
+                  assert(line[i] != '\0');
+                  buf2[j] = line[i];
+                  i++;
+                  j++;
+                }
+              buf2[j] = '\0';
+              assert(sscanf(buf2, "%d", &data->sources[k]) == 1);
+              k++;
+              while(line[i] == ' ') 
+                {
+                  assert(line[i] != '\0');
+                  i++;
+                }
+              j = 0;
+            }
+          assert(k == cnt);
+          line += i;
+        }
+      else if(strcmp(buf, "DEST") == 0)
+        {
+          bitr = buf;
+          line = read_token(line, bitr);
+          assert(sscanf(buf, "%d", &data->dest) == 1);
+        }
+      else
+        {
+          assert(0);
+        }
+    }
+  return ret;
+}
+
+
 PCFOP * read_mkptr(const char * line)
 {
   char buf[LINE_MAX], *bitr;
@@ -650,6 +781,31 @@ PCFOP * read_ret(const char * line)
   return ret;
 }
 
+PCFOP * read_clear(const char * line)
+{
+  char buf[LINE_MAX], *bitr;
+  PCFOP * ret = (PCFOP*)malloc(sizeof(PCFOP));
+  struct clear_op_data * data = (struct clear_op_data*)malloc(sizeof(struct clear_op_data));
+
+  check_alloc(ret);
+  check_alloc(data);
+
+  ret->op = clear_op;
+
+  bitr = buf;
+  bitr[0] = '\0';
+  line = skip_to_colon(line);
+  line++;
+
+  line = assert_token(line, buf, bitr, "LOCALSIZE");
+
+  sscanf(line, "%d\n", &data->localsize);
+  assert(data->localsize >= 0);
+
+  ret->data = data;
+  return ret;
+}
+
 PCFOP * read_instr(struct PCFState * st, const char * line, uint32_t iptr)
 {
   char buf[LINE_MAX], *bitr;
@@ -691,6 +847,14 @@ PCFOP * read_instr(struct PCFState * st, const char * line, uint32_t iptr)
     return read_ret(line);
   else if(strcmp(buf, "BRANCH") == 0)
     return read_branch(line);
+  else if(strcmp(buf, "CLEAR") == 0)
+    return read_clear(line);
+  else if(strcmp(buf, "JOIN") == 0)
+    return read_join(line);
+  else if(strcmp(buf, "ADD") == 0)
+    return read_add(line);
+  else if(strcmp(buf, "MUL") == 0)
+    return read_mul(line);
   assert(0);
 }
 

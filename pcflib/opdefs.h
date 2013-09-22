@@ -4,6 +4,13 @@
 #include <search.h>
 #include "pcflib.h"
 
+struct clear_op_data
+{
+  uint32_t localsize;
+};
+
+void clear_op(struct PCFState * st, struct PCFOP * op);
+
 void nop(struct PCFState * st, struct PCFOP * op);
 void initbase_op(struct PCFState * st, struct PCFOP * op);
 
@@ -22,6 +29,15 @@ struct bits_op_data
 };
 
 void bits_op(struct PCFState*, struct PCFOP *);
+
+struct join_op_data
+{
+  uint32_t * sources;
+  uint32_t nsources;
+  uint32_t dest;
+};
+
+void join_op(struct PCFState *, struct PCFOP*);
 
 void mkptr_op(struct PCFState*, struct PCFOP*);
 
