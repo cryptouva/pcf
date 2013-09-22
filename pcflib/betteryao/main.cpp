@@ -7,13 +7,13 @@
 //#include "BetterYao3.h"
 #include "BetterYao4.h"
 
-
 int main(int argc, char **argv)
 {
 	MPI_Init(&argc, &argv);
 
 	log4cxx::PropertyConfigurator::configure("log4cxx.conf");
 
+#ifdef _BETTERYAO
 	if (argc < 8)
 	{
 		std::cout << "Usage:" << std::endl
@@ -28,9 +28,13 @@ int main(int argc, char **argv)
 			<< std::endl;
 		exit(EXIT_FAILURE);
 	}
+#endif
 
 	EnvParams params;
 
+	YaoBase *sys = 0;
+
+#ifdef _BETTERYAO
 	params.secu_param   = atoi(argv[1]);
 	params.stat_param   = atoi(argv[2]);
 
@@ -43,8 +47,6 @@ int main(int argc, char **argv)
 
         // The special file that holds the inputs
         params.input_file = argv[4];
-
-	YaoBase *sys = 0;
 
 	switch(atoi(argv[7]))
 	{
@@ -59,6 +61,17 @@ int main(int argc, char **argv)
 	default:
 		MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 	}
+#else
+        params.secu_param = 80;
+        params.stat_param = 1;
+        params.pcf_file = argv[1];
+        params.private_file = argv[2];
+        params.ipserve_addr = argv[3];
+        params.port_base = atoi(argv[4]);
+        params.input_file = argv[2];
+
+        sys = new Yao(params);
+#endif
 
 	sys->start();
 	delete sys; // delete MPI objects before MPI_Finalize()

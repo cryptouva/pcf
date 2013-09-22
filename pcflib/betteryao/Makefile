@@ -1,4 +1,4 @@
-CXX_CFLAGS = -I$(HOME)/lccyao2/pcflib/ -I$(HOME)/include/ -I$(HOME)/local/include -g -L $(HOME)/lib -L$(HOME)/local/lib -Wno-deprecated -D__STDC_LIMIT_MACROS -DFREE_XOR -DRAND_SEED -DGRR
+CXX_CFLAGS = -I$(HOME)/lccyao2/pcflib/ -I$(HOME)/include/ -I$(HOME)/local/include -g -L $(HOME)/lib -L$(HOME)/local/lib -Wno-deprecated -D__STDC_LIMIT_MACROS -DFREE_XOR -DRAND_SEED -DGRR 
 CXX        = g++
 MPI_CXX    = mpicxx
 
@@ -24,10 +24,10 @@ debug: pcflib.c pcflib.h
 	gcc -Wall -Werror -c -fPIC pcflib.c -g
 
 pcflib.o: ../pcflib.c ../pcflib.h
-	gcc -Wall -Werror -c -fPIC ../pcflib.c -g
+	gcc -Wall -Werror -c -fPIC ../pcflib.c -g -DBETTERYAO
 
-opdefs.o: ../opdefs.c ../pcflib.h ../opdefs.h
-	gcc -Wall -Werror -c -fPIC ../opdefs.c -g
+opdefs.o: ../opdefs.c ../pcflib.h ../opdefs.h 
+	gcc -Wall -Werror -c -fPIC ../opdefs.c -g -DBETTERYAO
 
 sim: $(MAINS) $(OBJS)
 	$(MPI_CXX) -o sim $(CXX_CFLAGS) $^ $(LIBS)

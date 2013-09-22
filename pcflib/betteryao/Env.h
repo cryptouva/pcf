@@ -133,6 +133,12 @@ public:
 		return instance->m_params.pcf_file;
 	}
 
+	static const char * private_file()
+	{
+		assert(instance != 0);
+		return instance->m_params.private_file;
+	}
+
 	static ClawFree &clawfree()
 	{
 		assert(instance != 0);

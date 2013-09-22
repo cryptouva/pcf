@@ -43,8 +43,6 @@ void initbase_op(struct PCFState * st, struct PCFOP * op)
   st->base = *((uint32_t*)op->data);
 }
 
-
-
 void mkptr_op(struct PCFState * st, struct PCFOP * op)
 {
   uint32_t idx = *((uint32_t*)op->data);
@@ -194,11 +192,11 @@ void call_op (struct PCFState * st, struct PCFOP * op)
           if(st->inp_idx + i < st->alice_in_size)
             {
               st->wires[st->input_g.reswire].keydata = st->copy_key(st->callback(st, &st->input_g));
+              st->curgate = &st->input_g;
             }
           else
             {
               st->wires[st->input_g.reswire].keydata = st->copy_key(st->constant_keys[0]);
-              st->curgate = &st->input_g;
             }
           st->wires[st->input_g.reswire].flags = UNKNOWN_WIRE;
           // Not yet done with function call
@@ -367,7 +365,19 @@ void gate_op(struct PCFState * st, struct PCFOP * op)
       st->curgate->wire1 = op1idx;
       st->curgate->wire2 = op2idx;
       st->curgate->reswire = destidx;
-      st->curgate->truth_table = data->truth_table;
+
+
+#ifdef BETTERYAO
+      tab = 
+        ((data->truth_table & 1) << 3) |
+        ((data->truth_table & 2) << 1) |
+        ((data->truth_table & 4) >> 1) |
+        ((data->truth_table & 8) >> 3);
+#else
+      tab = data->truth_table;
+#endif
+
+      st->curgate->truth_table = tab;
       st->curgate->tag = TAG_INTERNAL;
 
       st->wires[destidx].keydata = st->copy_key(st->callback(st, st->curgate));

@@ -58,28 +58,28 @@ const int HEX_EXP[2] = { 16, 1 };
 
 void Bytes::from_hex(const std::string &s)
 {
-	// this->clear();
-	// this->resize((s.size()+1)/2, 0); // zero out *this
+	this->clear();
+	this->resize((s.size()+1)/2, 0); // zero out *this
 
-	// for (size_t ix = 0; ix < s.size(); ix++)
-	// {
-	// 	if (REVERSE_HEX_TABLE[s[ix]] == -1)
-	// 	{
-        //     std::cerr << "Invalid hex format: " << s;
-	// 	}
-	// 	(*this)[ix/2] += REVERSE_HEX_TABLE[s[ix]]*HEX_EXP[ix%2];
-	// }
-  // Better way:  just read the hex nibbles one-by-one, straight up
-  uint8_t q;
-  for(int i = 0; i < s.size(); i++)
-    {
-      q = s[i];
-      for(int j = 0; j < 4; j++)
-        {
-          this->set_ith_bit(i * 4 + j, q & 0x01);
-          q = q >> 1;
-        }
-    }
+	for (size_t ix = 0; ix < s.size(); ix++)
+	{
+		if (REVERSE_HEX_TABLE[s[ix]] == -1)
+		{
+            std::cerr << "Invalid hex format: " << s;
+		}
+		(*this)[ix/2] += REVERSE_HEX_TABLE[s[ix]]*HEX_EXP[ix%2];
+	}
+  // // Better way:  just read the hex nibbles one-by-one, straight up
+  // uint8_t q;
+  // for(int i = 0; i < s.size(); i++)
+  //   {
+  //     q = s[i];
+  //     for(int j = 0; j < 4; j++)
+  //       {
+  //         this->set_ith_bit(i * 4 + j, q & 0x01);
+  //         q = q >> 1;
+  //       }
+  //   }
 }
 
 std::vector<Bytes> Bytes::split(const size_type chunk_len) const

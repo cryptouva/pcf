@@ -302,12 +302,12 @@ void YaoBase::step_report_no_sync(std::string step_name)
 
 	EVL_BEGIN
 		m_timer_cmp_vec.push_back(m_timer_evl);
-		LOG4CXX_INFO(logger, "EVL \033[33mfinish " << step_name << "\033[37m");
+		LOG4CXX_INFO(logger, "EVL finish " << step_name << "");
 	EVL_END
 
 	GEN_BEGIN
 		m_timer_cmp_vec.push_back(m_timer_gen);
-		LOG4CXX_INFO(logger, "GEN \033[33mfinish " << step_name << "\033[37m");
+		LOG4CXX_INFO(logger, "GEN finish " << step_name << "");
 	GEN_END
 }
 
@@ -325,14 +325,14 @@ void YaoBase::final_report()
 
 	EVL_BEGIN
 		name = "EVL";
-		LOG4CXX_INFO(logger, "EVL  input: \033[31m" << m_evl_inp.to_hex() << "\033[37m");
-		LOG4CXX_INFO(logger, "EVL output: \033[31m" << m_evl_out.to_hex() << "\033[37m");
+		LOG4CXX_INFO(logger, "EVL  input: " << m_evl_inp.to_hex() << "");
+		LOG4CXX_INFO(logger, "EVL output: " << m_evl_out.to_hex() << "");
 	EVL_END
 
 	GEN_BEGIN
 		name = "GEN";
-		LOG4CXX_INFO(logger, "GEN  input: \033[31m" << m_gen_inp.to_hex() << "\033[37m");
-		LOG4CXX_INFO(logger, "GEN output: \033[31m" << m_gen_out.to_hex() << "\033[37m");
+		LOG4CXX_INFO(logger, "GEN  input: " << m_gen_inp.to_hex() << "");
+		LOG4CXX_INFO(logger, "GEN output: " << m_gen_out.to_hex() << "");
 	GEN_END
 
 	for (size_t i = 0; i < m_comm_sz_vec.size(); i++)
