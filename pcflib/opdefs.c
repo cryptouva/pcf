@@ -19,7 +19,7 @@ void clear_op(struct PCFState * st, struct PCFOP  * op)
       st->wires[i].value = 0;
       if(st->wires[i].keydata != 0)
         st->delete_key(st->wires[i].keydata);
-      st->wires[i].keydata = 0;
+      st->wires[i].keydata = st->copy_key(st->constant_keys[0]);
       st->wires[i].flags = KNOWN_WIRE;
     }
 }
