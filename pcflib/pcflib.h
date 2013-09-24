@@ -61,6 +61,7 @@ typedef struct wire {
 
 struct activation_record {
   uint32_t ret_pc;
+  uint32_t base;
   struct activation_record * rest;
 };
 

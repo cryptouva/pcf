@@ -40,7 +40,7 @@ void initbase_op(struct PCFState * st, struct PCFOP * op)
   uint32_t * target = r->data;
   st->PC = *target;
 
-  st->base = *((uint32_t*)op->data);
+  st->base += *((uint32_t*)op->data);
 }
 
 void mkptr_op(struct PCFState * st, struct PCFOP * op)
@@ -54,7 +54,7 @@ void mkptr_op(struct PCFState * st, struct PCFOP * op)
       st->delete_key(st->wires[idx+st->base].keydata);
       st->wires[idx+st->base].keydata = 0;
     }
-  st->wires[idx + st->base].value += st->wires[idx+st->base].value + st->base;
+  st->wires[idx + st->base].value = st->wires[idx+st->base].value + st->base;
   
 }
 
@@ -83,6 +83,7 @@ void add_op(struct PCFState * st, struct PCFOP* op)
   assert(st->wires[st->base + data->op1].flags == KNOWN_WIRE);
   assert(st->wires[st->base + data->op2].flags == KNOWN_WIRE);
   st->wires[st->base + data->dest].flags = KNOWN_WIRE;
+
   st->wires[st->base + data->dest].value =
     st->wires[st->base + data->op1].value +
     st->wires[st->base + data->op2].value;
@@ -124,9 +125,11 @@ void join_op(struct PCFState * st, struct PCFOP * op)
     }
 
   st->wires[data->dest + st->base].flags = KNOWN_WIRE;
+
   if(st->wires[data->dest + st->base].keydata != 0)
     st->delete_key(st->wires[data->dest + st->base].keydata);
   st->wires[data->dest + st->base].keydata = 0;
+
   st->wires[data->dest+st->base].value = cval;
 }
 
@@ -298,6 +301,7 @@ void call_op (struct PCFState * st, struct PCFOP * op)
 
       newtop->rest = st->call_stack;
       newtop->ret_pc = st->PC;
+      newtop->base = st->base;
       st->call_stack = newtop;
 
       if(hsearch_r(*ent, FIND, &r, st->labels) == 0)
@@ -489,6 +493,7 @@ void ret_op(struct PCFState * st, struct PCFOP * op)
     {
       st->call_stack = rec->rest;
       st->PC = rec->ret_pc;
+      st->base = rec->base;
       free(rec);
     }
 }

@@ -880,7 +880,7 @@ PCFState * load_pcf_file(const char * fname, void * key0, void * key1, void *(*c
   ret->labels = (struct hsearch_data *)malloc(sizeof(struct hsearch_data));
   check_alloc(ret->labels);
 
-  ret->wires = (struct wire *)malloc(200000 * sizeof(struct wire));
+  ret->wires = (struct wire *)malloc(1000000 * sizeof(struct wire));
   check_alloc(ret->wires);
 
   for(i = 0; i < 200000; i++)
@@ -893,7 +893,7 @@ PCFState * load_pcf_file(const char * fname, void * key0, void * key1, void *(*c
   memset(ret->labels, 0, sizeof(struct hsearch_data));
 
   ret->done = 0;
-  ret->base = 0;
+  ret->base = 1;
   ret->PC = 0;
 
   fprintf(stderr, "%s\n", fname);
