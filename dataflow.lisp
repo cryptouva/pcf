@@ -9,7 +9,7 @@
            ops-from-cfg
            get-lbls-in-order
            get-gen-kill
-           live-update)
+           )
   )
 
 (in-package :dataflow)
@@ -149,6 +149,8 @@
   )
 
 (defun make-cfg (ops)
+  "Return a control-flow graph from a list of PCF ops.  This is a map
+of basic block IDs to basic blocks."
   (declare (optimize (debug 3) (speed 0)))
   (let ((cfg (reduce #'(lambda (x y)
                          (declare (optimize (debug 3) (speed 0))
@@ -260,101 +262,97 @@
   "Get the gen and kill sets for a basic block"
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
-  (let ((gen (reduce #'set-union (mapcar #'gen (basic-block-ops bb)) :initial-value (empty-set))
+  (let ((gen (apply #'nconc (mapcar #'gen (basic-block-ops bb)))
           )
-        (kill (reduce #'set-union (mapcar #'kill (basic-block-ops bb)) :initial-value (empty-set))
+        (kill (apply #'nconc (mapcar #'kill (basic-block-ops bb)))
           )
         )
-    (list gen kill)
+    (list (set-from-list gen) (set-from-list kill))
     )
   )
 
 (defmacro def-gen-kill (type &key gen kill)
   `(progn
      (defmethod gen ((op ,type))
-       (the avl-set ,gen)
+       (the list ,gen)
        )
 
      (defmethod kill ((op ,type))
-       (the avl-set ,kill)
+       (the list ,kill)
        )
      )
   )
 
 (def-gen-kill instruction
-    :gen (empty-set)
-    :kill (empty-set)
+    :gen nil
+    :kill nil
     )
 
 (def-gen-kill two-op
     :gen (with-slots (op1 op2) op
-           (declare (type (integer 0) op1 op2))
-           (set-from-list (list op1 op2))
+           (declare (type integer op1 op2))
+           (list op1 op2)
            )
     :kill (with-slots (dest) op
-            (declare (type (integer 0) dest))
-            (singleton dest)
+            (declare (type integer dest))
+            (list dest)
             )
     )
 
 (def-gen-kill one-op
     :gen (with-slots (op1) op
-           (declare (type (integer 0) op1))
-           (singleton op1)
+           (declare (type integer op1))
+           (list op1)
            )
     :kill (with-slots (dest) op
-            (declare (type (integer 0) dest))
-            (singleton dest)
+            (declare (type integer dest))
+            (list dest)
             )
     )
 
 (def-gen-kill bits
     :gen (with-slots (op1) op
-           (declare (type (integer 0) op1))
-           (singleton op1)
+           (declare (type integer op1))
+           (list op1)
            )
     :kill (with-slots (dest) op
             (declare (type list dest))
-            (set-from-list dest)
+            dest
             )
     )
 
 (def-gen-kill join
     :gen (with-slots (op1) op
            (declare (type list op1))
-           (set-from-list op1)
+           op1
            )
     :kill (with-slots (dest) op
             (declare (type (integer 0) dest))
-            (singleton dest)
+            (list dest)
             )
     )
 
 (def-gen-kill copy
     :gen (with-slots (op1 op2) op
-           (declare (type (integer 0) op1)
+           (declare (type integer op1)
                     (type (integer 1) op2))
-           (set-from-list (loop for i from 0 to (1- op2) collect (+ op1 i)))
+           (loop for i from 0 to (1- op2) collect (+ op1 i))
            )
     :kill (with-slots (dest op2) op
-            (declare (type (integer 0) dest)
+            (declare (type integer dest)
                      (type (integer 1) op2))
-            (set-from-list (loop for i from 0 to (1- op2) collect (+ dest i)))
+            (loop for i from 0 to (1- op2) collect (+ dest i))
             )
     )
 
 (def-gen-kill copy-indir
-    :gen (let ((st (empty-set))
-               )
-           (loop for i from 0 to 19999 do
-                (setf st (set-union (singleton i) st))
-                )
-           st
-           )
+    :gen (loop for i from 0 to 19999 collect
+            i
+              )
     :kill (with-slots (dest op2) op
-            (declare (type (integer 0) dest)
+            (declare (type integer dest)
                      (type (integer 1) op2))
-            (set-from-list (loop for i from 0 to (1- op2) collect (+ dest i)))
+            (loop for i from 0 to (1- op2) collect (+ dest i))
             )
     )
 
@@ -362,63 +360,7 @@
     :gen (with-slots (op1 op2) op
            (declare (type (integer 0) op1)
                     (type (integer 1) op2))
-           (set-from-list (loop for i from 0 to (1- op2) collect (+ op1 i)))
+           (loop for i from 0 to (1- op2) collect (+ op1 i))
            )
-    :kill (empty-set)
+    :kill nil
     )
-
-(defun live-update (blkid blocks live-ins live-outs gens kills)
-  (declare (optimize (debug 3) (speed 0)))
-  (cons
-   (map-insert blkid (set-union
-                      (cdr (map-find blkid gens))
-                      (set-diff
-                       (cdr (let ((l-o (map-find blkid live-outs))
-                                  )
-                              (if l-o
-                                  l-o
-                                  (cons blkid (empty-set))
-                                  )
-                              )
-                            )
-                       (cadr (map-find blkid kills))
-                       )
-                      )
-               live-ins
-               )
-   (let ((new-out (reduce #'(lambda (y x) 
-                                 (set-union (cdr (let ((l-i (map-find x live-ins))
-                                                       )
-                                                   (if l-i
-                                                       l-i
-                                                       (cons x (empty-set))
-                                                       )
-                                                   )
-                                                 )
-                                            y
-                                            )
-                                 )
-                             (basic-block-succs
-                              (cdr (map-find blkid blocks))
-                              )
-                             :initial-value (empty-set)
-                             )
-           )
-         )
-     (list (map-insert blkid 
-                       new-out
-                       live-outs
-                       )
-           (set-equalp new-out (cdr (let ((l-o (map-find blkid live-outs))
-                                          )
-                                      (if l-o
-                                          l-o
-                                          (cons blkid (empty-set))
-                                          )
-                                      )
-                                    )
-                       )
-           )
-     )
-   )
-  )
