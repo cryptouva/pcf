@@ -8,3 +8,6 @@ opdefs.o: opdefs.c opdefs.h pcflib.h
 
 test: pcflib.o opdefs.o test.c
 	gcc -fPIC -o test test.c pcflib.o opdefs.o -Wall -Werror -g
+
+cirgen: pcflib.o opdefs.o cirgen.c
+	gcc -fPIC -o cirgen cirgen.c pcflib.o opdefs.o -Wall -Werror -g
