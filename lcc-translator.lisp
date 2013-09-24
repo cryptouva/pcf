@@ -220,6 +220,10 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass rshi (two-arg-instruction)
+  ()
+  )
+
 (defclass boru (two-arg-instruction)
   ()
   )
@@ -233,6 +237,20 @@ only temporary and can be safely overwritten by future instructions."
   )
 
 (defclass cnstu (static-arg-instruction)
+  ()
+  )
+
+(defclass one-stack-one-static-arg-instruction (lcc-instruction)
+  ((s-args :initarg :s-args)
+   )
+  (:documentation "The base class of instructions that pop one argument from the stack and have one static argument instruction.  The \"CV*\" instructions are in this class.")
+  )
+
+(defclass CVUI (one-stack-one-static-arg-instruction)
+  ()
+  )
+
+(defclass CVIU (one-stack-one-static-arg-instruction)
   ()
   )
 
@@ -297,6 +315,14 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass calli (one-arg-instruction)
+  ()
+  )
+
+(defclass reti (one-arg-instruction)
+  ()
+  )
+
 (defclass argu (one-arg-instruction)
   ()
   )
@@ -326,7 +352,15 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass bandi (two-arg-instruction)
+  ()
+  )
+
 (defclass addu (two-arg-instruction)
+  ()
+  )
+
+(defclass addi (two-arg-instruction)
   ()
   )
 
@@ -348,6 +382,7 @@ only temporary and can be safely overwritten by future instructions."
                                    (static-arg-instruction (list ':s-args (rest tokens)))
                                    (cmp-jump-instruction (list ':width (parse-integer (second tokens)) ':s-args (cddr tokens)))
                                    (jump-instruction (list ':s-args (rest tokens)))
+                                   (one-stack-one-static-arg-instruction (list ':s-args (rest tokens)))
                                    (lcc-instruction nil)
                                    )
                                  )
@@ -1128,6 +1163,34 @@ number of arguments."
     )
   )
 
+(definstr addi
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           (rwires (loop for i from wires to (+ wires width -1) collect i))
+           )
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (push-stack stack width rwires
+            (add-instrs (adder-chain 
+                         arg1 
+                         arg2 
+                         rwires 
+                         (+ wires width 1) 
+                         (+ wires width 2) 
+                         (+ wires width 3) 
+                         (+ wires width 4))
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
 (definstr subu
   (with-slots (width) op
     (let* ((width (* 8 width))
@@ -1216,6 +1279,15 @@ number of arguments."
     )
   )
 
+(definstr rshi
+  (right-or-left-shift
+      (append
+       (subseq rwires (expt 2 y) width)
+       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       )
+    (close-instr)
+    )
+  )
 
 (definstr rshu
   (right-or-left-shift
@@ -1276,6 +1348,27 @@ number of arguments."
   )
 
 (definstr bandu
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           (rwires (loop for i from wires to (+ wires width -1) collect i))
+           )
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (push-stack stack width rwires
+            (add-instrs (and-chain arg1 arg2 rwires)
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr bandi
   (with-slots (width) op
     (let* ((width (* 8 width))
            (rwires (loop for i from wires to (+ wires width -1) collect i))
@@ -1364,6 +1457,54 @@ number of arguments."
               )
             )
           )
+        )
+      )
+    )
+  )
+
+(definstr calli
+  (with-slots (width) op
+    (assert (queue-emptyp targets))
+    (let ((width (* 8 width))
+          )
+      (pop-arg stack fname
+        (let ((i 0)) 
+          (add-instrs  
+              (append (loop for arg in (reverse arglist) collect
+                           (prog1
+                               (make-instance 'copy 
+                                              :dest (+ wires i)
+                                              :op1 (first (arg-loc arg))
+                                              :op2 (arg-len arg))
+                             (incf i (arg-len arg))
+                             )
+                           )
+                      (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
+                      )
+            (push-stack stack width (loop for j from (+ i wires) to (+ wires width i -1) collect j)
+              (let ((wires (+ wires width i 1))
+                    (arglist nil)
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr reti
+  ;; We must copy the value from the stack to the very beginning of
+  ;; the stack frame, which is where return values are stored (see
+  ;; above).
+  (with-slots (width) op
+    (pop-arg stack arg
+      (add-instrs (loop for j in arg for i from 0 collect
+                       (make-xnor i j j)
+                       )
+        (close-instr)
         )
       )
     )
@@ -1692,6 +1833,14 @@ number of arguments."
   )
 
 (definstr align
+  (close-instr)
+  )
+
+(definstr cvui
+  (close-instr)
+  )
+
+(definstr cviu
   (close-instr)
   )
 
