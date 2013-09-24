@@ -323,6 +323,10 @@ only temporary and can be safely overwritten by future instructions."
   ()
   )
 
+(defclass retu (one-arg-instruction)
+  ()
+  )
+
 (defclass argu (one-arg-instruction)
   ()
   )
@@ -1496,6 +1500,21 @@ number of arguments."
   )
 
 (definstr reti
+  ;; We must copy the value from the stack to the very beginning of
+  ;; the stack frame, which is where return values are stored (see
+  ;; above).
+  (with-slots (width) op
+    (pop-arg stack arg
+      (add-instrs (loop for j in arg for i from 0 collect
+                       (make-xnor i j j)
+                       )
+        (close-instr)
+        )
+      )
+    )
+  )
+
+(definstr retu
   ;; We must copy the value from the stack to the very beginning of
   ;; the stack frame, which is where return values are stored (see
   ;; above).
