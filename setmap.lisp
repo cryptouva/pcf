@@ -6,6 +6,7 @@
 (defpackage :setmap (:use :tree :common-lisp)
             (:export set-member
                      singleton
+                     set-insert
                      set-diff
                      set-union
                      set-inter
@@ -28,7 +29,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (avl-tree-map (lambda (x) (format stream "~A " x)) (avl-set-tree struct))
+                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct))
                 (format stream "}")
                 )
               )
@@ -106,6 +107,10 @@
                   :comp comp
                   )
     )
+  )
+
+(defun set-insert (set x)
+  (set-union set (singleton x :comp (avl-set-comp set)))
   )
 
 (defun set-from-list (lst &key (comp #'<))
