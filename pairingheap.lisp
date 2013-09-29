@@ -94,7 +94,7 @@
   )
 
 (defstruct priority-queue
-  (heap nil :type heap)
+  (heap (make-heap :empty t) :type heap)
   (comp)
   )
 
@@ -141,14 +141,8 @@
   "Remove the minimum element from \"queue\""
   (declare (type priority-queue queue)
            (optimize (debug 3) (speed 0)))
-  (let ((ret (heap-min (priority-queue-heap queue)))
-        )
-    (declare (type priority-queue-item ret))
-;    (values 
-     (make-priority-queue :heap 
-                          (heap-delmin (priority-queue-heap queue) 
-                                       :comp (priority-queue-comp queue))
-                          :comp (priority-queue-comp queue))
-     ;ret)
-    )
+  (make-priority-queue :heap 
+                       (heap-delmin (priority-queue-heap queue) 
+                                    :comp (priority-queue-comp queue))
+                       :comp (priority-queue-comp queue))
   )
