@@ -143,6 +143,8 @@
 
 (defun make-gate (tab d x y)
   "Shorthand for creating a gate"
+  (declare (type (simple-bit-vector 4) tab)
+           (type (integer 0) d x y))
   (make-instance 'gate :dest d :op1 x :op2 y :truth-table tab)
   )
 

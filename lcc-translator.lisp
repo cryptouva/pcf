@@ -1866,36 +1866,38 @@ number of arguments."
 (definstr labelv
   (declare (optimize (debug 3) (speed 0)))
 ;  (format t "~&labelv Targets: ~A~%" targets) 
-  (let ((not-empty (not (queue-emptyp targets)))
-        )
-    (with-slots (s-args) op
-      (if (not bss)
-          (get-target (first s-args) cnd
-            (add-instrs (append
-                         (if (not repeat) (list (make-instance 'pcf2-bc:label :str (first s-args))))
-                         (if not-empty
-                             (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
-                                   (make-not (1+ wires) (first cnd))
-                                   ;; globcnd <- globcnd + (oldglobcnd)*(~cnd)
-                                   (make-and (1+ wires) (second cnd) (1+ wires))
-                                   (make-or (+ 2 wires) wires (1+ wires))
-                                   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                   )
-                             )
-                         )
-              (let ((wires (+ wires (if not-empty 3 0)))
-                    )
-                (if (equalp (first s-args) (car (peek-queue targets)))
-                    ;; There are no other conditional assignments for this target
-                    (repeat-instr)
-                    (close-instr)
-                    ;(assert nil)
-                    )
-                )
+;  (let ((not-empty (not (queue-emptyp targets)))
+;        )
+  (with-slots (s-args) op
+    (if (not bss)
+        (get-target (first s-args) cnd
+                                        ;            (if not-empty (assert cnd))
+          (add-instrs (append
+                       (if (not repeat) (list (make-instance 'pcf2-bc:label :str (first s-args))))
+                       (if cnd ;not-empty
+                           (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
+                                 (make-not (1+ wires) (first cnd))
+                                 ;; globcnd <- globcnd + (oldglobcnd)*(~cnd)
+                                 (make-and (1+ wires) (second cnd) (1+ wires))
+                                 (make-or (+ 2 wires) wires (1+ wires))
+                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                 )
+                           )
+                       )
+            (let ((wires (+ wires (if cnd ;not-empty 
+                                      3 
+                                      0)))
+                  )
+              (if (equalp (first s-args) (car (peek-queue targets)))
+                  ;; There are no other conditional assignments for this target
+                  (repeat-instr)
+                  (close-instr)
+                                        ;(assert nil)
+                  )
               )
             )
-          (close-instr)
           )
-      )
+        (close-instr)
+        )
     )
   )

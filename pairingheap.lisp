@@ -120,7 +120,7 @@
         )
     (declare (type (or null priority-queue-item) min))
     (if min
-        (priority-queue-item-value min)
+        (the (not null) (priority-queue-item-value min))
         )
     )
   )
