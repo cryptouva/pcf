@@ -4,7 +4,9 @@
   (:use :cl 
         :dataflow 
         :pcf2-bc
-        :setmap)
+        :setmap
+        :utils)
+  (:export liveness-flow-fn)
   )
 (in-package :deadcode)
 
@@ -39,6 +41,16 @@
      )
   )
 
+(defun liveness-flow-fn (out-set bb)
+  "(out-set - kill) + gen"
+  (let ((genkill (get-gen-kill bb))
+        )
+    (set-union (first genkill)
+               (set-diff out-set
+                         (second genkill)))
+    )
+  )
+
 (defgeneric gen (op)
   (:documentation "Get the gen set for this op")
   )
@@ -51,21 +63,23 @@
   "Get the gen and kill sets for a basic block"
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
-  (let ((gen (apply #'nconc (mapcar #'gen (basic-block-ops bb)))
-          )
-        (kill (apply #'nconc (mapcar #'kill (basic-block-ops bb)))
+  (let ((gen (reduce #'(lambda (&optional x y)
+                         (set-union (aif x
+                                         x
+                                         (empty-set))
+                                    (set-from-list y)))
+                     (mapcar #'gen (basic-block-ops bb))
+                     :initial-value (empty-set)))
+        (kill (reduce #'(lambda (&optional x y)
+                         (set-union (aif x
+                                         x
+                                         (empty-set))
+                                    (set-from-list y)))
+                      (mapcar #'kill (basic-block-ops bb))
+                      :initial-value (empty-set))
           )
         )
-    (list (set-from-list gen) (set-from-list kill))
-    )
-  )
-
-(defun remove-dead-code-within-block (bb)
-  "Locally eliminate dead code"
-  (declare (type basic-block bb)
-           (optimize (debug 3) (speed 0)))
-  (let ((ops (basic-block-ops bb))
-        )
+    (list gen kill)
     )
   )
 
@@ -74,7 +88,7 @@
   (let ((gen (gen op))
         (kill (kill op))
         )
-    (set-union gen (set-difference live-in kill))
+    (set-union gen (set-diff live-in kill))
     )
   )  
 
@@ -153,7 +167,8 @@
     )
 
 (def-gen-kill copy-indir
-    :gen (loop for i from 0 to 19999 collect
+    :gen (loop for i from 0 to 500
+            collect
             i
               )
     :kill (with-slots (dest op2) op
@@ -170,4 +185,19 @@
            (loop for i from 0 to (1- op2) collect (+ op1 i))
            )
     :kill nil
+    )
+
+(def-gen-kill call
+    :gen (with-slots (newbase) op
+           (loop for i from 0 to newbase collect i))
+    :kill nil
+    )
+
+(def-gen-kill mkptr
+    :gen (with-slots (dest) op
+           (list dest)
+           )
+    :kill (with-slots (dest) op
+            (list dest)
+            )
     )

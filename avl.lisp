@@ -226,10 +226,11 @@
   "Fold the values in the tree \"tr\" using the function \"fn\".  Note:  DO NOT ASSUME ANYTHING ABOUT ORDER!!!
 
 \"fn\" should be of the form (lambda (state x) ...)"
+  (declare (optimize (debug 3) (speed 0)))
   (if (null tr)
       st
       (let* ((st-left (avl-tree-reduce fn (avl-left tr) st))
-             (st-cur (funcall fn st-left (avl-data tr)))
+             (st-cur (apply fn (list st-left (avl-data tr))))
              )
         (avl-tree-reduce fn (avl-right tr) st-cur)
         )

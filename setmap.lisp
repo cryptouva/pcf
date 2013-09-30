@@ -13,6 +13,7 @@
                      set-map
                      set-from-list
                      set-equalp
+                     set-reduce
                      map-insert
                      map-remove
                      map-find
@@ -96,6 +97,7 @@
 
 (defun set-union (set1 set2)
   "Compute the union of \"set1\" and \"set2\""
+  (declare (type avl-set set1 set2))
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
@@ -115,6 +117,8 @@
 
 (defun set-from-list (lst &key (comp #'<))
   "Create a set that contains the elements of \"lst\""
+  (declare (type list lst)
+           (type (function (t t) boolean) comp))
   (make-avl-set :tree
                 (reduce (lambda (st x)
                           (avl-tree-insert-unique x st :comp comp))
@@ -125,6 +129,7 @@
 
 (defun set-inter (set1 set2)
   "Compute the intersection of \"set1\" and \"set2\""
+  (declare (type avl-set set1 set2))
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
@@ -155,13 +160,21 @@
   `(lambda (x y) (funcall ,fn (car x) (car y)))
   )
 
-(defmacro map-empty (&key (comp '<))
-  `(make-avl-set :tree nil :comp (carcomp #',comp))
+(defun default-comp (x y)
+  (funcall (carcomp #'<) x y)
+  )
+
+(defmacro map-empty (&key comp)
+  (if comp
+      `(make-avl-set :tree nil :comp (carcomp #',comp))
+      `(make-avl-set :tree nil :comp #'default-comp)
+      )
   )
 
 (defun map-insert (x y mp)
-  "Insert \"x -> y\" into the map \"mp\""
-  (declare (optimize (debug 3) (speed 0)))
+  "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
+  (declare (optimize (debug 3) (speed 0))
+           (type avl-set mp))
   (let ((comp (avl-set-comp mp))
         )
     (make-avl-set :tree
@@ -210,7 +223,8 @@
   "Fold the map \"mp\" over the function \"fn\"
 
 \"fn\" should have the form (lambda (state key value) ...)"
-  (declare (type (function (t t t) t) fn)
+  (declare (optimize (debug 3) (speed 0) (safety 3))
+           (type (function (t t t) t) fn)
            (type avl-set mp))
   (avl-tree-reduce (lambda (st x)
                      (funcall fn st (car x) (cdr x)))
