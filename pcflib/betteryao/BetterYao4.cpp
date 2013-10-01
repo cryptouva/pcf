@@ -19,8 +19,8 @@ BetterYao4::BetterYao4(EnvParams &params) : YaoBase(params), m_ot_bit_cnt(0)
 	m_gen_inp_masks.resize(Env::node_load());
 	m_gen_inp_decom.resize(Env::node_load());
 
-	m_gen_inp_cnt = read_alice_length(Env::pcf_file());
-	m_evl_inp_cnt = read_bob_length(Env::pcf_file());
+	m_gen_inp_cnt = read_alice_length(Env::private_file());
+	m_evl_inp_cnt = read_bob_length(Env::private_file());
 
 	static byte MASK[8] = { 0xFF, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F};
 
@@ -481,13 +481,15 @@ void BetterYao4::cut_and_choose2_precomputation()
 
 				m_gcs[ix].m_st = 
 					load_pcf_file(Env::pcf_file(), m_gcs[ix].m_const_wire, m_gcs[ix].m_const_wire+1, copy_key);
+                                m_gcs[ix].m_st->alice_in_size = m_gen_inp_cnt;
+                                m_gcs[ix].m_st->bob_in_size = m_evl_inp_cnt;
 
 				set_external_state(m_gcs[ix].m_st, &m_gcs[ix]);
 				set_key_copy_function(m_gcs[ix].m_st, copy_key);
 				set_key_delete_function(m_gcs[ix].m_st, delete_key);
 				set_callback(m_gcs[ix].m_st, gen_next_gate_m);
 
-				while (m_gcs[ix].m_gen_inp_decom.size()/2 < m_gen_inp_cnt && get_next_gate(m_gcs[ix].m_st))
+				while ((m_gcs[ix].m_gen_inp_decom.size()/2 < m_gen_inp_cnt) && get_next_gate(m_gcs[ix].m_st))
 				{
 					send(m_gcs[ix]); // discard the garbled gates for now
 				}
@@ -858,6 +860,8 @@ void BetterYao4::circuit_evaluate()
 		start = MPI_Wtime();
 			m_gcs[ix].m_st = 
 				load_pcf_file(Env::pcf_file(), m_gcs[ix].m_const_wire, m_gcs[ix].m_const_wire+1, copy_key);
+                        m_gcs[ix].m_st->alice_in_size = m_gen_inp_cnt;
+                        m_gcs[ix].m_st->bob_in_size = m_evl_inp_cnt;
 	
 			set_external_state(m_gcs[ix].m_st, &m_gcs[ix]);
 			set_key_copy_function(m_gcs[ix].m_st, copy_key);
