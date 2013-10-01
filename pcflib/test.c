@@ -176,18 +176,18 @@ void setup_bob_inputs_from_hex_string(struct PCFState * st, const char * inputs)
 
 int main(int argc, char**argv)
 {
-  char line[LINE_MAX];
+  //  char line[LINE_MAX];
   struct PCFState * st;
   struct PCFGate * g;
 
-  fgets(line, LINE_MAX-1, stdin);
+  //  fgets(line, LINE_MAX-1, stdin);
 
-  assert(strlen(line) > 0);
-  st = load_pcf_file("../test.pcf2", &key0, &key1, copy_key);
+  //  assert(strlen(line) > 0);
+  st = load_pcf_file(argv[1], &key0, &key1, copy_key);
   st->delete_key = delete_key;
   st->callback = m_callback;
-  setup_alice_inputs_from_string(st, "AC000000");
-  setup_bob_inputs_from_string(st, "xy(S//NF)000000");
+  setup_alice_inputs_from_hex_string(st, "5FC83262147D140DE3DE952304"); //"AC000000");
+  setup_bob_inputs_from_hex_string(st,   "DDFDC090F019861BC5E8D37562"); //"(S//NF)abcdef");
 
   g = get_next_gate(st);
   while(g != 0)
