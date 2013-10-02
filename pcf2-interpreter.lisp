@@ -156,6 +156,9 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmacro set-state-val (state idx val)
   `(let ((st ,state))
+     (if (= ,idx 397)
+         (format *error-output* "~&HERE: ~A~%" (car (pcf2-state-iptr state)))
+         )
      (let ((newstate (make-pcf2-state :baseptr (pcf2-state-baseptr st)
                                       :iptr (pcf2-state-iptr st)
                                       :lbls (pcf2-state-lbls st)
@@ -301,9 +304,11 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmethod run-opcode ((state pcf2-state) (opcode initbase))
   (with-slots (base) opcode
-    (if *debug-output*
-        (format *error-output* "~&Setting initial base pointer: ~D~%" base)
-        )
+    (let ((*debug-output* t))
+      (if *debug-output*
+          (format *error-output* "~&Setting initial base pointer: ~D~%" base)
+          )
+      )
     (update-state (update-state state nil (+ (pcf2-state-baseptr state) base) nil nil)
                   nil nil (gethash "main" (pcf2-state-lbls state) 
                                    (gethash "MAIN" (pcf2-state-lbls state) 'fail)) nil)
@@ -311,14 +316,14 @@ The functions that operate on pcf2-state objects should treat these objects as i
   )
 
 (defmacro check-mux-cnd ()
-  '(assert (not (zerop (let ((s-val (get-state-val state 0))
-                            )
-                        (etypecase s-val
-                          (bit s-val)
-                          (input-bit (input-bit-val s-val))
-                          )
-                        )
-                      )))
+  ;; '(assert (not (zerop (let ((s-val (get-state-val state 0))
+  ;;                           )
+  ;;                       (etypecase s-val
+  ;;                         (bit s-val)
+  ;;                         (input-bit (input-bit-val s-val))
+  ;;                         )
+  ;;                       )
+  ;;                     )))
   )
 
 (defmethod run-opcode ((state pcf2-state) (opcode call))
@@ -327,6 +332,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
     (let ((newbase (+ newbase (pcf2-state-baseptr state)))
           )
       (check-mux-cnd)
+      (format *error-output* "~&New base: ~A~%" newbase)
       (if *debug-output*
           (format *error-output* "~&Calling: ~A (baseptr: ~A)~%" fname newbase)
           )
@@ -567,6 +573,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
 
 (defmethod run-opcode ((state pcf2-state) (opcode copy-indir)
                        )
+  (declare (optimize (debug 3) (speed 0)))
   (with-slots (dest op1 op2) opcode
     (let ((true-op1 (+ op1 (pcf2-state-baseptr state)))
           (true-dest (+ dest (pcf2-state-baseptr state)))

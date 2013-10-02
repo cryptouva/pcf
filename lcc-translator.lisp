@@ -465,14 +465,29 @@ The \"argbase\" parameter represents the list of arguments for the next function
   (declare (optimize (debug 3) (speed 0)))
   (let ((lbls (find-labels ops))
         )
-    (format t "s: ~A~%" (gethash "s" lbls))
+    (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000))
     (let ((rvl 
            (skew-reduce (lambda (st op) 
                           (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
                           )
                         ops
                         ;; baseinit starts at 1, so that the global mux condition is not overwritten
-                        (list nil 0 nil (make-queue) nil 0 0 nil 1 nil)
+                        (list 
+                         nil
+                         0 
+                         nil 
+                         (enqueue (cons 1000000
+                                        (make-branch-target :label "$$$END$$$"
+                                                            :cnd-wire 0
+                                                            :glob-cnd 0
+                                                            :mux-list (map-empty)
+                                                            )) (make-queue))
+                         nil 
+                         0 
+                         0 
+                         nil 
+                         1 
+                         nil)
                         )
             )
           )
@@ -642,7 +657,9 @@ number of arguments."
 (definstr jumpv
   (labels ((list-crossed-conditions (queue targ &optional (ret nil))
              (declare (optimize (debug 3) (speed 0)))
-             (if (queue-emptyp queue)
+             (if (or (queue-emptyp queue)
+                     (string= (branch-target-label (peek-queue queue)) "$$$END$$$")
+                     )
                  ret
                  (let ((ctarg (peek-queue queue))
                        (rest (dequeue queue))
@@ -674,7 +691,9 @@ number of arguments."
         (let ((targ (first targ))
               )
                                         ;        (print targets)
-          (if (queue-emptyp targets)
+          (if (or (queue-emptyp targets)
+                  (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
+                  )
               ;; If the priority queue is empty, then this jump should be unconditional
               (add-instrs (list (make-instance 'const :dest wires :op1 1)
                                 (make-instance 'branch :cnd wires :targ targ)
@@ -1416,9 +1435,10 @@ number of arguments."
   (pop-arg stack fname
     (assert (and (= 1 (length fname))
                  (typep (first fname) 'string)
-                 (queue-emptyp targets)
                  )
             )
+    ;; (assert (or (queue-emptyp targets)
+    ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
     (format t "callv ~A with newbase ~A with args: ~A~%" fname wires arglist)
     (let ((i 0)) (add-instrs 
                   (append (print
@@ -1449,7 +1469,8 @@ number of arguments."
 
 (definstr callu
   (with-slots (width) op
-    (assert (queue-emptyp targets))
+    ;; (assert (or (queue-emptyp targets)
+    ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
     (let ((width (* 8 width))
           )
       (pop-arg stack fname
@@ -1482,7 +1503,8 @@ number of arguments."
 
 (definstr calli
   (with-slots (width) op
-    (assert (queue-emptyp targets))
+    ;; (assert (or (queue-emptyp targets)
+    ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
     (let ((width (* 8 width))
           )
       (pop-arg stack fname
@@ -1517,6 +1539,10 @@ number of arguments."
   ;; We must copy the value from the stack to the very beginning of
   ;; the stack frame, which is where return values are stored (see
   ;; above).
+  (assert (or (queue-emptyp targets)
+              (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
+              )
+          )
   (with-slots (width) op
     (pop-arg stack arg
       (add-instrs (loop for j in arg for i from 0 collect
@@ -1532,6 +1558,10 @@ number of arguments."
   ;; We must copy the value from the stack to the very beginning of
   ;; the stack frame, which is where return values are stored (see
   ;; above).
+  (assert (or (queue-emptyp targets)
+              (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
+              )
+          )
   (with-slots (width) op
     (pop-arg stack arg
       (add-instrs (loop for j in arg for i from 0 collect
@@ -1716,7 +1746,9 @@ number of arguments."
   )
 
 (defmacro asgn-mux (&body body)
-  `(if (not (queue-emptyp targets))
+  ;; We need to *always* emit the muxes, so that conditional calls to
+  ;; functions will work.
+  `(if (or t (not (queue-emptyp targets)))
        (add-instrs
            (list
             (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
@@ -1749,21 +1781,21 @@ number of arguments."
          )
        (add-instrs 
            (if (not (queue-emptyp targets))
-               (append 
-                (list 
-                 (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-                 (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
-                (mux (loop for i from 0 to (1- width) collect (+ i wires))
-                     val
-                     (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
-                     (+ wires (* 2 width) 2)
-                     (+ wires (* 2 width))
-                     (+ wires (* 2 width) 1)
-                     )
-                (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
-                )
-               (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
-               )
+           (append 
+            (list 
+             (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+             (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
+            (mux (loop for i from 0 to (1- width) collect (+ i wires))
+                 val
+                 (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
+                 (+ wires (* 2 width) 2)
+                 (+ wires (* 2 width))
+                 (+ wires (* 2 width) 1)
+                 )
+            (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
+            )
+           (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
+           )
          (let ((wires (+ wires (* 2 width) 3))
                )
            ,@body
@@ -1867,7 +1899,8 @@ number of arguments."
 
 (definstr proc
   (with-slots (s-args) op
-    (assert (queue-emptyp targets))
+    (assert (or (queue-emptyp targets)
+                (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
     (let ((local-size (parse-integer (second s-args)))
           (args-size (parse-integer (third s-args)))
           )
@@ -1891,11 +1924,72 @@ number of arguments."
 
 (definstr endproc
   (assert (null stack))
-  (assert (queue-emptyp targets))
-  (add-instrs (list (make-instance 'ret :value wires))
-    (let ((wires 0)
+  (assert (or (queue-emptyp targets)
+              (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
+              )
           )
-      (close-instr)
+  (let ((cnd (peek-queue targets))
+        )
+    (add-instrs
+        (reverse
+         (map-reduce
+          (lambda (st k x)
+            (declare (type mux-item x) (ignore k))
+            (let* ((width (mux-item-width x))
+                   (tmp1 (+ wires (* 2 width)))
+                   (tmp2 (+ wires (* 2 width) 1))
+                   (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
+                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i))
+                   )
+              (append (reverse
+                       (append
+                        (list (make-instance 'copy-indir
+                                             :dest (car new-copy-wires)
+                                             :op1 (mux-item-address x)
+                                             :op2 width)
+                              )
+                        (mux 
+                         (mux-item-old-copy x)
+                         new-copy-wires;(mux-item-address x)
+                         mux-dest
+                         (mux-item-cnd-wire x)
+                         tmp1
+                         tmp2
+                         )
+                        (list
+                         (make-instance 'indir-copy 
+                                        :dest (the integer (mux-item-address x))
+                                        :op1 (car mux-dest)
+                                        :op2 width)
+                         )
+                        )
+                       )
+                      st)
+              )
+            )
+          (branch-target-mux-list cnd)
+          nil
+          )
+         )
+      (add-instrs (list (make-instance 'ret :value wires))
+        (let* ((wires 0)
+               (mtarget (peek-queue targets))
+               ;; Clear the muxes emitted for this function, we no longer require them
+               (targets (enqueue (cons 1000000
+                                  (make-branch-target
+                                   :label (branch-target-label mtarget)
+                                   :cnd-wire (branch-target-cnd-wire mtarget)
+                                   :glob-cnd (branch-target-glob-cnd mtarget)
+                                   :mux-list (map-empty)
+                                   )
+                                  )
+                                 (make-queue)
+                                 )
+                 )
+               )
+          (close-instr)
+          )
+        )
       )
     )
   )
