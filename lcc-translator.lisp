@@ -18,6 +18,7 @@
                              :priority-queue
                              :string-tokenizer
                              :common-lisp
+                             :setmap
                              #+sbcl :sb-mop #+cmu :mop)
             (:export
              parse-instruction
@@ -565,11 +566,23 @@ number of arguments."
     )
   )
 
+(defstruct branch-target
+  (label "" :type string)
+  (cnd-wire)
+  (glob-cnd)
+  (mux-list)
+  (:documentation "Information needed for emitted muxes when a branch target is reached.")
+  )
+
 (defmacro add-target (target-label cnd-value glob-cnd &body body)
   `(let ((t-idx (cdr (gethash ,target-label labels nil)))
          )
      (assert t-idx)
-     (let ((targets (enqueue (cons t-idx (list ,target-label ,cnd-value ,glob-cnd)) targets))
+     (let ((targets (enqueue (cons t-idx (make-branch-target
+                                          :label ,target-label
+                                          :cnd-wire ,cnd-value
+                                          :glob-cnd ,glob-cnd
+                                          :mux-list (map-empty))) targets))
            )
        ,@body
        )
@@ -581,12 +594,13 @@ number of arguments."
         )
     `(let ((,next-targ (peek-queue targets))
            )
-       (let ((targets (if (equalp ,target-label (car ,next-targ))
+       (declare (type (or null branch-target) ,next-targ))
+       (let ((targets (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
                           (dequeue targets)
                           targets)
                )
-             (,cnd-name (if (equalp ,target-label (car ,next-targ))
-                            (cdr ,next-targ)
+             (,cnd-name (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
+                            ,next-targ
                             nil
                             )
                )
@@ -633,8 +647,8 @@ number of arguments."
                  (let ((ctarg (peek-queue queue))
                        (rest (dequeue queue))
                        )
-                   (list-crossed-conditions rest targ (if (>= targ (cdr (gethash (car ctarg) labels)))
-                                                          (cons (cadr ctarg) ret)
+                   (list-crossed-conditions rest targ (if (>= targ (cdr (gethash (branch-target-label ctarg) labels)))
+                                                          (cons (branch-target-cnd-wire ctarg) ret)
                                                           ret))
                    )
                  )
@@ -1556,6 +1570,7 @@ number of arguments."
 ;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
     (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
+          (width (parse-integer (first s-args)))
           )
       (let ((a (gethash (first addr*) labels nil))
             )
@@ -1563,7 +1578,7 @@ number of arguments."
         (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) a wires)
         (let ((addr (if a
                         (if (equalp (car a) 'glob)
-                            (+ (cdr a) (if (second addr*) (parse-integer (second addr*)) 0))
+                            (+ (cdr a) (if (second addr*) (* 8 width (parse-integer (second addr*))) 0))
                             (second s-args)
                             );(gethash (second s-args) labels nil)
                         (second s-args)
@@ -1571,7 +1586,7 @@ number of arguments."
                 )
               )
           (add-instrs (if (equalp (car a) 'glob)
-                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (parse-integer (second addr*)) 0) (cdr a))))
+                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* 8 width (parse-integer (second addr*))) 0) (cdr a))))
                           )
 
             (push-stack stack 1 (if (equalp (car a) 'glob) 
@@ -1701,28 +1716,71 @@ number of arguments."
   )
 
 (defmacro asgn-mux (&body body)
-  `(add-instrs 
-       (if (not (queue-emptyp targets))
-           (append 
-            (list 
-             (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-             (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
-            (mux (loop for i from 0 to (1- width) collect (+ i wires))
-                 val
-                 (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
-                 (+ wires (* 2 width) 2)
-                 (+ wires (* 2 width))
-                 (+ wires (* 2 width) 1)
-                 )
-            (list (make-instance 'indir-copy :dest (first ptr) :op1 (+ width wires) :op2 width))
+  `(if (not (queue-emptyp targets))
+       (add-instrs
+           (list
+            (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+            (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
+            (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
             )
-           (list (make-instance 'indir-copy :dest (first ptr) :op1 (first val) :op2 width))
+         (let* ((mtarget (peek-queue targets))
+                (targets 
+                 (update-queue-min targets
+                                  (make-branch-target
+                                   :label (branch-target-label mtarget)
+                                   :cnd-wire (branch-target-cnd-wire mtarget)
+                                   :glob-cnd (branch-target-glob-cnd mtarget)
+                                   :mux-list (map-insert (first ptr)
+                                                         (make-mux-item :address (first ptr)
+                                                                        :width width
+                                                                        :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
+                                                                        :cnd-wire (+ wires width))
+                                                         (branch-target-mux-list mtarget)
+                                                         )
+                                   )
+                                  )
+                 )
+                )
+           (let ((wires (+ wires width 1))
+                 )
+             ,@body
+             )
            )
-     (let ((wires (+ wires (* 2 width) 3))
+         )
+       (add-instrs 
+           (if (not (queue-emptyp targets))
+               (append 
+                (list 
+                 (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+                 (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
+                (mux (loop for i from 0 to (1- width) collect (+ i wires))
+                     val
+                     (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
+                     (+ wires (* 2 width) 2)
+                     (+ wires (* 2 width))
+                     (+ wires (* 2 width) 1)
+                     )
+                (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
+                )
+               (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
+               )
+         (let ((wires (+ wires (* 2 width) 3))
+               )
+           ,@body
            )
-       ,@body
+         )
        )
-     )
+  )
+
+(defstruct mux-item
+  (address  0 :type integer)
+  (width    0 :type (integer 0))
+  (old-copy nil :type list)
+  (cnd-wire 0 :type integer)
+  (:documentation "\"address\" is the address the muxed value should
+  be placed in; \"old-copy\" is the address where the previous value
+  in that location was stored.  \"width\" is the number of locations
+  being copied.")
   )
 
 (definstr asgnu
@@ -1896,20 +1954,61 @@ number of arguments."
           (add-instrs (append
                        (if (not repeat) (list (make-instance 'pcf2-bc:label :str (first s-args))))
                        (if cnd ;not-empty
-                           (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
-                                 (make-not (1+ wires) (first cnd))
-                                 ;; globcnd <- globcnd + (oldglobcnd)*(~cnd)
-                                 (make-and (1+ wires) (second cnd) (1+ wires))
-                                 (make-or (+ 2 wires) wires (1+ wires))
-                                 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                 )
+                           (append (list (make-instance 'pcf2-bc:copy-indir :dest wires :op1 0 :op2 1)
+                                         (make-not (1+ wires) (branch-target-cnd-wire cnd))
+                                         ;; globcnd <- globcnd + (oldglobcnd)*(~cnd)
+                                         (make-and (1+ wires) (branch-target-glob-cnd cnd) (1+ wires))
+                                         (make-or (+ 2 wires) wires (1+ wires))
+                                         (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                         )
+                                   (reverse
+                                    (map-reduce
+                                     (lambda (st k x)
+                                       (declare (type mux-item x) (ignore k))
+                                       (let* ((width (mux-item-width x))
+                                              (tmp1 (+ wires (* 2 width)))
+                                              (tmp2 (+ wires (* 2 width) 1))
+                                              (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
+                                              (new-copy-wires (loop for i from wires to (+ width wires -1) collect i))
+                                              )
+                                         (append (reverse
+                                                  (append
+                                                   (list (make-instance 'copy-indir
+                                                                        :dest (car new-copy-wires)
+                                                                        :op1 (mux-item-address x)
+                                                                        :op2 width)
+                                                         )
+                                                   (mux 
+                                                    (mux-item-old-copy x)
+                                                    new-copy-wires;(mux-item-address x)
+                                                    mux-dest
+                                                    (mux-item-cnd-wire x)
+                                                    tmp1
+                                                    tmp2
+                                                    )
+                                                   (list
+                                                    (make-instance 'indir-copy 
+                                                                   :dest (the integer (mux-item-address x))
+                                                                   :op1 (car mux-dest)
+                                                                   :op2 width)
+                                                    )
+                                                   )
+                                                  )
+                                                 st)
+                                         )
+                                       )
+                                     (branch-target-mux-list cnd)
+                                     nil
+                                     )
+                                    )
+                                   )
                            )
                        )
             (let ((wires (+ wires (if cnd ;not-empty 
-                                      3 
+                                      3
                                       0)))
                   )
-              (if (equalp (first s-args) (car (peek-queue targets)))
+              (if (and (not (queue-emptyp targets)) (equalp (first s-args) (branch-target-label (peek-queue targets))))
                   ;; There are no other conditional assignments for this target
                   (repeat-instr)
                   (close-instr)

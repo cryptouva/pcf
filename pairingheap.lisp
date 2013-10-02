@@ -8,7 +8,8 @@
                      peek-queue
                      queue-emptyp
                      enqueue
-                     dequeue)
+                     dequeue
+                     update-queue-min)
             (:nicknames :priority-queue))
 (in-package :pairing-heap)
 
@@ -107,6 +108,24 @@
   (make-priority-queue :heap (make-empty-heap) :comp (lambda (x y) (funcall comp 
                                                               (priority-queue-item-priority x) 
                                                               (priority-queue-item-priority y))))
+  )
+
+(defun update-queue-min (queue newval)
+  (declare (type priority-queue queue))
+  (make-priority-queue :heap 
+                       (make-heap :min 
+                                  (make-priority-queue-item :priority
+                                                            (priority-queue-item-priority 
+                                                             (heap-min
+                                                              (priority-queue-heap queue)))
+                                                            :value newval)
+                                  :children
+                                  (heap-children
+                                   (priority-queue-heap queue))
+                                  )
+                       :comp
+                       (priority-queue-comp queue)
+                       )
   )
 
 (defun queue-emptyp (queue)
