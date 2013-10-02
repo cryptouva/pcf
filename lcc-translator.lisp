@@ -1738,6 +1738,27 @@ number of arguments."
           ;; be determined at compile time, the mux should first copy
           ;; the old value to a temporary location, then mux with the
           ;; new value, then assign to the location.
+          ;;
+          ;; Note: this is problematic, as assignments to an array may
+          ;; run into problems when the array index is computed
+          ;; according to a complex formula.  The solution should be
+          ;; to delay the creation of muxes until the label is reached
+          ;; by e.g. adding an additional field to the priority queue
+          ;; data elements, a queue of assignments that should be
+          ;; multiplexed (we need a queue to ensure that we do this in
+          ;; the right order when multiple assignments to the same
+          ;; location occur in a conditional block).  The old value
+          ;; will need to be move to some temporary location that we
+          ;; allocate here when the assignment is made, and the new
+          ;; value will be unconditionally copied to the location of
+          ;; the old value.
+          ;;
+          ;; Potential optimization: store things that should be muxed
+          ;; as a map, and do not even add to a queue.  Whatever the
+          ;; last assignment was should get muxed when the target is
+          ;; reached.  The map should include the location the old
+          ;; value was copied to and the condition wire at the time of
+          ;; the assignment.
           (asgn-mux
            (close-instr)
            )
