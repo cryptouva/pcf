@@ -110,12 +110,13 @@ only temporary and can be safely overwritten by future instructions."
              (let ((n (first st))
                    (ops (second st))
                    )
-               (list (1+ n) (append ops (list (and-chain (loop for i in ys collect x) ys tmpr) 
-                                              (adder-chain (append (loop for i from 1 to n collect 0) (butlast tmpr n)) zs zs c-in tmp1 tmp2 tmp3))))
+               (list (1+ n) (append ops 
+                                    (and-chain (loop for i in ys collect x) ys tmpr) 
+                                    (adder-chain (append (loop for i from 1 to n collect 0) (butlast tmpr n)) zs zs c-in tmp1 tmp2 tmp3)))
                )
              )
            )
-    (reduce #'shift-add xs :initial-value (list 0 nil))
+    (second (reduce #'shift-add xs :initial-value (list 0 nil)))
     )
   )
 
@@ -370,6 +371,10 @@ only temporary and can be safely overwritten by future instructions."
   )
 
 (defclass subu (two-arg-instruction)
+  ()
+  )
+
+(defclass mulu (two-arg-instruction)
   ()
   )
 
@@ -1188,6 +1193,41 @@ number of arguments."
                          (+ wires width 2) 
                          (+ wires width 3) 
                          (+ wires width 4))
+              (let ((wires (+ wires width))
+                    )
+                (close-instr)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+(definstr mulu
+  (with-slots (width) op
+    (let* ((width (* 8 width))
+           (rwires (loop for i from wires to (+ wires width -1) collect i))
+           )
+      (pop-arg stack arg1
+        (pop-arg stack arg2
+          (push-stack stack width rwires
+            (add-instrs (append
+                         (list
+                          (make-instance 'const :dest (+ wires width 1) :op1 0)
+                          )
+                         (shift-and-add-multiplier
+                          arg1
+                          arg2
+                          rwires
+                          (+ wires width 1)
+                          (+ wires width 2)
+                          (+ wires width 3)
+                          (+ wires width 4)
+                          (loop for i from (+ wires width 5) to (+ wires 5 (* 2 width) -1) collect i)
+                          )
+                         )
               (let ((wires (+ wires width))
                     )
                 (close-instr)
