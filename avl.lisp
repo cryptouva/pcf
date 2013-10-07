@@ -14,10 +14,12 @@
 (in-package :tree)
 
 (defmacro avl-height (tr)
-  `(if (null ,tr)
-       0
-       (car ,tr)
-       )
+  `(the fixnum
+     (if (null ,tr)
+         0
+         (car ,tr)
+         )
+     )
   )
 
 (defmacro avl-data (tr)
@@ -40,7 +42,7 @@
     `(let ((,_right ,right)
            (,_left ,left)
            (,_data ,data))
-       (cons (1+ (max (avl-height ,_left) (avl-height ,_right)))
+       (cons (locally (declare (optimize (safety 0))) (the fixnum (1+ (max (avl-height ,_left) (avl-height ,_right)))))
              (cons ,_data
                    (cons ,_left ,_right)))
        )
@@ -132,7 +134,8 @@
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
   "Insert a new value into an AVL if the value is not already present"
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 0) (speed 3))
+           (type function comp))
   (if (null lst)
       (avl-cons x nil nil)
       (cond
@@ -226,7 +229,8 @@
   "Fold the values in the tree \"tr\" using the function \"fn\".  Note:  DO NOT ASSUME ANYTHING ABOUT ORDER!!!
 
 \"fn\" should be of the form (lambda (state x) ...)"
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 0) (speed 3))
+           (type function fn))
   (if (null tr)
       st
       (let* ((st-left (avl-tree-reduce fn (avl-left tr) st))

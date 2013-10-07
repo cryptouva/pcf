@@ -63,20 +63,22 @@
   "Get the gen and kill sets for a basic block"
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
-  (let ((gen (reduce #'(lambda (&optional x y)
-                         (set-union (aif x
-                                         x
-                                         (empty-set))
-                                    (set-from-list y)))
-                     (mapcar #'gen (basic-block-ops bb))
-                     :initial-value (empty-set)))
-        (kill (reduce #'(lambda (&optional x y)
-                         (set-union (aif x
-                                         x
-                                         (empty-set))
-                                    (set-from-list y)))
-                      (mapcar #'kill (basic-block-ops bb))
-                      :initial-value (empty-set))
+  (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
+         (reduce #'(lambda (&optional x y)
+                     (set-union (aif x
+                                     x
+                                     (empty-set))
+                                (set-from-list y)))
+                 (mapcar #'gen (basic-block-ops bb))
+                 :initial-value (empty-set)))
+        (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
+         (reduce #'(lambda (&optional x y)
+                     (set-union (aif x
+                                     x
+                                     (empty-set))
+                                (set-from-list y)))
+                 (mapcar #'kill (basic-block-ops bb))
+                 :initial-value (empty-set))
           )
         )
     (list gen kill)
