@@ -1640,23 +1640,24 @@ number of arguments."
 ;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
     (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
-          (width (parse-integer (first s-args)))
+          ;(width (parse-integer (first s-args)))
           )
       (let ((a (gethash (first addr*) labels nil))
             )
         (declare (type (or null (cons symbol (integer 1))) a))
-        (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) a wires)
         (let ((addr (if a
                         (if (equalp (car a) 'glob)
-                            (+ (cdr a) (if (second addr*) (* 8 width (parse-integer (second addr*))) 0))
+                            ;; Do not multiply by width here.
+                            (+ (cdr a) (if (second addr*) (* 8 (parse-integer (second addr*))) 0))
                             (second s-args)
                             );(gethash (second s-args) labels nil)
                         (second s-args)
                         )
                 )
               )
+          (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
           (add-instrs (if (equalp (car a) 'glob)
-                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* 8 width (parse-integer (second addr*))) 0) (cdr a))))
+                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* 8 (parse-integer (second addr*))) 0) (cdr a))))
                           )
 
             (push-stack stack 1 (if (equalp (car a) 'glob) 
@@ -1788,60 +1789,59 @@ number of arguments."
 (defmacro asgn-mux (&body body)
   ;; We need to *always* emit the muxes, so that conditional calls to
   ;; functions will work.
-  `(if (or t (not (queue-emptyp targets)))
-       (add-instrs
-           (list
-            (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-            (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
-            (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
+  `(add-instrs
+       (list
+        (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+        (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
+        (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
+        )
+     (let* ((mtarget (peek-queue targets))
+            (targets 
+             (update-queue-min targets
+                               (make-branch-target
+                                :label (branch-target-label mtarget)
+                                :cnd-wire (branch-target-cnd-wire mtarget)
+                                :glob-cnd (branch-target-glob-cnd mtarget)
+                                :mux-list (map-insert (first ptr)
+                                                      (make-mux-item :address (first ptr)
+                                                                     :width width
+                                                                     :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
+                                                                     :cnd-wire (+ wires width))
+                                                      (branch-target-mux-list mtarget)
+                                                      )
+                                )
+                               )
+              )
             )
-         (let* ((mtarget (peek-queue targets))
-                (targets 
-                 (update-queue-min targets
-                                  (make-branch-target
-                                   :label (branch-target-label mtarget)
-                                   :cnd-wire (branch-target-cnd-wire mtarget)
-                                   :glob-cnd (branch-target-glob-cnd mtarget)
-                                   :mux-list (map-insert (first ptr)
-                                                         (make-mux-item :address (first ptr)
-                                                                        :width width
-                                                                        :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
-                                                                        :cnd-wire (+ wires width))
-                                                         (branch-target-mux-list mtarget)
-                                                         )
-                                   )
-                                  )
-                 )
-                )
-           (let ((wires (+ wires width 1))
-                 )
-             ,@body
+       (let ((wires (+ wires width 1))
              )
-           )
-         )
-       (add-instrs 
-           (if (not (queue-emptyp targets))
-           (append 
-            (list 
-             (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-             (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
-            (mux (loop for i from 0 to (1- width) collect (+ i wires))
-                 val
-                 (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
-                 (+ wires (* 2 width) 2)
-                 (+ wires (* 2 width))
-                 (+ wires (* 2 width) 1)
-                 )
-            (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
-            )
-           (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
-           )
-         (let ((wires (+ wires (* 2 width) 3))
-               )
-           ,@body
-           )
+         ,@body
          )
        )
+     )
+  ;; (add-instrs 
+  ;;          (if (not (queue-emptyp targets))
+  ;;          (append 
+  ;;           (list 
+  ;;            (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+  ;;            (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
+  ;;           (mux (loop for i from 0 to (1- width) collect (+ i wires))
+  ;;                val
+  ;;                (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
+  ;;                (+ wires (* 2 width) 2)
+  ;;                (+ wires (* 2 width))
+  ;;                (+ wires (* 2 width) 1)
+  ;;                )
+  ;;           (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
+  ;;           )
+  ;;          (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
+  ;;          )
+  ;;        (let ((wires (+ wires (* 2 width) 3))
+  ;;              )
+  ;;          ,@body
+  ;;          )
+  ;;        )
+  ;;)
   )
 
 (defstruct mux-item
