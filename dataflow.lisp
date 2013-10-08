@@ -6,6 +6,7 @@
 (defpackage :dataflow
   (:use :cl :pcf2-bc :setmap :utils)
   (:export make-cfg
+           map-cfg
            ops-from-cfg
            get-lbls-in-order
            basic-block
@@ -31,7 +32,7 @@
               )
              )
   (id)
-  (ops)
+  (ops nil :type list)
   (preds)
   (succs)
   (:documentation "This represents a basic block in the control flow graph.")
@@ -161,10 +162,12 @@
 (defun make-cfg (ops)
   "Return a control-flow graph from a list of PCF ops.  This is a map
 of basic block IDs to basic blocks."
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 3) (speed 0))
+           (type list ops))
   (let ((cfg (reduce #'(lambda (x y)
                          (declare (optimize (debug 3) (speed 0))
-                                  (type instruction y))
+                                  (type instruction y)
+                                  (type list x))
                          (apply #'find-basic-blocks (cons y x))
                          )
                      ops :initial-value (list (map-empty :comp string<) (make-basic-block) ""))
@@ -181,7 +184,8 @@ of basic block IDs to basic blocks."
   )
 
 (defun get-lbls-in-order (ops res &optional (c ""))
-  (declare (optimize (debug 3) (speed 0)))
+  (declare (optimize (debug 3) (speed 0))
+           (type list res))
   (if (null ops)
       (reverse res)
       (let ((str (typecase
@@ -226,6 +230,23 @@ of basic block IDs to basic blocks."
     (flatten-ops lbls-in-order)
     )
   )
+
+(defun map-cfg (cfg fn)
+  "Change the CFG according to \"fn\", which rewrites the operations in this cfg node"
+  (declare (type (function (string list) list) fn)
+           (type avl-set cfg))
+  (map-map #'(lambda (k bb)
+               (declare (type string k)
+                        (type basic-block bb))
+               (make-basic-block :id k
+                                 :ops (funcall fn k
+                                               (basic-block-ops bb))
+                                 :preds (basic-block-preds bb)
+                                 :succs (basic-block-succs bb))
+               )
+           cfg)
+  )
+
 
 (defun flow-backwards (join-fn flow-fn cfg out-sets empty-set)
   "Perform a backwards dataflow analysis i.e.:

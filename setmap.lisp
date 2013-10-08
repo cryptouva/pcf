@@ -214,7 +214,8 @@
            (type avl-set mp))
   (make-avl-set :tree
                 (avl-tree-map (lambda (x)
-                                (funcall fn (car x) (cdr x)))
+                                (cons (car x)
+                                      (funcall fn (car x) (cdr x))))
                               (avl-set-tree mp))
                 :comp (avl-set-comp mp))
   )

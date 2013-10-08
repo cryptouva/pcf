@@ -6,9 +6,43 @@
         :pcf2-bc
         :setmap
         :utils)
-  (:export liveness-flow-fn)
+  (:export liveness-flow-fn
+           remove-dead-ops)
   )
 (in-package :deadcode)
+
+(defun remove-dead-ops (ops)
+  "Use the dead code elimination framework to remove dead variables from the CFG"
+  (declare (optimize (debug 3) (speed 0)))
+  (let* ((cfg (dataflow:make-cfg ops))
+         (ops* (dataflow:flow-backwards #'setmap:set-union #'liveness-flow-fn cfg (setmap:map-empty :comp string<) (setmap:empty-set)))
+         (lbls-in-order (dataflow:get-lbls-in-order ops nil))
+         )
+    ;; For each CFG block, rewrite the block without the dead operations
+    (dataflow:ops-from-cfg 
+     (dataflow:map-cfg cfg (lambda (id bbops)
+                             (let ((live-set (cdr (map-find id ops*)))
+                                   )
+                               (mapcan (lambda (op)
+                                         (typecase op
+                                           ((or copy copy-indir two-op)
+                                            (with-slots (dest) op
+                                              (if (set-member dest live-set)
+                                                  (list op)
+                                                  )
+                                              )
+                                            )
+                                           (otherwise (list op))
+                                           )
+                                         )
+                                       bbops)
+                               )
+                             )
+                       )
+     lbls-in-order
+     )
+    )
+  )
 
 (defstruct deadcode-state
   (in-sets)
@@ -169,7 +203,7 @@
     )
 
 (def-gen-kill copy-indir
-    :gen (loop for i from 0 to 500
+    :gen (loop for i from 0 to 5000
             collect
             i
               )
