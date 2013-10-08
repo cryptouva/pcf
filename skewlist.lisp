@@ -11,7 +11,8 @@
                      skew-reduce
                      skew-reverse
                      skew-append
-                     skew-list)
+                     skew-list
+                     list-skew)
             )
 (in-package :skew-list)
 
@@ -137,6 +138,13 @@ of the trees if the first tree has more than one element."
   (if (null lst)
       nil
       (skew-cons (first lst) (skew-list (rest lst)))
+      )
+  )
+
+(defun list-skew (lst)
+  (if (null lst)
+      nil
+      (cons (skew-first lst) (list-skew (skew-rest lst)))
       )
   )
 

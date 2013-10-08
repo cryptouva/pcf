@@ -16,7 +16,9 @@
                      save-pcf-ops
                      load-pcf-ops
                      pcf-simulate
-                     test-get-ops-from-cfg))
+                     test-get-ops-from-cfg)
+            (:import-from :lcc-bc read-instructions)
+            )
 (in-package :lccyao-main)
 
 (defun pcf-compile (fname)

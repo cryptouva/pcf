@@ -19,14 +19,11 @@
                              :string-tokenizer
                              :common-lisp
                              :setmap
+                             :lcc-bc
                              #+sbcl :sb-mop #+cmu :mop)
             (:export
-             parse-instruction
-             read-instructions
              exec-instructions)
-            (:shadow
-             export
-             import))
+            (:shadowing-import-from :lcc-bc export import))
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
@@ -138,277 +135,6 @@ only temporary and can be safely overwritten by future instructions."
 
 (defun alloc-wires (wires n)
   (cons (+ n (first wires)) wires)
-  )
-
-(defclass lcc-instruction ()
-    ()
-    (:documentation "Base class for all LCC instructions.")
-    )
-
-(defclass code (lcc-instruction)
-  ()
-  )
-
-(defclass bss (lcc-instruction)
-  ()
-  )
-
-(defclass static-arg-instruction (lcc-instruction)
-  ((s-args :initarg :s-args))
-  (:documentation "The base class of instructions that have static arguments specified in the bytecode.  These produce values of the specified width.")
-  )
-
-(defclass align (static-arg-instruction)
-  ()
-  )
-
-(defclass skip (static-arg-instruction)
-  ()
-  )
-
-(defclass labelv (static-arg-instruction)
-  ()
-  )
-
-(defclass export (static-arg-instruction)
-  ()
-  )
-
-(defclass proc (static-arg-instruction)
-  ()
-  )
-
-(defclass endproc (static-arg-instruction)
-  ()
-  )
-
-(defclass import (static-arg-instruction)
-  ()
-  )
-
-(defclass addrlp (static-arg-instruction)
-  ()
-  )
-
-(defclass addrfp (static-arg-instruction)
-  ()
-  )
-
-(defclass addrgp (static-arg-instruction)
-  ()
-  )
-
-(defclass indirp (static-arg-instruction)
-  ()
-  )
-
-(defclass asgnp (static-arg-instruction)
-  ()
-  )
-
-(defclass addp (two-arg-instruction)
-  ()
-  )
-
-(defclass argp (one-arg-instruction)
-  ()
-  )
-
-(defclass lshu (two-arg-instruction)
-  ()
-  )
-
-(defclass rshu (two-arg-instruction)
-  ()
-  )
-
-(defclass rshi (two-arg-instruction)
-  ()
-  )
-
-(defclass boru (two-arg-instruction)
-  ()
-  )
-
-(defclass bxoru (two-arg-instruction)
-  ()
-  )
-
-(defclass cnsti (static-arg-instruction)
-  ()
-  )
-
-(defclass cnstu (static-arg-instruction)
-  ()
-  )
-
-(defclass one-stack-one-static-arg-instruction (lcc-instruction)
-  ((s-args :initarg :s-args)
-   )
-  (:documentation "The base class of instructions that pop one argument from the stack and have one static argument instruction.  The \"CV*\" instructions are in this class.")
-  )
-
-(defclass CVUI (one-stack-one-static-arg-instruction)
-  ()
-  )
-
-(defclass CVIU (one-stack-one-static-arg-instruction)
-  ()
-  )
-
-(defclass stack-arg-instruction (lcc-instruction)
-  ((width :initarg :width))
-  (:documentation "The base class of instructions that take arguments and return values.  The \"width\" member specifies the width of the return value")
-  )
-
-(defclass one-arg-instruction (stack-arg-instruction)
-  ()
-  (:documentation "The base class of instructions that pop one argument off the stack.")
-  )
-
-(defclass cnd-jump-instruction (static-arg-instruction)
-  ()
-  (:documentation "The base class of instructions that cause conditional branches.")
-  )
-
-(defclass jump-instruction (cnd-jump-instruction)
-  ()
-  (:documentation "This class is needed for technical reasons in the routine that reads LCC bytecode")
-  )
-
-(defclass jumpv (jump-instruction)
-  ()
-  (:documentation "This is a conditional branch instruction because it might occur when the targets queue is not empty.  In such a case, this is a conditional branch whose condition is the current mux condition wire.  This is a template for emitting code for this instruction, although it would be better to not emit muxes all over the place like that.")
-  )
-
-(defclass cmp-jump-instruction (cnd-jump-instruction)
-  ((width :initarg :width))
-  )
-
-(defclass ltu (cmp-jump-instruction)
-  ()
-  )
-
-(defclass leu (cmp-jump-instruction)
-  ()
-  )
-
-(defclass gtu (cmp-jump-instruction)
-  ()
-  )
-
-(defclass geu (cmp-jump-instruction)
-  ()
-  )
-
-(defclass neu (cmp-jump-instruction)
-  ()
-  )
-
-(defclass equ (cmp-jump-instruction)
-  ()
-  )
-
-(defclass callv (lcc-instruction)
-  ()
-  )
-
-(defclass callu (one-arg-instruction)
-  ()
-  )
-
-(defclass calli (one-arg-instruction)
-  ()
-  )
-
-(defclass reti (one-arg-instruction)
-  ()
-  )
-
-(defclass retu (one-arg-instruction)
-  ()
-  )
-
-(defclass argu (one-arg-instruction)
-  ()
-  )
-
-(defclass indiru (one-arg-instruction)
-  ()
-  )
-
-(defclass indiri (one-arg-instruction)
-  ()
-  )
-
-(defclass two-arg-instruction (stack-arg-instruction)
-  ()
-  (:documentation "The base class of instructions that pop two arguments off the stack.")
-  )
-
-(defclass asgnu (two-arg-instruction)
-  ()
-  )
-
-(defclass asgni (two-arg-instruction)
-  ()
-  )
-
-(defclass bandu (two-arg-instruction)
-  ()
-  )
-
-(defclass bandi (two-arg-instruction)
-  ()
-  )
-
-(defclass addu (two-arg-instruction)
-  ()
-  )
-
-(defclass addi (two-arg-instruction)
-  ()
-  )
-
-(defclass subu (two-arg-instruction)
-  ()
-  )
-
-(defclass mulu (two-arg-instruction)
-  ()
-  )
-
-(defun parse-instruction (ln)
-  "Parse an LCC bytecode instruction from a string"
-  (let* ((tokens (tokenize ln))
-         (op (intern (map 'string #'char-upcase (first tokens)) :lcc-translator))
-         (cls (find-class op))
-         (scls (class-direct-superclasses cls))
-         )
-    (assert (= (length scls) 1))
-    (apply #'make-instance (cons cls 
-                                 (ecase (class-name (car scls))
-                                   ((one-arg-instruction two-arg-instruction) (list ':width (parse-integer (second tokens))))
-                                   (static-arg-instruction (list ':s-args (rest tokens)))
-                                   (cmp-jump-instruction (list ':width (parse-integer (second tokens)) ':s-args (cddr tokens)))
-                                   (jump-instruction (list ':s-args (rest tokens)))
-                                   (one-stack-one-static-arg-instruction (list ':s-args (rest tokens)))
-                                   (lcc-instruction nil)
-                                   )
-                                 )
-           )
-    )
-  )
-
-(defun read-instructions (stream &optional (lst nil))
-  "Load LCC bytecode instructions into a skew-binary list.  We use a skew-binary list here because it allows us to conveniently index instructions that we read, which is useful for translating conditional jump instructions."
-  (let ((ln (read-line stream nil))
-        )
-    (if ln
-        (read-instructions stream (skew-cons (parse-instruction ln) lst))
-        (skew-reverse lst)
-        )
-    )
   )
 
 (defgeneric add-label (op idx labs bss base)
@@ -633,13 +359,75 @@ number of arguments."
 
 (defmacro branch-case (target-label forward-body backward-body)
   (let ((t-idx (gensym))
+        (cnd-sym (gensym))
         )
     `(let ((,t-idx (cdr (gethash ,target-label labels nil)))
            )
        (assert ,t-idx)
        (if (>= ,t-idx icnt)
            ,forward-body
-           ,backward-body
+           (add-instrs (append
+                        (reverse
+                         (map-reduce
+                          (lambda (st k x)
+                            (declare (type mux-item x) (ignore k))
+                            (let* ((width (mux-item-width x))
+                                   (tmp1 (+ wires (* 2 width)))
+                                   (tmp2 (+ wires (* 2 width) 1))
+                                   (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
+                                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i))
+                                   )
+                              (append (reverse
+                                       (append
+                                        (list (make-instance 'copy-indir
+                                                             :dest (car new-copy-wires)
+                                                             :op1 (mux-item-address x)
+                                                             :op2 width)
+                                              )
+                                        (mux 
+                                         (mux-item-old-copy x)
+                                         new-copy-wires;(mux-item-address x)
+                                         mux-dest
+                                         (mux-item-cnd-wire x)
+                                         tmp1
+                                         tmp2
+                                         )
+                                        (list
+                                         (make-instance 'indir-copy 
+                                                        :dest (the integer (mux-item-address x))
+                                                        :op1 (car mux-dest)
+                                                        :op2 width)
+                                         )
+                                        )
+                                       )
+                                      st)
+                              )
+                            )
+                          (let ((,cnd-sym (peek-queue targets))
+                                )
+                            (branch-target-mux-list ,cnd-sym)
+                            )
+                          nil
+                          )
+                         )
+                        )
+             (let ((targets 
+                    (let ((,cnd-sym (peek-queue targets))
+                          )
+                      (update-queue-min targets
+                                        (make-branch-target
+                                         :label (branch-target-label ,cnd-sym)
+                                         :cnd-wire (branch-target-cnd-wire ,cnd-sym)
+                                         :glob-cnd (branch-target-glob-cnd ,cnd-sym)
+                                         :mux-list (map-empty)
+                                         )
+                                        )
+                      )
+                     )
+                   )
+               ,backward-body
+               )
+             )
            )
        )
     )
@@ -708,7 +496,7 @@ number of arguments."
                   (close-instr)
                   )
                 )
-              (branch-case targ
+              (branch-case targ 
                            (let ((crossed-conds (list-crossed-conditions targets (cdr (gethash targ labels))))
                                  )
                              (add-instrs
@@ -757,34 +545,38 @@ number of arguments."
                        (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           (add-instrs
-                               (list 
-                                (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) wires (1+ wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ wires (1+ wires)
-                               (let ((wires (+ 3 wires))
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ 
+                           (let ((wires cnd-wires))
+                             (add-instrs
+                                 (list 
+                                  (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) wires (1+ wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ wires (1+ wires)
+                                 (let ((wires (+ 3 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                          (make-not (1+ wires) wires)
+                                          (make-instance 'branch :cnd (1+ wires) :targ targ)
+                                          )
+                               (let ((wires (+ 2 wires))
                                      )
                                  (close-instr)
                                  )
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        (make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd (1+ wires) :targ targ)
-                                        )
-                             (let ((wires (+ 2 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
@@ -808,34 +600,38 @@ number of arguments."
                        (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           (add-instrs
-                               (list 
-                                (make-not (1+ wires) wires)
-                                (make-instance 'copy-indir :dest (+ 3 wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ (+ 1 wires) (+ 3 wires)
-                               (let ((wires (+ 4 wires))
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ 
+                           (let ((wires cnd-wires))
+                             (add-instrs
+                                 (list 
+                                  (make-not (1+ wires) wires)
+                                  (make-instance 'copy-indir :dest (+ 3 wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ (+ 1 wires) (+ 3 wires)
+                                 (let ((wires (+ 4 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                          (make-instance 'branch :cnd wires :targ targ)
+                                          )
+                               (let ((wires (+ 1 wires))
                                      )
                                  (close-instr)
                                  )
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        (make-instance 'branch :cnd wires :targ targ)
-                                        )
-                             (let ((wires (+ 1 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
@@ -881,16 +677,31 @@ number of arguments."
                        (unsigned-less-than arg2 arg1 wires (1+ wires) (+ 2 wires) (+ 3 wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           (add-instrs
-                               (list 
-                                (make-not (+ 3 wires) wires)
-                                (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ (+ 3 wires) (1+ wires)
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ
+                           (let ((wires cnd-wires))
+                             (add-instrs
+                                 (list 
+                                  (make-not (+ 3 wires) wires)
+                                  (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ (+ 3 wires) (1+ wires)
+                                 (let ((wires (+ 4 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                        ;(make-not (1+ wires) wires)
+                                          (make-instance 'branch :cnd wires :targ targ)
+                                          )
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -898,18 +709,7 @@ number of arguments."
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        ;(make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd wires :targ targ)
-                                        )
-                             (let ((wires (+ 4 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
@@ -933,18 +733,33 @@ number of arguments."
                        ;(list (make-not wires wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           ;; (print targ)
-                           ;; (print (gethash targ labels))
-                           ;; (print icnt)
-                           (add-instrs
-                               (list 
-                                (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) wires (1+ wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ wires (1+ wires)
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ
+                           (let ((wires cnd-wires))
+                             ;; (print targ)
+                             ;; (print (gethash targ labels))
+                             ;; (print icnt)
+                             (add-instrs
+                                 (list 
+                                  (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) wires (1+ wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ wires (1+ wires)
+                                 (let ((wires (+ 4 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                          (make-not (1+ wires) wires)
+                                          (make-instance 'branch :cnd (1+ wires) :targ targ)
+                                          )
                                (let ((wires (+ 4 wires))
                                      )
                                  (close-instr)
@@ -952,18 +767,7 @@ number of arguments."
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        (make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd (1+ wires) :targ targ)
-                                        )
-                             (let ((wires (+ 4 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
@@ -987,38 +791,42 @@ number of arguments."
                        ;(list (make-not wires wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           ;; (print targ)
-                           ;; (print (gethash targ labels))
-                           ;; (print icnt)
-                           (add-instrs
-                               (list 
-                                (make-not (+ 3 wires) wires)
-                                (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ (+ 3 wires) (1+ wires)
-                               (let ((wires (+ 4 wires))
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ
+                           (let ((wires cnd-wires))
+                             ;; (print targ)
+                             ;; (print (gethash targ labels))
+                             ;; (print icnt)
+                             (add-instrs
+                                 (list 
+                                  (make-not (+ 3 wires) wires)
+                                  (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ (+ 3 wires) (1+ wires)
+                                 (let ((wires (+ 4 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                        ;(make-not (1+ wires) wires)
+                                          (make-instance 'branch :cnd wires :targ targ)
+                                          )
+                               (let ((wires (+ 1 wires))
                                      )
                                  (close-instr)
                                  )
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        ;(make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd wires :targ targ)
-                                        )
-                             (let ((wires (+ 1 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
@@ -1042,38 +850,43 @@ number of arguments."
                        ;(list (make-not wires wires))
                                         ;
                        )
-            (branch-case targ
-                         (progn
-                           ;; (print targ)
-                           ;; (print (gethash targ labels))
-                           ;; (print icnt)
-                           (add-instrs
-                               (list 
-                                ;(make-not wires wires)
-                                (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-                                (make-and (+ 2 wires) wires (1+ wires))
-                                (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                )
-                             (add-target targ wires (1+ wires)
-                               (let ((wires (+ 3 wires))
+
+            (let ((wires (1+ wires))
+                  (cnd-wires wires)
+                  )
+              (branch-case targ
+                           (let ((wires cnd-wires))
+                             ;; (print targ)
+                             ;; (print (gethash targ labels))
+                             ;; (print icnt)
+                             (add-instrs
+                                 (list 
+                                        ;(make-not wires wires)
+                                  (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
+                                  (make-and (+ 2 wires) wires (1+ wires))
+                                  (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+                                  )
+                               (add-target targ wires (1+ wires)
+                                 (let ((wires (+ 3 wires))
+                                       )
+                                   (close-instr)
+                                   )
+                                 )
+                               )
+                             )
+                           (let ((wires cnd-wires))
+                             (add-instrs (list 
+                                          (make-not (1+ wires) wires)
+                                          (make-instance 'branch :cnd (1+ wires) :targ targ)
+                                          )
+                               (let ((wires (+ 2 wires))
                                      )
                                  (close-instr)
                                  )
                                )
                              )
                            )
-                         (progn
-                           (add-instrs (list 
-                                        (make-not (1+ wires) wires)
-                                        (make-instance 'branch :cnd (1+ wires) :targ targ)
-                                        )
-                             (let ((wires (+ 2 wires))
-                                   )
-                               (close-instr)
-                               )
-                             )
-                           )
-                         )
+              )
             )
           )
         )
