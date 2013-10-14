@@ -30,8 +30,6 @@
 (defun lcc-const-flow-fn (in-set in-stack valmap bb)
   (let ((genkill (get-gen-kill bb in-stack valmap))
         )
-    (print bb)
-    (print genkill)
     (list (third genkill)
           (set-union (first genkill)
                      (set-diff in-set
