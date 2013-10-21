@@ -4,6 +4,7 @@
                      :common-lisp
                      #+sbcl :sb-mop #+cmu :mop)
             (:export
+             width
              parse-instruction
              read-instructions
              lcc-instruction

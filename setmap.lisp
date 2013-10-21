@@ -21,7 +21,8 @@
                      map-reduce
                      map-empty
                      empty-set
-                     avl-set)
+                     avl-set
+                     alist->map)
             )
 (in-package :setmap)
 
@@ -231,4 +232,19 @@
                      (funcall fn st (car x) (cdr x)))
                    (avl-set-tree mp)
                    st)
+  )
+
+(defun alist->map (alist &key (comp (carcomp #'eql)))
+  "Convert an associative list to a map.  Note that the default
+comparison operation is eql, which is the default for associative
+lists."
+  (labels ((make-map (lst &optional (ret (make-avl-set :tree nil :comp (carcomp comp))))
+             (if lst
+                 (make-map (rest lst) (map-insert (caar lst) (cdar lst) ret))
+                 ret
+                 )
+             )
+           )
+    (make-map alist)
+    )
   )

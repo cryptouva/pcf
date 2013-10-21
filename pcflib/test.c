@@ -186,8 +186,8 @@ int main(int argc, char**argv)
   st = load_pcf_file(argv[1], &key0, &key1, copy_key);
   st->delete_key = delete_key;
   st->callback = m_callback;
-  setup_alice_inputs_from_hex_string(st, "5FC83262147D140DE3DE952304"); //"AC000000");
-  setup_bob_inputs_from_hex_string(st,   "DDFDC090F019861BC5E8D37562"); //"(S//NF)abcdef");
+  setup_alice_inputs_from_hex_string(st, "00000000000000000000000000");//"5FC83262147D140DE3DE952304"); //"AC000000");
+  setup_bob_inputs_from_string(st, "S--ROCKYBEACH");  //"DDFDC090F019861BC5E8D37562"); //"(S//NF)abcdef");
 
   g = get_next_gate(st);
   while(g != 0)

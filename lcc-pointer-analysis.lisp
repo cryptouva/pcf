@@ -84,3 +84,34 @@
                 )
     )
   )
+
+(defgeneric constleftl (op)
+  )
+
+(defgeneric depleftl (op ptrs)
+  )
+
+(defgeneric constrightl (op)
+  )
+
+(defgeneric deprightl (op ptrs)
+  )
+
+(defmacro def-left-right (type &key constleftl depleftl constrightl deprightl)
+  `(progn
+     (defmethod constleftl ((op ,type))
+       (the list ,constleftl)
+       )
+     (defmethod depleftl ((op ,type) ptrs)
+       (the list ,depleftl)
+       )
+     (defmethod constrightl ((op ,type))
+       (the list ,constrightl)
+       )
+     (defmethod deprightl ((op ,type) ptrs)
+       (the list ,deprightl)
+       )
+     )
+  )
+
+(def-left-right lcc-instruction)
