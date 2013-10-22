@@ -1625,7 +1625,13 @@ number of arguments."
            assignments that occur outside of conditional branches, to
            properly support conditional function calls.  Currently
            this just does the assignment unconditionally, which
-           results in side effects that are incorrect.")
+           results in side effects that are incorrect.
+             
+           Fix: Just check the type of pointer on the top of the
+           stack!  In other words, we only really need to know what
+           sort of pointer we have there.  This is a very simple
+           dataflow framework: L + L = L, L + G = G, and then all we
+           are golden.")
              `(add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
              )

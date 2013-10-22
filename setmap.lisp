@@ -22,7 +22,9 @@
                      map-empty
                      empty-set
                      avl-set
-                     alist->map)
+                     alist->map
+                     set-filter
+                     list-from-set)
             )
 (in-package :setmap)
 
@@ -128,6 +130,13 @@
                 )
   )
 
+(defun list-from-set (st)
+  (set-reduce (lambda (st x)
+                (cons x st)
+                )
+              st nil)
+  )
+
 (defun set-inter (set1 set2)
   "Compute the intersection of \"set1\" and \"set2\""
   (declare (type avl-set set1 set2))
@@ -155,6 +164,19 @@
 (defun set-reduce (fn st state)
   "Fold \"st\" over \"fn\""
   (avl-tree-reduce fn (avl-set-tree st) state)
+  )
+
+(defun set-filter (fn st)
+  "Filter \"st\" to produce the subset of all elements for which \"fn\" is true"
+  (declare (optimize (debug 3) (speed 0)))
+  (set-reduce (lambda (s x)
+                (if (funcall fn x)
+                    (set-insert s x)
+                    s)
+                )
+              st 
+              (make-avl-set :tree nil :comp (avl-set-comp st))
+              )
   )
 
 (defmacro carcomp (fn)
