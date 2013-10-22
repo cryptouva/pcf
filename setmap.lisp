@@ -131,6 +131,7 @@
   )
 
 (defun list-from-set (st)
+  (declare (optimize (debug 3) (speed 0)))
   (set-reduce (lambda (st x)
                 (cons x st)
                 )

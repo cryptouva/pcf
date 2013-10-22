@@ -38,17 +38,19 @@
         )
     (setmap:map-map (lambda (k v)
                       (declare (ignore k))
-                      (lcc-dataflow:flow-forwards #'ptr-join-fn 
-                                                  #'ptr-flow-fn
-                                                  (lcc-dataflow:make-cfg-single-ops v)
-                                                  (setmap:map-empty :comp string<) 
-                                                  (setmap:map-empty :comp string<) 
-                                                  (setmap:map-empty :comp string<) 
-                                                  (cons 
-                                                   (empty-set :comp ptrcomp)
-                                                   (empty-set :comp ptrcomp)
-                                                   )
-                                                  )
+                      (multiple-value-bind (ptrs stack) (lcc-dataflow:flow-forwards #'ptr-join-fn 
+                                                                                    #'ptr-flow-fn
+                                                                                    (lcc-dataflow:make-cfg-single-ops v)
+                                                                                    (setmap:map-empty :comp string<) 
+                                                                                    (setmap:map-empty :comp string<) 
+                                                                                    (setmap:map-empty :comp string<) 
+                                                                                    (cons 
+                                                                                     (empty-set :comp ptrcomp)
+                                                                                     (empty-set :comp ptrcomp)
+                                                                                     )
+                                                                                    )
+                        (cons ptrs stack)
+                        )
                                                    ;(setmap:set-from-list (loop for i from 0 to 8 collect (* 4 i))))
                       )
                     funs)
@@ -63,8 +65,8 @@
   )
 
 (defun ptr-flow-fn (in-set in-stack valmap bb &optional (lsize 8))
-  (print (basic-block-ops bb))
-  (format *error-output* "~&~A" in-stack)
+;  (print (basic-block-ops bb))
+;  (format *error-output* "~&~A" in-stack)
   (if (zerop (length (basic-block-ops bb)))
       (list in-stack (cons (empty-set :comp ptrcomp) (empty-set :comp ptrcomp)))
       (progn
@@ -84,8 +86,9 @@
                                      (set-from-list (car (gen (first (basic-block-ops bb)) in-stack must-in lsize)) :comp #'ptrcomp)
                                      )
                   )
-                (stck-out (second (gen (first (basic-block-ops bb)) in-stack must-in lsize)))
+                (stck-out (stck (first (basic-block-ops bb)) may-in in-stack))
                 )
+            ;(print stck-out)
             (list stck-out (cons may-out must-out) valmap)
             )
           )
@@ -112,7 +115,7 @@
                   )
                  )
                 ) 
-               ,stck)
+               (stck op ptrs stack))
          )
        )
 
@@ -131,7 +134,7 @@
              )
             )
            )
-          ,stck)
+          (stck op ptrs stack))
          )
        )
      )
@@ -146,11 +149,11 @@
     )
 
 (def-gen-kill addrgp
-    :stck (cons 'glob stack)
+    :stck (cons glob stack)
     )
 
 (def-gen-kill addrfp
-    :stck (progn  (cons 'args stack))
+    :stck (progn  (cons args stack))
     )
 
 (def-gen-kill addrlp
@@ -162,8 +165,8 @@
 (def-gen-kill indirp
     :stck (locally 
               (declare (optimize (debug 3) (speed 0)))
-            (if (eql (first stack) 'args)
-                (cons 'glob (cdr stack))
+            (if (eql (first stack) args)
+                (cons glob (cdr stack))
                 (let ((st (list-from-set (set-filter (lambda (x)
                                                        (equalp (first stack) (car x))
                                                        )
@@ -222,15 +225,15 @@
     )
 
 (defun ptrcomp (x y)
-  (declare (type (cons (or symbol (integer 0))
-                       (or symbol (integer 0)))
+  (declare (type (cons (or symbol integer)
+                       (or symbol integer))
                  x y))
   (cond
     ((equalp (car x) (car y))
      (cond
        ((equalp (cdr x) (cdr y)) nil)
-       ((and (equalp (cdr x) 'glob)
-             (equalp (cdr y) 'args)) t)
+       ((and (equalp (cdr x) glob)
+             (equalp (cdr y) args)) t)
        ((typep (cdr x) 'symbol) t)
        ((typep (cdr y) 'symbol) nil)
        (t (< (cdr x) (cdr y)))
@@ -266,7 +269,7 @@
                 (set-union st
                            (set-from-list 
                             (cons
-                             (cons x 'glob)
+                             (cons x glob)
                              (loop for i from 0 to maxaddr collect 
                                   (cons x
                                         i
@@ -342,7 +345,10 @@
 (defgeneric deprightl (op ptrs stack)
   )
 
-(defmacro def-left-right (type &key constleftl depleftl constrightl deprightl)
+(defgeneric stck (op ptrs stack)
+  )
+
+(defmacro def-left-right (type &key constleftl depleftl constrightl deprightl stck)
   `(locally
        (declare (optimize (debug 3) (speed 0)))
      (defmethod constleftl ((op ,type) stack)
@@ -357,6 +363,11 @@
      (defmethod deprightl ((op ,type) ptrs stack)
        (the list ,deprightl)
        )
+     (defmethod stck ((op ,type) ptrs stack)
+       (the list ,(aif stck
+                       it
+                       'stack))
+       )
      )
   )
 
@@ -364,92 +375,119 @@
     )
 
 (def-left-right callu
+    :stck (cdr stack)
     )
 
 (def-left-right calli
+    :stck (cdr stack)
     )
 
 (def-left-right callv
+    :stck (cdr stack)
     )
 
 (def-left-right argp
+    :stck (cddr stack)
     )
 
 ;; Indirp
 ;;
 ;; First stack arg = ptr
 (def-left-right indirp
-    :constleftl (list 'stack)
-    :deprightl (let ((ys (set-reduce (lambda (st x)
-                                       (if (equalp (first stack) (car x))
-                                           (set-insert st (cdr x))
-                                           st
-                                           )
-                                       )
-                                     ptrs 
-                                     (empty-set :comp ptrcomp)))
-                     )
-                 (set-reduce (lambda (st x)
-                               (if (set-member (car x) ys)
-                                   (cons 
-                                    (the (or symbol (integer 0)) (cdr x))
-                                    st)
-                                   st
-                                   )
-                               )
-                             ptrs 
-                             nil
-                             )
-                 )
+    ;; :constleftl (list 'stack)
+    ;; :deprightl (let ((ys (set-reduce (lambda (st x)
+    ;;                                    (if (equalp (first stack) (car x))
+    ;;                                        (set-insert st (cdr x))
+    ;;                                        st
+    ;;                                        )
+    ;;                                    )
+    ;;                                  ptrs 
+    ;;                                  (empty-set :comp ptrcomp)))
+    ;;                  )
+    ;;              (set-reduce (lambda (st x)
+    ;;                            (if (set-member (car x) ys)
+    ;;                                (cons 
+    ;;                                 (the (or symbol (integer 0)) (cdr x))
+    ;;                                 st)
+    ;;                                st
+    ;;                                )
+    ;;                            )
+    ;;                          ptrs 
+    ;;                          nil
+    ;;                          )
+    ;;              )
+    :stck (if (or (set-member args (first stack))
+                  (set-member glob (first stack)))
+              stack
+              (let ((ys (set-reduce (lambda (st x)
+                                      (if (set-member (car x) (first stack))
+                                          (set-insert st (cdr x))
+                                          st
+                                          )
+                                      )
+                                    ptrs
+                                    (empty-set)
+                                    )
+                      )
+                    )
+                (cons (set-reduce (lambda (st x)
+                                    (if (set-member (car x) ys)
+                                        (set-insert st (cdr x))
+                                        st
+                                        )
+                                    )
+                                  ptrs
+                                  (empty-set)
+                                  )
+                      (cdr stack)
+                      )
+                )
+              )
     )
 
+
 (def-left-right indiri
-    :constleftl (list 'stack)
+    :stck (cdr stack)
     )
 
 (def-left-right indiru
-    :constleftl (list 'stack)
+    :stck (cdr stack)
     )
 
 (def-left-right asgnp
-    :constleftl (list (second stack))
-    :deprightl (cond
-                 ((symbolp (first stack)) (first stack))
-                 (t (set-reduce (lambda (st x)
-                                  (if (equalp (first stack) (car x))
-                                      (cons (cdr x) st)
-                                      st
-                                      )
-                                  )
-                                ptrs
-                                nil
-                                )
-                    )
-                 )
+    :constleftl (list-from-set (second stack))
+    :constrightl (list-from-set (first stack))
+    :stck (cddr stack)
     )
 
 (def-left-right asgni
+    :constleftl (list-from-set (first stack))
+    :stck (cdr stack)
     )
 
 (def-left-right asgnu
+    :constleftl (list-from-set (first stack))
+    :stck (cdr stack)
     )
 
 (def-left-right addrlp
-    :constleftl (list 'stack)
-    :constrightl (with-slots (s-args) op
-                   (list (parse-integer (second s-args)))
-                   )
+    :stck (cons (with-slots (s-args) op
+                   (set-insert (empty-set) (parse-integer (second s-args)))
+                   ) 
+                stack)
     )
 
+(defconstant args -1000)
+(defconstant glob -2000)
+
 (def-left-right addrfp
-    :constleftl (list 'stack)
-    :constrightl (list 'args)
+    :stck (cons (set-insert (empty-set) args) stack)
     )
 
 (def-left-right addrgp
-    :constleftl (list 'stack)
-    :constrightl (list 'glob)
+    :stck (cons (set-insert (empty-set) glob) stack)
     )
 
 (def-left-right cnd-jump-instruction
+    :stck (cdr stack)
     )

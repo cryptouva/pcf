@@ -1630,8 +1630,8 @@ number of arguments."
            Fix: Just check the type of pointer on the top of the
            stack!  In other words, we only really need to know what
            sort of pointer we have there.  This is a very simple
-           dataflow framework: L + L = L, L + G = G, and then all we
-           are golden.")
+           dataflow framework: L + L = L, L + G = G, and then we are
+           golden.")
              `(add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
              )
