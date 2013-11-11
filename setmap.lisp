@@ -23,6 +23,7 @@
                      empty-set
                      avl-set
                      alist->map
+                     alist->map*
                      set-filter
                      list-from-set)
             )
@@ -49,7 +50,9 @@
 
 (defun set-member (x st)
   "Check if \"x\" is contained in \"set\""
-  (avl-tree-search x (avl-set-tree st) :comp (avl-set-comp st))
+  (multiple-value-bind (y v) (avl-tree-search x (avl-set-tree st) :comp (avl-set-comp st))
+    (and y (equalp x v))
+    )
   )
 
 (defun singleton (x &key (comp #'<))
@@ -262,6 +265,21 @@
 comparison operation is eql, which is the default for associative
 lists."
   (labels ((make-map (lst &optional (ret (make-avl-set :tree nil :comp (carcomp comp))))
+             (if lst
+                 (make-map (rest lst) (map-insert (caar lst) (cdar lst) ret))
+                 ret
+                 )
+             )
+           )
+    (make-map alist)
+    )
+  )
+
+(defun alist->map* (alist &key empty-m)
+  "Convert an associative list to a map, using a specified empty map
+object.  The purpose of this function is to allow us to maintain the
+same function for all our maps."
+  (labels ((make-map (lst &optional (ret empty-m))
              (if lst
                  (make-map (rest lst) (map-insert (caar lst) (cdar lst) ret))
                  ret

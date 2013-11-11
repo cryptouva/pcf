@@ -229,7 +229,7 @@ to some extent."
                          1 
                          nil
                          0
-                         cnsts)
+                         (cons cnsts nil))
                         )
             )
           )
@@ -1120,48 +1120,83 @@ number of arguments."
     )
   )
 
-(defmacro right-or-left-shift (zero-concat &body body)
+(defmacro right-or-left-shift (zero-concat cnst-shift &body body)
   `(with-slots (width) op
     (let ((width (* 8 width))
           )
       (pop-arg stack amount
         (pop-arg stack val
-          (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
-                (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
+          ;; Check to see if there is a constant on top of the stack (this is the shift amount)
+          (let ((cnst (car (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
                 )
-            (assert (= (length rwires) (length rwires*) width))
-            (add-instrs (append
-                         (list 
-                          (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
-                          (make-instance 'copy :dest wires :op1 (first val) :op2 width))
-                         (mapcan (lambda (x y)
-                                   (let ((shifted-val ,zero-concat)
-                                         )
-                                     (assert (= (length shifted-val) width))
-                                     (append (mux rwires 
-                                                  shifted-val 
-                                                  rwires* 
-                                                  x 
-                                                  (+ wires (* 2 width) 1) 
-                                                  (+ wires (* 2 width) 2))
-                                             (list (make-instance 'copy 
-                                                                  :dest (first rwires) 
-                                                                  :op1 (first rwires*) 
-                                                                  :op2 width))
-                                             )
-                                     )
-                                   ) 
-                                 (subseq amount 0 (1+ (floor (log width 2))) )
-                                 (loop for i from 0 to (floor (log width 2)) collect i)
-                                 )
-                         )
-              (let ((wires (+ wires (* 2 width) 3))
+            (print cnst)
+            (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
+            (if (equalp cnst 'not-const)
+                (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
+                      (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
+                      )
+                  (assert (= (length rwires) (length rwires*) width))
+                  (print "cnst:")
+                  (print cnst)
+                  (print iidx)
+                  (add-instrs (append
+                               (list 
+                                (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
+                                (make-instance 'copy :dest wires :op1 (first val) :op2 width))
+                               (mapcan (lambda (x y)
+                                         (let ((shifted-val ,zero-concat)
+                                               )
+                                           (assert (= (length shifted-val) width))
+                                           (append (mux rwires 
+                                                        shifted-val 
+                                                        rwires* 
+                                                        x 
+                                                        (+ wires (* 2 width) 1) 
+                                                        (+ wires (* 2 width) 2))
+                                                   (list (make-instance 'copy 
+                                                                        :dest (first rwires) 
+                                                                        :op1 (first rwires*) 
+                                                                        :op2 width))
+                                                   )
+                                           )
+                                         ) 
+                                       (subseq amount 0 (1+ (floor (log width 2))) )
+                                       (loop for i from 0 to (floor (log width 2)) collect i)
+                                       )
+                               )
+                    (let ((wires (+ wires (* 2 width) 3))
+                          )
+                      
+                      (push-stack stack width rwires*
+                        ,@body
+                        )
+                      )
                     )
-                (push-stack stack width rwires*
-                  ,@body
+                  )
+                ;; TODO: shift only by a constant amount
+                (let ((y cnst)
+                      (rwires (loop for i from wires to (+ wires width -1) collect i))
+                      )
+                  (add-instrs (append
+                               (list 
+                                (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
+                                (make-instance 'copy :dest wires :op1 (first val) :op2 width)
+                                )
+                               (let ((shifted-value ,cnst-shift))
+                                 (loop for i in (reverse shifted-value) for j in (reverse rwires) collect
+                                      (make-instance 'copy :dest j :op1 i :op2 1)
+                                      )
+                                 )
+                               )
+                    (let ((wires (+ wires (* 2 width) 1))
+                          )
+                      (push-stack stack width rwires
+                        ,@body
+                        )
+                      )
+                    )
                   )
                 )
-              )
             )
           )
         )
@@ -1170,11 +1205,16 @@ number of arguments."
   )
 
 
+
 (definstr lshu
   (right-or-left-shift 
       (append
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        (subseq rwires 0 (- width (expt 2 y)))
+       )
+    (append
+       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
+       (subseq rwires 0 (- width y))
        )
     (close-instr)
     )
@@ -1185,6 +1225,10 @@ number of arguments."
       (append
        (subseq rwires (expt 2 y) width)
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       )
+    (append
+       (subseq rwires y width)
+       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        )
     (close-instr)
     )
@@ -1615,23 +1659,23 @@ number of arguments."
   ;; functions will work.
   (let ((cnstsym (gensym))
         )
-    `(let ((,cnstsym (cdr (map-find (write-to-string iidx) cnsts)))
+    `(let ((,cnstsym 'not-const);(cdr (map-find (write-to-string iidx) (cdr cnsts))))
            )
        (if (and (or (queue-emptyp targets)
                     (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
                 )
            ,(progn
-             (warn "TODO: Need to implement the proper behavior for
-           assignments that occur outside of conditional branches, to
-           properly support conditional function calls.  Currently
-           this just does the assignment unconditionally, which
-           results in side effects that are incorrect.
+           ;;   (warn "TODO: Need to implement the proper behavior for
+           ;; assignments that occur outside of conditional branches, to
+           ;; properly support conditional function calls.  Currently
+           ;; this just does the assignment unconditionally, which
+           ;; results in side effects that are incorrect.
              
-           Fix: Just check the type of pointer on the top of the
-           stack!  In other words, we only really need to know what
-           sort of pointer we have there.  This is a very simple
-           dataflow framework: L + L = L, L + G = G, and then we are
-           golden.")
+           ;; Fix: Just check the type of pointer on the top of the
+           ;; stack!  In other words, we only really need to know what
+           ;; sort of pointer we have there.  This is a very simple
+           ;; dataflow framework: L + L = L, L + G = G, and then we are
+           ;; golden.")
              `(add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
              )
@@ -1796,7 +1840,8 @@ number of arguments."
       (let ((wires (+ 1 wires (* 8 local-size)))
             (argsize (* 8 args-size))
             (arglist nil)
-            (iidx 1)
+            (iidx 0)
+            (cnsts (cons (car cnsts) (cdr (map-find (first s-args) (car cnsts)))))
             )
         ;; We add instructions to set up the pointer to the global position wire
         ;;

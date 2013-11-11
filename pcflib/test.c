@@ -187,7 +187,7 @@ int main(int argc, char**argv)
   st->delete_key = delete_key;
   st->callback = m_callback;
   setup_alice_inputs_from_hex_string(st, "00000000000000000000000000");//"5FC83262147D140DE3DE952304"); //"AC000000");
-  setup_bob_inputs_from_string(st, "S--ROCKYBEACH");  //"DDFDC090F019861BC5E8D37562"); //"(S//NF)abcdef");
+  setup_bob_inputs_from_string(st, "T--ROCKYBEACH");  //"DDFDC090F019861BC5E8D37562"); //"(S//NF)abcdef");
 
   g = get_next_gate(st);
   while(g != 0)

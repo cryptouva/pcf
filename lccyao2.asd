@@ -18,6 +18,7 @@
                (:file "deadcode" :depends-on ("dataflow" "pcf2-bytecode" "setmap" "utils"))
                (:file "pointer-analysis" :depends-on ("dataflow" "pcf2-bytecode" "setmap" "utils"))
                (:file "reachingdefs" :depends-on ("dataflow" "pcf2-bytecode" "setmap" "utils"))
+               (:file "constprop" :depends-on ("dataflow" "pcf2-bytecode" "setmap" "utils"))
                (:file "main" :depends-on ("lcc-translator" "pcf2-interpreter" "dataflow"))
                )
   )

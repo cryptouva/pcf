@@ -14,10 +14,60 @@
 
 (defpackage :lcc-const 
   (:use :cl :utils :setmap :lcc-bc :lcc-dataflow)
-  (:export lcc-const-flow-fn const-dataflow-funs)
+  (:export lcc-const-flow-fn const-dataflow-funs not-const)
   (:shadow import export)
   )
 (in-package :lcc-const)
+
+(defun constcmp (x y)
+  (typecase x
+    (number (typecase y
+              (number (< x y))
+              (symbol (if (equalp y 'unknown)
+                          t
+                          nil))
+              )
+            )
+    (symbol (if (equalp x 'unknown)
+                nil
+                t)
+            )
+    )
+  )
+
+(defun lcc-const-join-fn (x y)
+  "Compute the join operation on the constant propagation lattice."
+  (map-map (lambda (k v)
+             (aif (map-find k y)
+                  (typecase v
+                    (number (typecase (cdr it)
+                              (number (if (= v (cdr it))
+                                          v
+                                          'not-const)
+                                      )
+                              (symbol (cond
+                                        ((equalp (cdr it) 'not-const)
+                                          'not-const)
+                                        ((equalp (cdr it) 'unknown) v)
+                                        (t (error "Bad value for (cdr it)"))
+                                        )
+                                      )
+                              )
+                            )
+                    (symbol (if (equalp v 'not-const)
+                                'not-const
+                                (cdr it)
+                                )
+                            )
+                    )
+                  (error "Address is not present in map of values?!")
+                  )
+             )
+           x
+           )
+  )
+
+(defparameter empty-s (map-empty :comp constcmp))
 
 (defun const-dataflow-funs (ops)
   "Compute the locations that store constants in this stream of
@@ -28,12 +78,25 @@ as its value."
         )
     (setmap:map-map (lambda (k v)
                       (declare (ignore k))
-                      (lcc-dataflow:flow-forwards #'setmap:set-inter #'lcc-const:lcc-const-flow-fn
-                                                  (lcc-dataflow:make-cfg-single-ops v)
-                                                  (setmap:map-empty :comp string<) 
-                                                  (setmap:map-empty :comp string<) 
-                                                  (setmap:map-empty :comp string<) 
-                                                  (setmap:set-from-list (loop for i from 0 to 8 collect (* 4 i))))
+                      (multiple-value-bind (in-set in-stack valmap) 
+                          (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
+                                                      (lcc-dataflow:make-cfg-single-ops v)
+                                                      (setmap:map-empty :comp string<) 
+                                                      (setmap:map-empty :comp string<) 
+                                                      (setmap:map-empty :comp string<) 
+                                        ;(setmap:set-from-list (loop for i from 0 to 8 collect 
+                                        ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
+                                                      (reduce (lambda (x y)
+                                                                (setmap:map-insert (car y) (cdr y) x)
+                                                                )
+                                                              (loop for i from 0 to 32 collect (cons i 'unknown))
+                                                              :initial-value empty-s
+                                                              )
+                                                      )
+                        (declare (ignore valmap))
+                        (list in-set in-stack)
+                        )
+                      ;
                       )
                     funs)
     )
@@ -48,7 +111,7 @@ as its value."
   )
 
 (defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize 8))
-  (let ((genkill (get-gen-kill bb in-stack valmap lsize))
+  (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize))
         )
     (list (third genkill)
           (set-union (first genkill)
@@ -67,8 +130,9 @@ as its value."
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
-                                     (empty-set))
-                                (set-from-list y)))
+                                     empty-s)
+                                ;(map-empty :comp constcmp))
+                                (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((valmap (third st))
                                         (stack (second st))
@@ -80,13 +144,13 @@ as its value."
                                       )
                                     )
                                   ) (basic-block-ops bb) :initial-value (list nil instack valmap)))
-                 :initial-value (empty-set)))
+                 :initial-value empty-s));(map-empty :comp constcmp)))
         (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
-                                     (empty-set))
-                                (set-from-list y)))
+                                     empty-s);(map-empty :comp constcmp))
+                                (alist->map* y :empty-m empty-s)));:comp #'constcmp)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
                                         (valmap (third st))
@@ -98,11 +162,11 @@ as its value."
                                       )
                                     )
                                   ) (basic-block-ops bb) :initial-value (list nil instack valmap)))
-                 :initial-value (empty-set)))
+                 :initial-value empty-s));(map-empty :comp constcmp)))
         (stck (second (reduce #'(lambda (st x)
                                (let ((stack (second st))
                                      (lsts (first st))
-                                        (valmap (third st)))
+                                     (valmap (third st)))
                                  (let ((val (kill x stack valmap lsize))
                                        )
                                    (cons (cons (car val) lsts)
@@ -168,6 +232,10 @@ as its value."
     :kill nil
     )
 
+(def-gen-kill jumpv
+    :stck (cdr stack)
+    )
+
 (def-gen-kill addrgp
     :stck (cons 'glob stack)
     :gen nil
@@ -199,15 +267,24 @@ as its value."
     )
 
 (def-gen-kill two-arg-instruction
+    :stck (cons 'not-const (cddr stack))
+    )
+
+(def-gen-kill addu
     :stck (let ((o1 (first stack))
                 (o2 (second stack))
                 )
-            (if (or (eql 'not-const o1)
-                    (eql 'not-const o2)
-                    )
-                (cons 'not-const (cddr stack))
-                (cons 'const (cddr stack))
-                )
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (+ o1 o2))
+                         (symbol 'not-const)
+                         )
+                       )
+               (symbol 'not-const)
+               )
+             (cddr stack)
+             )
             )
     )
 
@@ -291,20 +368,20 @@ as its value."
                )
             )
     :gen (cond
+           ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ((eql (first stack) 'not-const) nil)
-           ((eql (second stack) 'const) (error "Bad address -- address is indeterminate and not global?"))
+           ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
            ((null (second stack)) nil)
-           (t (list (the integer (second stack))))
+           (t (list (cons (the integer (second stack)) (first stack))))
            )
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ((eql (second stack) 'const)
-            (loop for i from 0 to lsize collect (* 4 i)))
+           ;((eql (second stack) 'const)
+           ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
-           (t (list (the integer (second stack))))
+           (t (list (cons (the integer (second stack)) (first stack))))
            )
     )
 

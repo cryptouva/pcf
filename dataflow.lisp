@@ -6,6 +6,7 @@
 (defpackage :dataflow
   (:use :cl :pcf2-bc :setmap :utils)
   (:export make-cfg
+           make-cfg-single-ops
            map-cfg
            ops-from-cfg
            get-lbls-in-order
@@ -26,6 +27,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "~&Basic block ~A:~%" (basic-block-id struct))
+                (format stream "Ops: ~A~%" (basic-block-ops struct))
                 (format stream "Preds: ~A~%" (basic-block-preds struct))
                 (format stream "Succs: ~A~%" (basic-block-succs struct))
                 )
@@ -179,6 +181,62 @@ of basic block IDs to basic blocks."
       (find-preds
        cfg
        )
+      )
+    )
+  )
+
+(defun make-cfg-single-ops (ops)
+  "Create a CFG where each basic block consists of a single operation.
+This is mainly to simplify the dataflow frameworks i.e. to allow us to
+assume that each block is exactly one opcode."
+  (declare (optimize (debug 3) (speed 0))
+           (type list ops)
+           )
+  (let ((cfg (reduce (lambda (st x)
+                       (let ((cfg (first st))
+                             (cblock (second st))
+                             (idx (third st))
+                             )
+                         (declare (type integer idx)
+                                  (type avl-set cfg)
+                                  (type basic-block cblock)
+                                  (type instruction x)
+                                  )
+                         (let* ((nblock (make-basic-block
+                                         :id (typecase x
+                                               (label (with-slots (str) x
+                                                         (the string str)))
+                                               (otherwise (write-to-string (1+ idx)))
+                                               )
+                                         :ops (list x)
+                                         :preds nil
+                                         :succs nil
+                                         )
+                                  )
+                                (cblock (make-basic-block
+                                         :id (basic-block-id cblock)
+                                         :ops (basic-block-ops cblock)
+                                         :preds (basic-block-preds cblock)
+                                         :succs (cons (basic-block-id nblock)
+                                                      (basic-block-succs cblock))
+                                         )
+                                  )
+                                )
+                           (list
+                            (map-insert (basic-block-id cblock) cblock cfg)
+                            nblock
+                            (1+ idx)
+                            )
+                           )
+                         )
+                       )
+                     ops
+                     :initial-value (list (map-empty :comp string<) (make-basic-block) 0))
+          )
+        )
+    (let ((cfg (map-insert (basic-block-id (second cfg)) (second cfg) (first cfg)))
+          )
+      (find-preds cfg)
       )
     )
   )
