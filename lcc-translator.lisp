@@ -1659,10 +1659,13 @@ number of arguments."
   ;; functions will work.
   (let ((cnstsym (gensym))
         )
-    `(let ((,cnstsym 'not-const);(cdr (map-find (write-to-string iidx) (cdr cnsts))))
+    `(let ((,cnstsym (cadr (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
            )
+       (print "asgn-mux:")
+       (print ,cnstsym)
        (if (and (or (queue-emptyp targets)
                     (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
+                (typep ,cnstsym 'number)
                 )
            ,(progn
            ;;   (warn "TODO: Need to implement the proper behavior for
@@ -1676,8 +1679,10 @@ number of arguments."
            ;; sort of pointer we have there.  This is a very simple
            ;; dataflow framework: L + L = L, L + G = G, and then we are
            ;; golden.")
-             `(add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
+             `(progn
+                (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
+                )
              )
            (add-instrs
                (list
