@@ -70,7 +70,11 @@ int main(int argc, char **argv)
         params.port_base = atoi(argv[4]);
         params.input_file = argv[2];
 
+#ifndef MALIC
         sys = new Yao(params);
+#ekse
+        sys = new BetterYao4(params);
+#endif
 #endif
 
 	sys->start();
