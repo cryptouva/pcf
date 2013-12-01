@@ -62,8 +62,8 @@ int main(int argc, char **argv)
 		MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 	}
 #else
-        params.secu_param = 80;
-        params.stat_param = 1;
+
+
         params.pcf_file = argv[1];
         params.private_file = argv[2];
         params.ipserve_addr = argv[3];
@@ -71,8 +71,13 @@ int main(int argc, char **argv)
         params.input_file = argv[2];
 
 #ifndef MALIC
+        params.secu_param = 80;
+        params.stat_param = 1;
         sys = new Yao(params);
-#ekse
+#else
+        params.secu_param = 80;
+        params.stat_param = atoi(argv[5]);
+        std::cerr << "Here" << std::endl;
         sys = new BetterYao4(params);
 #endif
 #endif
