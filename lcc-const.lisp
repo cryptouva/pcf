@@ -89,7 +89,7 @@ as its value."
                                                       (reduce (lambda (x y)
                                                                 (setmap:map-insert (car y) (cdr y) x)
                                                                 )
-                                                              (loop for i from 0 to 32 collect (cons i 'unknown))
+                                                              (loop for i from 0 to 128 collect (cons i 'unknown))
                                                               :initial-value empty-s
                                                               )
                                                       )
