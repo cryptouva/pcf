@@ -1240,6 +1240,10 @@ number of arguments."
        (subseq rwires (expt 2 y) width)
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        )
+      (append
+       (subseq rwires 0 (- width y))
+       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
+       )
     (close-instr)
     )
   )
