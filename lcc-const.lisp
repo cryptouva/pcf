@@ -89,7 +89,7 @@ as its value."
                                                       (reduce (lambda (x y)
                                                                 (setmap:map-insert (car y) (cdr y) x)
                                                                 )
-                                                              (loop for i from 0 to 32 collect (cons i 'unknown))
+                                                              (loop for i from 0 to 128 collect (cons i 'unknown))
                                                               :initial-value empty-s
                                                               )
                                                       )
@@ -393,28 +393,62 @@ as its value."
                  (null (second stack)))
              valmap)
             (t (let ((addr (second stack)))
-                                        ;(declare (type integer addr))
+                 ;(declare (type integer addr))
                  (typecase addr
-                   (integer (map-insert addr (the integer (first stack)) valmap))
-                   (t valmap)
-                   )
+                     (integer (map-insert addr (first stack) valmap))
+                     (t valmap)
+                     )
                  )
                )
             )
     :gen (cond
-           ((eql (first stack) 'glob) nil)
-           ((eql (first stack) 'args) nil)
-           ((eql (second stack) 'not-const) nil)
-           (t (list (the integer (first stack))))
+           ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
+           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) 'args) nil)
+           ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
+           ((null (second stack)) nil)
+           (t (list (cons (the integer (second stack)) (first stack))))
            )
     :kill (cond
-           ((eql (first stack) 'glob) nil)
-           ((eql (first stack) 'args) nil)
-           ((eql (second stack) 'const)
-            (loop for i from 0 to lsize collect (* 4 i)))
-           (t (list (the integer (first stack))))
+           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) 'args) nil)
+           ;((eql (second stack) 'const)
+           ; (loop for i from 0 to lsize collect (* 4 i)))
+           ((null (second stack)) nil)
+           (t (list (cons (the integer (second stack)) (first stack))))
            )
     )
+
+;; (def-gen-kill asgni
+;;     :stck (cddr stack)
+;;     :vals (cond
+;;             ((or (eql (second stack) 'glob)
+;;                  (eql (second stack) 'args)
+;;                  (null (second stack)))
+;;              valmap)
+;;             (t (let ((addr (second stack)))
+;;                                         ;(declare (type integer addr))
+;;                  (typecase addr
+;;                    (integer (map-insert addr (the integer (first stack)) valmap))
+;;                    (t valmap)
+;;                    )
+;;                  )
+;;                )
+;;             )
+;;     :gen (cond
+;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) 'args) nil)
+;;            ((eql (second stack) 'not-const) nil)
+;;            (t (list (the integer (first stack))))
+;;            )
+;;     :kill (cond
+;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) 'args) nil)
+;;            ((eql (second stack) 'const)
+;;             (loop for i from 0 to lsize collect (* 4 i)))
+;;            (t (list (the integer (first stack))))
+;;            )
+;;     )
 
 (def-gen-kill indiru
     :stck (cons (cond
@@ -426,6 +460,10 @@ as its value."
                    'args)
                   (t (cdr (map-find (car stack) valmap))))
                 (cdr stack))
+    )
+
+(def-gen-kill indirp
+    :stck (cons 'glob (cdr stack))
     )
 
 (def-gen-kill indiri

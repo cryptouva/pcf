@@ -220,14 +220,17 @@
     )
   )
 
-(defun map-find (x mp)
+(defun map-find (x mp &optional (allow-no-result nil))
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
   (let ((comp (avl-set-comp mp))
         )
     (multiple-value-bind (found value) (avl-tree-search (cons x nil)
                                                         (avl-set-tree mp) 
                                                         :comp comp)
-      (declare (ignore found))
+      ;(declare (ignore found))
+      (if (and (not allow-no-result) (not found))
+          (error "Object not found in map")
+          )
       value
       )
     )

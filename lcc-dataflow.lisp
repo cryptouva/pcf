@@ -455,13 +455,13 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                    (list in-sets in-stacks valmaps done)
                    (let ((new-out (reduce (lambda (x y)
                                         (let ((res (funcall flow-fn 
-                                                          (aif (map-find y in-sets)
+                                                          (aif (map-find y in-sets t)
                                                                (cdr it)
                                                                empty-set
                                                                )
-                                                          (cdr (map-find y in-stacks))
-                                                          (cdr (map-find y valmaps));(third x) ;valmap 
-                                                          (cdr (map-find y cfg))))
+                                                          (cdr (map-find y in-stacks t))
+                                                          (cdr (map-find y valmaps t));(third x) ;valmap 
+                                                          (cdr (map-find y cfg t))))
                                               )
                                           (list (first res)
                                                 (funcall join-fn 
@@ -471,9 +471,9 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                           )
                                         )
                                       (basic-block-preds cblock)
-                                      :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks)) 
+                                      :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t)) 
                                                            empty-set
-                                                           (aif (cdr (map-find (basic-block-id cblock) valmaps))
+                                                           (aif (cdr (map-find (basic-block-id cblock) valmaps t))
                                                                 it
                                                                 (map-empty)
                                                                 )
@@ -483,7 +483,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                              (map-find
                               (loop 
                                 for id in (basic-block-succs cblock)
-                                 when (not (map-find id visited))
+                                 when (not (map-find id visited t))
                                  unless (null id)
                                  return id)
                               cfg)
@@ -491,7 +491,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                             (bbid (basic-block-id cblock))
                             (nbid (car nblock))
                             (done (and done (set-equalp 
-                                             (aif (map-find bbid in-sets)
+                                             (aif (map-find bbid in-sets t)
                                                   (cdr it)
                                                   empty-set
                                                   )
