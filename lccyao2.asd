@@ -8,7 +8,7 @@
                (:file "utils")
                (:file "setmap" :depends-on ("avl"))
                (:file "pcf2-bytecode")
-               (:file "pcf2-interpreter" :depends-on ("pcf2-bytecode" "skewlist"))
+               (:file "pcf2-interpreter" :depends-on ("pcf2-bytecode" "skewlist" "utils"))
                (:file "lcc-bc" :depends-on ("setmap" "string-tokenizer" "skewlist"))
                (:file "lcc-dataflow" :depends-on ("pcf2-bytecode" "setmap" "utils" "lcc-bc"))
                (:file "lcc-const" :depends-on ("lcc-bc" "setmap" "utils" "lcc-dataflow"))
