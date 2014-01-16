@@ -449,12 +449,9 @@ The functions that operate on pcf2-state objects should treat these objects as i
           (let ((iptrbaseptr (first (pcf2-state-call-stack state)))
                 (call-stack (rest (pcf2-state-call-stack state)))
                 )
-            (format *error-output* "~&Return~%")
-            (if *debug-output*
-                (format *error-output* "~&Returning from funcall.  Clearing region from ~D to ~D~%"
-                        (pcf2-state-baseptr state)
-                        value)
-                )
+            (format *error-output* "~&Returning from funcall.  Clearing region from ~D to ~D~%"
+                    (pcf2-state-baseptr state)
+                    value)
             (check-mux-cnd)
             (loop for i from (pcf2-state-baseptr state) to 
                (+ (pcf2-state-baseptr state) value) do
