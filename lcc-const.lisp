@@ -419,6 +419,37 @@ as its value."
            )
     )
 
+;; (def-gen-kill asgni
+;;     :stck (cddr stack)
+;;     :vals (cond
+;;             ((or (eql (second stack) 'glob)
+;;                  (eql (second stack) 'args)
+;;                  (null (second stack)))
+;;              valmap)
+;;             (t (let ((addr (second stack)))
+;;                                         ;(declare (type integer addr))
+;;                  (typecase addr
+;;                    (integer (map-insert addr (the integer (first stack)) valmap))
+;;                    (t valmap)
+;;                    )
+;;                  )
+;;                )
+;;             )
+;;     :gen (cond
+;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) 'args) nil)
+;;            ((eql (second stack) 'not-const) nil)
+;;            (t (list (the integer (first stack))))
+;;            )
+;;     :kill (cond
+;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) 'args) nil)
+;;            ((eql (second stack) 'const)
+;;             (loop for i from 0 to lsize collect (* 4 i)))
+;;            (t (list (the integer (first stack))))
+;;            )
+;;     )
+
 (def-gen-kill indiru
     :stck (cons (cond
                   ((or (eql (car stack) 'glob)
@@ -429,6 +460,10 @@ as its value."
                    'args)
                   (t (cdr (map-find (car stack) valmap))))
                 (cdr stack))
+    )
+
+(def-gen-kill indirp
+    :stck (cons 'glob (cdr stack))
     )
 
 (def-gen-kill indiri

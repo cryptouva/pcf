@@ -21,6 +21,7 @@
                              :setmap
                              :lcc-bc
                              :lcc-const
+                             :utils
                              #+sbcl :sb-mop #+cmu :mop)
             (:export
              exec-instructions)
@@ -208,7 +209,12 @@ to some extent."
     (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000))
     (let ((rvl 
            (skew-reduce (lambda (st op) 
-                          (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
+                          (assert (not (null st)))
+                          (aif (apply #'exec-instruction (append (list op lbls) st))
+                               it
+                               (error "State is null -- this is a bug")
+                               )
+                                        ;stack wires instrs lbls targs argbase)
                           )
                         ops
                         ;; baseinit starts at 1, so that the global mux condition is not overwritten
@@ -269,13 +275,16 @@ convenience macro that ensures the returned list has the right length."
 a convenience macro that ensures that the method takes the right
 number of arguments."
   `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
-;     (declare (optimize (debug 3) (speed 0)))
+     (declare (optimize (debug 3) (speed 0)))
      ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
      ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
      ;;                                                )
      ;;                                  )
      ;;                   )
-     ,@body
+     (aif (locally ,@body)
+          it
+          (error "State is null -- this is a bug")
+          )
 ;       )
      )
   )
@@ -1212,7 +1221,7 @@ number of arguments."
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        (subseq rwires 0 (- width (expt 2 y)))
        )
-    (append
+      (append
        (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        (subseq rwires 0 (- width y))
        )
@@ -1226,7 +1235,7 @@ number of arguments."
        (subseq rwires (expt 2 y) width)
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        )
-    (append
+      (append
        (subseq rwires y width)
        (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        )
@@ -1241,10 +1250,10 @@ number of arguments."
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        )
       (append
-       (subseq rwires 0 (- width y))
+       (subseq rwires y width)
        (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        )
-    (close-instr)
+      (close-instr)
     )
   )
 
