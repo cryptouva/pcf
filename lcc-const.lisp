@@ -328,7 +328,7 @@ as its value."
                 'not-const)
                (t (typecase op1
                     (integer (typecase op2
-                                        ;   (integer (+ op1 op2))
+                               (integer (+ op1 op2))
                                (t 'glob)
                                )
                              )

@@ -1140,14 +1140,12 @@ number of arguments."
                 )
             (print cnst)
             (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
+            (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
             (if (equalp cnst 'not-const)
                 (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
                       (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
                       )
                   (assert (= (length rwires) (length rwires*) width))
-                  (print "cnst:")
-                  (print cnst)
-                  (print iidx)
                   (add-instrs (append
                                (list 
                                 (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
@@ -1185,6 +1183,7 @@ number of arguments."
                 ;; TODO: shift only by a constant amount
                 (let ((y cnst)
                       (rwires (loop for i from wires to (+ wires width -1) collect i))
+                      (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
                       )
                   (add-instrs (append
                                (list 
@@ -1192,14 +1191,15 @@ number of arguments."
                                 (make-instance 'copy :dest wires :op1 (first val) :op2 width)
                                 )
                                (let ((shifted-value ,cnst-shift))
-                                 (loop for i in (reverse shifted-value) for j in (reverse rwires) collect
+                                 (assert (= (length shifted-value) width))
+                                 (loop for i in (reverse shifted-value) for j in (reverse rwires*) collect
                                       (make-instance 'copy :dest j :op1 i :op2 1)
                                       )
                                  )
                                )
                     (let ((wires (+ wires (* 2 width) 1))
                           )
-                      (push-stack stack width rwires
+                      (push-stack stack width rwires*
                         ,@body
                         )
                       )
@@ -1672,25 +1672,26 @@ number of arguments."
   ;; functions will work.
   (let ((cnstsym (gensym))
         )
+    (format *error-output* 
+            "~&TODO: Need to implement the proper behavior for
+    assignments that occur outside of conditional branches, to
+    properly support conditional function calls.  Currently
+    this just does the assignment unconditionally, which
+    results in side effects that are incorrect.
+
+    We should able to use the constant propagation dataflow framework
+    for this, but for some reason that is not working....~%"
+          )
+
     `(let ((,cnstsym (cadr (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
            )
-       (format *error-output* "asgn-mux: ~A~%" ,cnstsym)
+       (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)
                     (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
-                (typep ,cnstsym 'number)
+                ; TODO: Fix this
+                ;(integerp ,cnstsym)
                 )
            ,(progn
-           ;;   (warn "TODO: Need to implement the proper behavior for
-           ;; assignments that occur outside of conditional branches, to
-           ;; properly support conditional function calls.  Currently
-           ;; this just does the assignment unconditionally, which
-           ;; results in side effects that are incorrect.
-             
-           ;; Fix: Just check the type of pointer on the top of the
-           ;; stack!  In other words, we only really need to know what
-           ;; sort of pointer we have there.  This is a very simple
-           ;; dataflow framework: L + L = L, L + G = G, and then we are
-           ;; golden.")
              `(progn
                 (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
