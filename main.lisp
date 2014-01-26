@@ -51,14 +51,26 @@
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
   (declare (optimize (debug 3) (speed 0)))
-  (let ((state (setup-labels ops
-                             (with-open-file (inputs inpname :direction :input)
-                               (init-state 20000 ops inputs 16384 16384)
-                               )
-                             )
-          )
+  (restart-case
+      (let ((state (setup-labels ops
+                                 (with-open-file (inputs inpname :direction :input)
+                                   (init-state 20000 ops inputs 16384 16384)
+                                   )
+                                 )
+              )
+            )
+        (run-opcodes state)
         )
-    (run-opcodes state)
+    (set-watch ()
+      (format t "~&Enter watched address:~%")
+      (add-to-watch-list (parse-integer (read-line) :junk-allowed nil))
+      (pcf-simulate ops inpname)
+      )
+    (set-watch-for-bit ()
+      (format t "~&Enter watched address:~%")
+      (add-to-watch-list-bit (parse-integer (read-line) :junk-allowed nil))
+      (pcf-simulate ops inpname)
+      )
     )
   )
 

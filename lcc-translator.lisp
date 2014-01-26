@@ -21,6 +21,7 @@
                              :setmap
                              :lcc-bc
                              :lcc-const
+                             :utils
                              #+sbcl :sb-mop #+cmu :mop)
             (:export
              exec-instructions)
@@ -208,7 +209,12 @@ to some extent."
     (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000))
     (let ((rvl 
            (skew-reduce (lambda (st op) 
-                          (apply #'exec-instruction (append (list op lbls) st));stack wires instrs lbls targs argbase)
+                          (assert (not (null st)))
+                          (aif (apply #'exec-instruction (append (list op lbls) st))
+                               it
+                               (error "State is null -- this is a bug")
+                               )
+                                        ;stack wires instrs lbls targs argbase)
                           )
                         ops
                         ;; baseinit starts at 1, so that the global mux condition is not overwritten
@@ -269,13 +275,16 @@ convenience macro that ensures the returned list has the right length."
 a convenience macro that ensures that the method takes the right
 number of arguments."
   `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
-;     (declare (optimize (debug 3) (speed 0)))
+     (declare (optimize (debug 3) (speed 0)))
      ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
      ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
      ;;                                                )
      ;;                                  )
      ;;                   )
-     ,@body
+     (aif (locally ,@body)
+          it
+          (error "State is null -- this is a bug")
+          )
 ;       )
      )
   )
@@ -1131,14 +1140,12 @@ number of arguments."
                 )
             (print cnst)
             (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
+            (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
             (if (equalp cnst 'not-const)
                 (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
                       (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
                       )
                   (assert (= (length rwires) (length rwires*) width))
-                  (print "cnst:")
-                  (print cnst)
-                  (print iidx)
                   (add-instrs (append
                                (list 
                                 (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
@@ -1176,6 +1183,7 @@ number of arguments."
                 ;; TODO: shift only by a constant amount
                 (let ((y cnst)
                       (rwires (loop for i from wires to (+ wires width -1) collect i))
+                      (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
                       )
                   (add-instrs (append
                                (list 
@@ -1183,14 +1191,15 @@ number of arguments."
                                 (make-instance 'copy :dest wires :op1 (first val) :op2 width)
                                 )
                                (let ((shifted-value ,cnst-shift))
-                                 (loop for i in (reverse shifted-value) for j in (reverse rwires) collect
+                                 (assert (= (length shifted-value) width))
+                                 (loop for i in (reverse shifted-value) for j in (reverse rwires*) collect
                                       (make-instance 'copy :dest j :op1 i :op2 1)
                                       )
                                  )
                                )
                     (let ((wires (+ wires (* 2 width) 1))
                           )
-                      (push-stack stack width rwires
+                      (push-stack stack width rwires*
                         ,@body
                         )
                       )
@@ -1212,7 +1221,7 @@ number of arguments."
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        (subseq rwires 0 (- width (expt 2 y)))
        )
-    (append
+      (append
        (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        (subseq rwires 0 (- width y))
        )
@@ -1226,7 +1235,7 @@ number of arguments."
        (subseq rwires (expt 2 y) width)
        (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
        )
-    (append
+      (append
        (subseq rwires y width)
        (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        )
@@ -1663,26 +1672,26 @@ number of arguments."
   ;; functions will work.
   (let ((cnstsym (gensym))
         )
+    (format *error-output* 
+            "~&TODO: Need to implement the proper behavior for
+    assignments that occur outside of conditional branches, to
+    properly support conditional function calls.  Currently
+    this just does the assignment unconditionally, which
+    results in side effects that are incorrect.
+
+    We should able to use the constant propagation dataflow framework
+    for this, but for some reason that is not working....~%"
+          )
+
     `(let ((,cnstsym (cadr (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
            )
-       (print "asgn-mux:")
-       (print ,cnstsym)
+       (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)
                     (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
-                (typep ,cnstsym 'number)
+                ; TODO: Fix this
+                ;(integerp ,cnstsym)
                 )
            ,(progn
-           ;;   (warn "TODO: Need to implement the proper behavior for
-           ;; assignments that occur outside of conditional branches, to
-           ;; properly support conditional function calls.  Currently
-           ;; this just does the assignment unconditionally, which
-           ;; results in side effects that are incorrect.
-             
-           ;; Fix: Just check the type of pointer on the top of the
-           ;; stack!  In other words, we only really need to know what
-           ;; sort of pointer we have there.  This is a very simple
-           ;; dataflow framework: L + L = L, L + G = G, and then we are
-           ;; golden.")
              `(progn
                 (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
                 ,@body)
