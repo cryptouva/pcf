@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Change to your local lcc installation directory
 LCCDIR=$HOME/lib/lcc
 
 tmpfilename=tmp$RANDOM
