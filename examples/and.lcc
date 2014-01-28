@@ -1,0 +1,29 @@
+export main
+code
+proc main 8 4
+CNSTU4 0
+ARGU4
+ADDRLP4 0
+ADDRGP4 alice
+CALLU4
+ASGNU4
+CNSTU4 0
+ARGU4
+ADDRLP4 4
+ADDRGP4 bob
+CALLU4
+ASGNU4
+ADDRLP4 0
+INDIRU4
+ADDRLP4 4
+INDIRU4
+BANDU4
+ARGU4
+ADDRGP4 output_alice
+CALLV
+LABELV $1
+endproc main 8 4
+import output_bob
+import output_alice
+import bob
+import alice
