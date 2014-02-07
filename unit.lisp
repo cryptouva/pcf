@@ -13,8 +13,11 @@
 (defun add-tests (name tests)
   (setf (gethash name unit-tests)
         (mapcar (lambda (x)
-                  (cons (car x)
-                        (eval (cdr x)))) tests))
+                  (cons x 
+                        (intern (concatenate 'string
+                                             (symbol-name name)
+                                             "/"
+                                             (symbol-name (car x)))))) tests))
   )
 
 (defmacro defun-ut (name lambda-list body &key (tests nil))
@@ -24,8 +27,19 @@
               )
             )
       )
-  (add-tests name tests)
-  `(defun ,name ,lambda-list ,body)
+  (add-tests name (mapcar #'car tests))
+  `(progn
+     ,@(loop for test in tests collect
+            `(defun ,(intern (concatenate 'string 
+                                          (symbol-name name)
+                                          "/"
+                                          (symbol-name (car test))))
+                 ()
+               (funcall ,(cdr test))
+               )
+            )
+     (defun ,name ,lambda-list ,body)
+     )
   )
 
 (defmacro defmethod-ut (name lambda-list body &key (tests nil))
@@ -46,10 +60,28 @@
                             )
                      )
              tests)
-  `(defmethod ,name ,lambda-list ,body)
+  `(progn
+     ,@(loop for test in tests collect
+            `(defun ,(intern (concatenate 'string 
+                                          (symbol-name name)
+                                          (apply #'concatenate 'string
+                                                 (loop for arg in lambda-list collect
+                                                      (concatenate 'string "/" (symbol-name (cadr arg)))
+                                                      )
+                                                 )
+                                          "/"
+                                          (symbol-name (car test))))
+                 ()
+               (funcall ,(cdr test))
+               )
+            )
+     (defmethod ,name ,lambda-list 
+       ,body)
+     )
   )
 
 (defun run-unit-tests ()
+  (declare (optimize (debug 3)))
   (let ((ignore-all-tests nil))
     (maphash (lambda (x y)
                (setf ignore-all-tests nil)
