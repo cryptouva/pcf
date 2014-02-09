@@ -19,7 +19,7 @@
 					    :depends-on ("lcc-bc" "lcc-dataflow" "lcc-const"))
 				     (:file "lcc-bc")
 				     (:file "lcc-const" :depends-on ("lcc-bc" "lcc-dataflow"))
-				     (:file "lcc-pointer-analysis" :depends-on ("lcc-bc" "lcc-dataflow" ))
+				    ; (:file "lcc-pointer-analysis" :depends-on ("lcc-bc" "lcc-dataflow" )) not in use
 				     (:file "lcc-dataflow" :depends-on ("lcc-bc"))
 				     (:file "dataflow")
 				    ; (:file "pointer-analysis" :depends-on ("dataflow" utilities)) not in use
