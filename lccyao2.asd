@@ -1,6 +1,6 @@
 (defsystem "lccyao2"
   :description "LCCyao compiler system version 2"
-  :author "Benjamin Kreuter"
+  :author "Benjamin Kreuter, Benjamin Terner"
   :components (
 	       (:file "main" :depends-on (utilities translator interpreter))
 	       (:module utilities
