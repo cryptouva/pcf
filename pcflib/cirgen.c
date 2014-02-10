@@ -37,6 +37,12 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
       wcnt++;
       printf("Gate: %u %u -> %u %hhu\n", *((uint32_t*)(get_wire_key(st,gate->wire1))), 
              *((uint32_t*)(get_wire_key(st,gate->wire2))), wcnt, gate->truth_table);
+
+      // Checks to make sure XOR gates don't have the same input wires. If
+      // they do this will leak information in Free XOR garbled circuit
+      // systems.
+      // assert( !( (is xor gate) && (wire 1 id == wire 2 id) ) )
+      assert(!((gate->truth_table == 6) && ((*((uint32_t*)(get_wire_key(st,gate->wire1)))) == (*((uint32_t*)(get_wire_key(st,gate->wire2)))))));
     }
   else if(gate->tag == TAG_INPUT_A)
     {
