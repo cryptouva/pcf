@@ -333,8 +333,8 @@ number of arguments."
   )
 
 (defmacro with-temp-wires (sym n &body body)
-  `(let ((,sym wires)
-         (wires (+ wires n))
+  `(let ((,sym (loop for i from wires to (+ wires ,n -1) collect i))
+         (wires (+ wires ,n))
          )
      ,@body
      )
@@ -1316,14 +1316,12 @@ number of arguments."
 (definstr bandu
   (with-slots (width) op
     (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (and-chain arg1 arg2 rwires)
-              (let ((wires (+ wires width))
-                    )
+      (with-temp-wires rwires width
+        (pop-arg stack arg1
+          (pop-arg stack arg2
+            (push-stack stack width rwires
+              (add-instrs (and-chain arg1 arg2 rwires)
                 (close-instr)
                 )
               )
