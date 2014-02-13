@@ -332,6 +332,14 @@ number of arguments."
     )
   )
 
+(defmacro with-temp-wires (sym n &body body)
+  `(let ((,sym wires)
+         (wires (+ wires n))
+         )
+     ,@body
+     )
+  )
+
 (defstruct branch-target
   (label "" :type string)
   (cnd-wire)
