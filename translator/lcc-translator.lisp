@@ -118,7 +118,9 @@ only temporary and can be safely overwritten by future instructions."
              )
            )
     (append
-     (list  (make-instance 'const :dest zro :op1 0) )
+     (append
+      (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
+      (list (make-instance 'const :dest zro :op1 0) ) )
      (second (reduce #'shift-add xs :initial-value (list 0 nil)))
      )
     )
@@ -1067,11 +1069,11 @@ number of arguments."
 	      (with-temp-wires t4 1
 		(with-temp-wires t5 1
 		  (with-temp-wires accum width
+		    (with-temp-wires tr width
 		      (pop-arg stack arg1
 			(pop-arg stack arg2
 			  (push-stack stack width rwires
-			    (with-temp-wires tr width
-			      (add-instrs (append
+			    (add-instrs (append
 					 (list
 					  (make-instance 'const :dest cin :op1 0)
 					  )
@@ -1079,13 +1081,13 @@ number of arguments."
 					  arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
 					  )
 					 )
-				(close-instr)
-				)
+			      (close-instr)
 			      )
 			    )
 			  )
 			)
 		      )
+		    )
 		  ))))
 	  )
 	)
