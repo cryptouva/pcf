@@ -101,21 +101,25 @@ only temporary and can be safely overwritten by future instructions."
   )
 
 
-(defun shift-and-add-multiplier (xs ys zs &optional c-in tmp1 tmp2 tmp3 tmpr)
+(defun shift-and-add-multiplier (xs ys zs &optional c-in tmp1 tmp2 tmp3 zro acc tmpr)
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
-  (assert (= (length xs) (length ys) (length zs)))
+  (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
   (labels ((shift-add (st x)
              (let ((n (first st))
                    (ops (second st))
                    )
                (list (1+ n) (append ops 
-                                    (and-chain (loop for i in ys collect x) ys tmpr) 
-                                    (adder-chain (append (loop for i from 1 to n collect 0) (butlast tmpr n)) zs zs c-in tmp1 tmp2 tmp3)))
+                                    (and-chain (loop for i in ys collect x) ys tmpr)
+				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) 
+				    (adder-chain (loop for i from 1 to (length zs) collect zro) zs acc) 				    ))
                )
              )
            )
-    (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+    (append
+     (list  (make-instance 'const :dest zro :op1 0) )
+     (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+     )
     )
   )
 
@@ -333,7 +337,11 @@ number of arguments."
   )
 
 (defmacro with-temp-wires (sym n &body body)
-  `(let ((,sym (loop for i from wires to (+ wires ,n -1) collect i))
+  `(let ((,sym 
+	  (if (eql 1 ,n)
+	      wires
+	      (loop for i from wires to (+ wires ,n -1) collect i))
+	   )
          (wires (+ wires ,n))
          )
      ,@body
@@ -1052,31 +1060,33 @@ number of arguments."
            (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
       (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (append
-                         (list
-                          (make-instance 'const :dest (+ wires width 1) :op1 0)
-                          )
-                         (shift-and-add-multiplier
-                          arg1
-                          arg2
-                          rwires
-                          (+ wires width 1)
-                          (+ wires width 2)
-                          (+ wires width 3)
-                          (+ wires width 4)
-                          (loop for i from (+ wires width 5) to (+ wires 5 (* 2 width) -1) collect i)
-                          )
-                         )
-              (let ((wires (+ wires width))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
+	(pop-arg stack arg2
+	  (push-stack stack width rwires
+ 	    (add-instrs (append
+ 			 (list
+ 			  (make-instance 'const :dest (+ wires width 1) :op1 0)
+ 			  )
+ 			 (shift-and-add-multiplier
+ 			  arg1
+ 			  arg2
+ 			  rwires
+ 			  (+ wires width 1)
+ 			  (+ wires width 2)
+ 			  (+ wires width 3)
+ 			  (+ wires width 4)
+ 			  (+ wires width 5)
+ 			  (loop for i from (+ wires width 6) to (+ wires 6 (* 2 width) -1) collect i)
+ 			  (loop for i from (+ wires 6 (* 2 width)) to (+ wires 6 (* 3 width) -1) collect i)
+ 			  )
+ 			 )
+ 			(let ((wires (+ wires 6 (* 3 width)))
+ 			      )
+ 			  (close-instr)
+ 			  )
+ 			)
+ 	    )
+ 	  )
+ 	)
       )
     )
   )
