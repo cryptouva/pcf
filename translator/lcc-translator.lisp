@@ -105,6 +105,7 @@ only temporary and can be safely overwritten by future instructions."
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
   (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
+;  (break)
   (labels ((shift-add (st x)
              (let ((n (first st))
                    (ops (second st))
@@ -1056,37 +1057,38 @@ number of arguments."
 
 (definstr mulu
   (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
+    (let ((width (* 8 width))
+        ;   (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
-      (pop-arg stack arg1
-	(pop-arg stack arg2
-	  (push-stack stack width rwires
- 	    (add-instrs (append
- 			 (list
- 			  (make-instance 'const :dest (+ wires width 1) :op1 0)
- 			  )
- 			 (shift-and-add-multiplier
- 			  arg1
- 			  arg2
- 			  rwires
- 			  (+ wires width 1)
- 			  (+ wires width 2)
- 			  (+ wires width 3)
- 			  (+ wires width 4)
- 			  (+ wires width 5)
- 			  (loop for i from (+ wires width 6) to (+ wires 6 (* 2 width) -1) collect i)
- 			  (loop for i from (+ wires 6 (* 2 width)) to (+ wires 6 (* 3 width) -1) collect i)
- 			  )
- 			 )
- 			(let ((wires (+ wires 6 (* 3 width)))
- 			      )
- 			  (close-instr)
- 			  )
- 			)
- 	    )
- 	  )
- 	)
+      (with-temp-wires rwires width 
+	(with-temp-wires cin 1
+	  (with-temp-wires t2 1
+	    (with-temp-wires t3 1
+	      (with-temp-wires t4 1
+		(with-temp-wires t5 1
+		  (with-temp-wires accum width
+		      (pop-arg stack arg1
+			(pop-arg stack arg2
+			  (push-stack stack width rwires
+			    (with-temp-wires tr width
+			      (add-instrs (append
+					 (list
+					  (make-instance 'const :dest cin :op1 0)
+					  )
+					 (shift-and-add-multiplier
+					  arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
+					  )
+					 )
+				(close-instr)
+				)
+			      )
+			    )
+			  )
+			)
+		      )
+		  ))))
+	  )
+	)
       )
     )
   )
