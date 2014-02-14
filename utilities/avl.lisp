@@ -3,7 +3,7 @@
 ;; An implementation of an AVL tree, because Common Lisp does not come
 ;; with a balanced binary tree.
 
-(defpackage :tree (:use :common-lisp)
+(defpackage :tree (:use :common-lisp :unit)
             (:export avl-tree-insert
                      avl-tree-insert-unique
                      avl-tree-remove
@@ -215,14 +215,37 @@
       )
   )
 
-(defun avl-tree-map (fn tr)
-  "Create a new AVL tree by applying \"fn\" to every node in \"tr\""
+(defun-ut avl-tree-map (fn tr)
   (if tr
       (avl-cons (funcall fn (avl-data tr))
                 (avl-tree-map fn (avl-left tr))
                 (avl-tree-map fn (avl-right tr))
                 )
       )
+  :documentation "Create a new AVL tree by applying \"fn\" to every node in \"tr\""
+  :tests 
+  ((map-rebalances . (lambda ()
+                       (let ((tree (avl-tree-insert 2
+                                                    (avl-tree-insert 3
+                                                                     (avl-tree-insert
+                                                                      4
+                                                                      nil
+                                                                      )
+                                                                     )
+                                                    )
+                               )
+                             )
+                         (let ((mapped (avl-tree-map #'identity
+                                                     tree))
+                               )
+                           (warn "This unit test will fail for some functions other than #'identity; fix!")
+                           (< (avl-data (avl-left mapped))
+                              (avl-data mapped))
+                           )
+                         )
+                       )
+                   )
+   )
   )
 
 (defun avl-tree-reduce (fn tr st)

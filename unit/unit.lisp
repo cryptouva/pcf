@@ -20,14 +20,14 @@
                                              (symbol-name (car x)))))) tests))
   )
 
-(defmacro defun-ut (name lambda-list body &key (tests nil))
+(defmacro defun-ut (name lambda-list body &key (tests nil) (documentation ""))
   (if (null tests)
       (warn (with-output-to-string (str)
               (format str "Function ~A has no unit tests~%" name)
               )
             )
       )
-  (add-tests name (mapcar #'car tests))
+  (add-tests name tests)
   `(progn
      ,@(loop for test in tests collect
             `(defun ,(intern (concatenate 'string 
@@ -38,7 +38,9 @@
                (funcall ,(cdr test))
                )
             )
-     (defun ,name ,lambda-list ,body)
+     (defun ,name ,lambda-list 
+       ,documentation
+       ,body)
      )
   )
 
