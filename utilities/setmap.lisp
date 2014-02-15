@@ -34,7 +34,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct))
+                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct) :comp (avl-set-comp struct))
                 (format stream "}")
                 )
               )
@@ -162,7 +162,7 @@
 
 (defun set-map (fn st)
   "Compute the image of \"st\" under \"fn\""
-  (make-avl-set :tree (avl-tree-map fn (avl-set-tree st)) :comp (avl-set-comp st))
+  (make-avl-set :tree (avl-tree-map fn (avl-set-tree st) :comp (avl-set-comp st)) :comp (avl-set-comp st))
   )
 
 (defun set-reduce (fn st state)
@@ -246,7 +246,7 @@
                 (avl-tree-map (lambda (x)
                                 (cons (car x)
                                       (funcall fn (car x) (cdr x))))
-                              (avl-set-tree mp))
+                              (avl-set-tree mp) :comp (avl-set-comp mp))
                 :comp (avl-set-comp mp))
   )
 
