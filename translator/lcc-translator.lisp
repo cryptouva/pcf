@@ -112,15 +112,15 @@ only temporary and can be safely overwritten by future instructions."
                    )
                (list (1+ n) (append ops 
                                     (and-chain (loop for i in ys collect x) ys tmpr)
-				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) 
-				    (adder-chain (loop for i from 1 to (length zs) collect zro) zs acc) 				    ))
+				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3)
+				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs)))
+ 				    ))
                )
              )
            )
-    (append
-     (append
-      (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
-      (list (make-instance 'const :dest zro :op1 0) ) )
+    (append  
+     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
+     (list (make-instance 'const :dest zro :op1 0) )
      (second (reduce #'shift-add xs :initial-value (list 0 nil)))
      )
     )
