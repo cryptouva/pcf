@@ -10,9 +10,6 @@
 
 void read_instr(const char * line);
 
-uint32_t key0 = 0;
-uint32_t key1 = 1;
-
 void * copy_key(void * k)
 {
   uint32_t * ret = (uint32_t*)malloc(sizeof(uint32_t));
@@ -27,8 +24,19 @@ void delete_key(void* k)
     free(k);
 }
 
-uint32_t wcnt = 0;
+/* Wire IDs for the constant '0' value and the constant '1' value. */
+uint32_t key0 = 0;
+uint32_t key1 = 1;
+/* wcnt should start at 1. If set to 0 it will clobber the constant '1' value wire id in the circuit. */
+uint32_t wcnt = 1;
 
+/* This function is called every time a gate is processed in PCFLib. All implementations of this callback
+ * function require the same signature. The following callback assigns unique wire IDs for 
+ * every wire in the circuit. 
+ *
+ * NOTE: The following callback does not gurantee that any output wires are used elsewhere in the
+ * circuit.
+ */
 void * m_callback(struct PCFState * st, struct PCFGate * gate)
 {
   // We just want to associate a unique ID with each wire
@@ -47,17 +55,18 @@ void * m_callback(struct PCFState * st, struct PCFGate * gate)
   else if(gate->tag == TAG_INPUT_A)
     {
       wcnt++;
-      printf("Input -> %u\n", wcnt);
+      printf("Alice Input -> %u\n", wcnt);
     }
 
   else if(gate->tag == TAG_INPUT_B)
     {
       wcnt++;
-      printf("Input -> %u\n", wcnt);
+      printf("Bob Input -> %u\n", wcnt);
     }
 
   else 
     {
+      /** Outputs should always be considered Alice's outputs. */
       printf("%u -> Output\n", *((uint32_t*)(get_wire_key(st,gate->wire1))));
     }
   return &wcnt;
@@ -101,6 +110,9 @@ void setup_bob_inputs_from_string(struct PCFState * st, const char * inputs)
   st->bob_in_size = 8 * strlen(inputs);
 }
 
+/**
+ * Example function for setting Alice's binary circuit inputs from a hexidecimal string.
+ */
 void setup_alice_inputs_from_hex_string(struct PCFState * st, const char * inputs)
 {
   uint32_t i, j;
@@ -129,6 +141,9 @@ void setup_alice_inputs_from_hex_string(struct PCFState * st, const char * input
   st->alice_in_size = 4 * strlen(inputs);
 }
 
+/**
+ * Example function for setting Bob's binary circuit inputs from a hexidecimal string.
+ */
 void setup_bob_inputs_from_hex_string(struct PCFState * st, const char * inputs)
 {
   uint32_t i, j;
@@ -161,12 +176,25 @@ int main(int argc, char**argv)
 {
   struct PCFState * st;
   struct PCFGate * g;
-
+ 
+  
   st = load_pcf_file(argv[1], &key0, &key1, copy_key);
+  
+  /*
+   * Required for circuit construction to generate an accurate number of input wires for any
+   * given circuit without having to know how many input _bits_ the circuit actually has.
+   */
+  st->alice_in_size = sizeof(st->alice_in_size)*8;
+  st->bob_in_size = sizeof(st->bob_in_size)*8;
+
   st->delete_key = delete_key;
+
+  /*
+   * Assigns a function that is executed for each gate PCFLib generates during circuit
+   * construction.
+   *
+   */
   st->callback = m_callback;
-  setup_alice_inputs_from_string(st, "AC000000");
-  setup_bob_inputs_from_string(st, "xy(S//NF)000000");
 
   g = get_next_gate(st);
   while(g != 0)
