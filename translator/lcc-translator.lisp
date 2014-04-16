@@ -101,21 +101,28 @@ only temporary and can be safely overwritten by future instructions."
   )
 
 
-(defun shift-and-add-multiplier (xs ys zs &optional c-in tmp1 tmp2 tmp3 tmpr)
+(defun shift-and-add-multiplier (xs ys zs &optional c-in tmp1 tmp2 tmp3 zro acc tmpr)
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
-  (assert (= (length xs) (length ys) (length zs)))
+  (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
+;  (break)
   (labels ((shift-add (st x)
              (let ((n (first st))
                    (ops (second st))
                    )
                (list (1+ n) (append ops 
-                                    (and-chain (loop for i in ys collect x) ys tmpr) 
-                                    (adder-chain (append (loop for i from 1 to n collect 0) (butlast tmpr n)) zs zs c-in tmp1 tmp2 tmp3)))
+                                    (and-chain (loop for i in ys collect x) ys tmpr)
+				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3)
+				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs)))
+ 				    ))
                )
              )
            )
-    (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+    (append  
+     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
+     (list (make-instance 'const :dest zro :op1 0) )
+     (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+     )
     )
   )
 
@@ -330,6 +337,18 @@ number of arguments."
        ,@body
        )
     )
+  )
+
+(defmacro with-temp-wires (sym n &body body)
+  `(let ((,sym 
+	  (if (eql 1 ,n)
+	      wires
+	      (loop for i from wires to (+ wires ,n -1) collect i))
+	   )
+         (wires (+ wires ,n))
+         )
+     ,@body
+     )
   )
 
 (defstruct branch-target
@@ -1040,35 +1059,38 @@ number of arguments."
 
 (definstr mulu
   (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
+    (let ((width (* 8 width))
+        ;   (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (append
-                         (list
-                          (make-instance 'const :dest (+ wires width 1) :op1 0)
-                          )
-                         (shift-and-add-multiplier
-                          arg1
-                          arg2
-                          rwires
-                          (+ wires width 1)
-                          (+ wires width 2)
-                          (+ wires width 3)
-                          (+ wires width 4)
-                          (loop for i from (+ wires width 5) to (+ wires 5 (* 2 width) -1) collect i)
-                          )
-                         )
-              (let ((wires (+ wires width))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
+      (with-temp-wires rwires width 
+	(with-temp-wires cin 1
+	  (with-temp-wires t2 1
+	    (with-temp-wires t3 1
+	      (with-temp-wires t4 1
+		(with-temp-wires t5 1
+		  (with-temp-wires accum width
+		    (with-temp-wires tr width
+		      (pop-arg stack arg1
+			(pop-arg stack arg2
+			  (push-stack stack width rwires
+			    (add-instrs (append
+					 (list
+					  (make-instance 'const :dest cin :op1 0)
+					  )
+					 (shift-and-add-multiplier
+					  arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
+					  )
+					 )
+			      (close-instr)
+			      )
+			    )
+			  )
+			)
+		      )
+		    )
+		  ))))
+	  )
+	)
       )
     )
   )
@@ -1308,14 +1330,12 @@ number of arguments."
 (definstr bandu
   (with-slots (width) op
     (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
            )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (and-chain arg1 arg2 rwires)
-              (let ((wires (+ wires width))
-                    )
+      (with-temp-wires rwires width
+        (pop-arg stack arg1
+          (pop-arg stack arg2
+            (push-stack stack width rwires
+              (add-instrs (and-chain arg1 arg2 rwires)
                 (close-instr)
                 )
               )

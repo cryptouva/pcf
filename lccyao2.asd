@@ -3,16 +3,21 @@
   :author "Benjamin Kreuter, Benjamin Terner"
   :components (
 	       (:file "main" :depends-on (utilities translator interpreter))
+	       (:module unit 
+			:components ((:file "unit")
+                                     )
+			)
 	       (:module utilities
-		       :components (
-				    (:file "string-tokenizer")
+		       :components ((:file "string-tokenizer")
 				    (:file "skewlist")
 				    (:file "avl")
 				    (:file "pairingheap")
 				    (:file "utils")
 				    (:file "setmap" :depends-on ("avl"))
 				    (:file "pcf2-bytecode")
-				    ))
+				    )
+                       :depends-on (unit)
+                       )
 	       (:module translator
 			:components (
 				     (:file "lcc-translator"
@@ -27,17 +32,13 @@
 				    ; (:file "deadcode" :depends-on ("dataflow" utilities)) not in use
 				    ; (:file "constprop" :depends-on ("dataflow" utilities)) not in use
 				     )
-			:depends-on (utilities))
+			:depends-on (utilities)
+                        )
 	       (:module interpreter
 			:components (
 				     (:file "pcf2-interpreter")
 				     )
 			:depends-on (utilities unit)
-			)
-	       (:module unit 
-			:components (
-				     (:file "unit")
-				     (:file "runtests" :depends-on ("unit")))
 			)
 	       )
   )
