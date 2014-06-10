@@ -62,6 +62,7 @@
              addu
              addi
              subu
+	     subi
              mulu
              argi
              argu
@@ -305,6 +306,10 @@
   )
 
 (defclass subu (two-arg-instruction)
+  ()
+  )
+
+(defclass subi (two-arg-instruction)
   ()
   )
 
