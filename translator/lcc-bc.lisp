@@ -64,6 +64,7 @@
              subu
 	     subi
              mulu
+	     muli
              argi
              argu
              read-instructions
@@ -314,6 +315,10 @@
   )
 
 (defclass mulu (two-arg-instruction)
+  ()
+  )
+
+(defclass muli (two-arg-instruction)
   ()
   )
 

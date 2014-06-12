@@ -30,13 +30,77 @@
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
+#||
 (let ((cur-addr 0))
   (defun more-memory ()
     (incf cur-addr)
     )
   )
+||#
 
-(defun adder-chain (xs ys zs &optional (c-in (more-memory)) (tmp1 (more-memory)) (tmp2 (more-memory)) (tmp3 (more-memory)))
+;;;
+;;; BEGIN ALU
+;;;
+
+;; basic bitwise operations
+
+(defun and-chain (xs ys zs)
+  (assert (= (length xs) (length ys) (length zs)))
+  (mapcar #'make-and zs xs ys)
+  )
+
+(defun or-chain (xs ys zs)
+  (assert (= (length xs) (length ys) (length zs)))
+  (mapcar #'make-or zs xs ys)
+  )
+
+(defun xor-chain (xs ys zs)
+  (assert (= (length xs) (length ys) (length zs)))
+  (mapcar #'make-xor zs xs ys)
+  )
+
+(defun not-chain (xs)
+  (assert (not (null xs)))
+  (mapcar #'make-not xs xs)
+  )
+
+(defun add-one (xs c-in tmp)
+  (labels ((add-carry (x)
+	     (list (make-and tmp x c-in) ; new carry = old x AND old carry
+		   (make-xor x c-in x) ; new x = old x XOR old cin
+		   (make-instance 'copy :dest c-in :op1 tmp :op2 1) ; copy over new carry
+		   )))
+    (cons (make-instance 'const :dest c-in :op1 1)
+	  (mapcan #'add-carry xs)
+	  ))
+  )
+
+(defun twos-complement (xs c-in tmp)
+  (append 
+   (not-chain xs)
+   (add-one xs c-in tmp)
+   )
+  )
+
+
+;; Arithmetic operations (add, subtract, multiply, TODO:divide)
+;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps),
+;; while it was the responsibility of the instruction macro to allocate them
+;; the optimizer's reaching def analysis should eliminate all of the unnecessary zero-ing gates,
+;; but we should keep to good practice in zero-ing wires before we use them to avoid unintended consequences of lingering values
+
+
+(defmacro zero-gate (gate)
+  `(make-instance 'const :dest ,gate :op1 0)
+  )
+#|
+(defmacro zero-gates ( &rest rest)
+  (loop for arg in rest collect (zero-gate arg) )
+;  `(loop for arg in ,rest collect (make-instance 'const :dest arg :op1 0) )
+  )
+|#
+
+(defun adder-chain (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a ripple carry adder chain.  By default, the carry-in, tmp1,
 tmp2, and tmp3 locations are simply allocated, making the stack frame
 larger.  These can (and should) be explicitly specified, as these are
@@ -58,13 +122,66 @@ only temporary and can be safely overwritten by future instructions."
                )
              )
            )
-    (cons
-     (make-instance 'const :dest c-in :op1 0)
+    (append 
+     (list (zero-gate c-in)
+	   (zero-gate tmp1)
+	   (zero-gate tmp2)
+	   (zero-gate tmp3)
+	   )
+;     (zero-gates c-in tmp1 tmp2 tmp3)
      (mapcan #'full-adder xs ys zs)
      )
     )
   )
 
+(defun complement-subtract (xs ys zs c-in tmp1 tmp2 tmp3)
+  "Create a subtractor by the method of complements"
+  (assert (= (length xs) (length ys) (length zs)))
+  (append
+;   (zero-gates c-in tmp1 tmp2 tmp3)
+   (list
+    (zero-gate c-in)
+    (zero-gate tmp1)
+    (zero-gate tmp2)
+    (zero-gate tmp3))
+   (twos-complement ys c-in tmp1)
+   (adder-chain xs ys zs c-in tmp1 tmp2 tmp3) )
+  )
+
+ 
+(defun shift-and-add-multiplier (xs ys zs  c-in tmp1 tmp2 tmp3 zro acc tmpr)
+  "Create a shift-and-add multiplier using ripple-carry adders"
+  (declare (optimize (speed 0) (debug 3)))
+  (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
+;  (break)
+  (labels ((shift-add (st x)
+             (let ((n (first st))
+                   (ops (second st))
+                   )
+               (list (1+ n) (append ops 
+                                    (and-chain (loop for i in ys collect x) ys tmpr) ; multiply with AND
+				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) ;; next row to add
+				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs))) ;; copy over from the accumulator into our result wires
+ 				    ))
+               )
+             )
+           )
+    (append  
+     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
+     (list (zero-gate c-in)
+	   (zero-gate zro)
+	   (zero-gate tmp1)
+	   (zero-gate tmp2)
+	   (zero-gate tmp3))
+;     (zero-gates c-in zro tmp1 tmp2 tmp3)
+     (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+     )
+    )
+  )
+
+
+
+#|
 (defun subtractor-chain (xs ys zs &optional c-in tmp1 tmp2 tmp3)
   "Create a ripple-borrow subtractor chain."
   (assert (= (length xs) (length ys) (length zs)))
@@ -91,92 +208,12 @@ only temporary and can be safely overwritten by future instructions."
       (make-instance 'const :dest tmp2 :op1 0)
       (make-instance 'const :dest tmp3 :op1 0)
       )
-;     (make-instance 'const :dest c-in :op1 0)
      (mapcan #'full-subtractor xs ys zs)
      )
     )
   )
 
-(defun complement-subtract (xs ys zs &optional c-in tmp1 tmp2 tmp3)
-  "Create a subtractor by the method of complements"
-  (assert (= (length xs) (length ys) (length zs)))
-  (append
-   (list 
-    (make-instance 'const :dest c-in :op1 0)
-    (make-instance 'const :dest tmp1 :op1 0)
-    (make-instance 'const :dest tmp2 :op1 0)
-    (make-instance 'const :dest tmp3 :op1 0)
-    )
-   (twos-complement ys c-in tmp1)
-   (adder-chain xs ys zs c-in tmp1 tmp2 tmp3) )
-  )
-
-(defun and-chain (xs ys zs)
-  (assert (= (length xs) (length ys) (length zs)))
-  (mapcar #'make-and zs xs ys)
-  )
-
-(defun or-chain (xs ys zs)
-  (assert (= (length xs) (length ys) (length zs)))
-  (mapcar #'make-or zs xs ys)
-  )
-
-(defun not-chain (xs)
-  (assert (not (null xs)))
-  (mapcar #'make-not xs xs)
-  )
-
-(defun add-one (xs c-in tmp)
-  (labels ((add-carry (x)
-	     (list (make-and tmp x c-in) ; new carry = old x AND old carry
-		   (make-xor x c-in x) ; new x = old x XOR old cin
-		   (make-instance 'copy :dest c-in :op1 tmp :op2 1) ; copy over new carry
-		   )))
-    (cons (make-instance 'const :dest c-in :op1 1)
-	  (mapcan #'add-carry xs)
-	  ))
-  )
-
-(defun twos-complement (xs c-in tmp)
-  (append 
-   (not-chain xs)
-   (add-one xs c-in tmp)
-   )
-  )
- 
-
-(defun shift-and-add-multiplier (xs ys zs &optional c-in tmp1 tmp2 tmp3 zro acc tmpr)
-  "Create a shift-and-add multiplier using ripple-carry adders"
-  (declare (optimize (speed 0) (debug 3)))
-  (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
-;  (break)
-  (labels ((shift-add (st x)
-             (let ((n (first st))
-                   (ops (second st))
-                   )
-               (list (1+ n) (append ops 
-                                    (and-chain (loop for i in ys collect x) ys tmpr)
-				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3)
-				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs)))
- 				    ))
-               )
-             )
-           )
-    (append  
-     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
-     (list (make-instance 'const :dest zro :op1 0) )
-     (second (reduce #'shift-add xs :initial-value (list 0 nil)))
-     )
-    )
-  )
-
-(defun xor-chain (xs ys zs)
-  (assert (= (length xs) (length ys) (length zs)))
-  (mapcar #'make-xor zs xs ys)
-  )
-
-
-(defun equl (xs ys z &optional (tmp1 (more-memory)) (tmp2 (more-memory)))
+(defun equl (xs ys z &optional tmp1 tmp2 )
   (assert (= (length xs) (length ys)))
   (mapcan (lambda (x y)
             (list (make-xor tmp1 x y)
@@ -186,13 +223,24 @@ only temporary and can be safely overwritten by future instructions."
             ) 
           xs ys)
   )
+|#
 
+;;;
+;;; END ALU
+;;; 
+
+
+#|
+; not sure what this is here for, looks like some legacy function now obsolete
 (defun alloc-wires (wires n)
   (cons (+ n (first wires)) wires)
   )
 
+|#
+
 (defgeneric add-label (op idx labs bss base)
   )
+
 
 (defmethod add-label ((op lcc-instruction) idx labs bss base)
   (declare (ignore op idx))
@@ -298,12 +346,14 @@ to some extent."
     )
   )
 
+#||
 (defun base2 (x n)
   (if (zerop n)
       nil
       (cons (mod x 2) (base2 (ash x -1) (1- n)))
       )
   )
+||#
 
 (defmacro close-instr ()
   "This macro will finalize an instruction translator method.  It is a
@@ -341,16 +391,21 @@ number of arguments."
      )
   )
 
+
 (defmacro push-stack (stack width val &body body)
+  "pushes two things onto the stack:
+  1) a value (val) which is a list of wires
+  2) the length of said list"
   (let ((valsym (gensym))
         )
     `(let ((,valsym ,val)
            )
        (declare (type list ,valsym))
-       (let ((,stack (append ,valsym ,stack))
+       (let ((,stack (append ,valsym ,stack)) ; append the list of wires to the front of the stack
              )
-         (let ((,stack (cons ,width ,stack))
+         (let ((,stack (cons ,width ,stack)) ; append a parameter describing the number of wires appended to the stack
                )
+	   (assert (= (length ,valsym) ,width))
            ,@body
            )
          )
@@ -360,12 +415,13 @@ number of arguments."
 
 
 (defmacro pop-arg (stack argname &body body)
+  "pops off how many wires the argument will be, then pops the wires off the stack, assigning the list to argname"
   (let ((wsym (gensym))
         )
-    `(let* ((,wsym (first ,stack))
-            (,stack (rest ,stack))
-            (,argname (subseq ,stack 0 ,wsym))
-            (,stack (nthcdr ,wsym ,stack))
+    `(let* ((,wsym (first ,stack)) ; the first argument is how many wires to pop off next
+            (,stack (rest ,stack)) ; discard first value
+            (,argname (subseq ,stack 0 ,wsym)) ; the list is the 0-,wsm spots on the stack
+            (,stack (nthcdr ,wsym ,stack)) ; nthcdr the stack to pop
             )
        ,@body
        )
@@ -1074,36 +1130,47 @@ number of arguments."
     )
   )
 
-(definstr addu
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
-           )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (adder-chain 
-                         arg1 
-                         arg2 
-                         rwires 
-                         (+ wires width 1) 
-                         (+ wires width 2) 
-                         (+ wires width 3) 
-                         (+ wires width 4))
-              (let ((wires (+ wires width))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+;; arithmetic operations
+;; add, subtract, multiply
+
+(defmacro ripple-carry-adder ()
+  `(with-slots (width) op
+     (let* ((width (* 8 width))
+	    (rwires (loop for i from wires to (+ wires width -1) collect i))
+	    )
+       (pop-arg stack arg1
+	 (pop-arg stack arg2
+	   (push-stack stack width rwires
+	     (add-instrs (adder-chain 
+			  arg1 
+			  arg2 
+			  rwires 
+			  (+ wires width 1) 
+			  (+ wires width 2) 
+			  (+ wires width 3) 
+			  (+ wires width 4))
+	       (let ((wires (+ wires width))
+		     )
+		 (close-instr)
+		 )
+	       )
+	     )
+	   )
+	 )
+       )
+     )
   )
 
-(definstr mulu
-  (with-slots (width) op
+(definstr addu
+  (ripple-carry-adder)
+  )
+
+(definstr addi
+  (ripple-carry-adder)
+)
+
+(defmacro shift-add-multiply ()
+  `(with-slots (width) op
     (let ((width (* 8 width))
            )
       (with-temp-wires rwires width 
@@ -1117,13 +1184,8 @@ number of arguments."
 		      (pop-arg stack arg1
 			(pop-arg stack arg2
 			  (push-stack stack width rwires
-			    (add-instrs (append
-					 (list
-					  (make-instance 'const :dest cin :op1 0)
-					  )
-					 (shift-and-add-multiplier
-					  arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
-					  )
+			    (add-instrs (shift-and-add-multiplier
+					 arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
 					 )
 			      (close-instr)
 			      )
@@ -1139,71 +1201,18 @@ number of arguments."
     )
   )
 
-(definstr addi
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
-           )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (adder-chain 
-                         arg1 
-                         arg2 
-                         rwires 
-                         (+ wires width 1) 
-                         (+ wires width 2) 
-                         (+ wires width 3) 
-                         (+ wires width 4))
-              (let ((wires (+ wires width))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+(definstr muli
+  (shift-add-multiply)
+)
 
-(definstr subu
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-   ;        (rwires (loop for i from wires to (+ wires width -1) collect i))
-           )
-      (with-temp-wires rwires width
-	(with-temp-wires t3 1
-	  (with-temp-wires t2 1
-	    (with-temp-wires t1 1
-	      (with-temp-wires cin 1
-		(pop-arg stack arg2
-		  (pop-arg stack arg1
-		    (push-stack stack width rwires
-		      (add-instrs (subtractor-chain
-				   arg1 
-				   arg2 
-				   rwires 
-				   cin 
-				   t1 
-				   t2 
-				   t3)
-			(let ((wires (+ wires width))
-			      )
-			  (close-instr)
-			  )
-			)
-		      )
-		    )
-		  )))))
-        )
-      )
-    )
+(definstr mulu
+  (shift-add-multiply)
   )
 
 
-(definstr subi
-  (with-slots (width) op
+(defmacro subtract-by-complement ()
+  "subtraction by the method of complements."
+  `(with-slots (width) op
     (let* ((width (* 8 width))
            )
       (with-temp-wires rwires width
@@ -1215,7 +1224,7 @@ number of arguments."
 		  (pop-arg stack arg1
 		    (push-stack stack width rwires
 		      (add-instrs (complement-subtract 
-				   arg1 arg2 rwires cin t1 t2  t3)
+				   arg1 arg2 rwires cin t1 t2 t3)
 			(let ((wires (+ wires width))
 			      )
 			  (close-instr)
@@ -1223,8 +1232,19 @@ number of arguments."
 		      )))))))))
     )
   )
-	
 
+(definstr subu
+  ;; note that this works just the same as signed, underflow will not generate a warning or error
+  (subtract-by-complement)
+  )
+
+(definstr subi
+  (subtract-by-complement)
+  )
+	
+;;
+;; bitwise shifts
+;;
 
 (defmacro right-or-left-shift (zero-concat cnst-shift &body body)
   `(with-slots (width) op
@@ -1353,6 +1373,10 @@ number of arguments."
     (close-instr)
     )
   )
+
+;;
+;; bitwise arithmetic operations
+;;
 
 (definstr boru
   (with-slots (width) op
