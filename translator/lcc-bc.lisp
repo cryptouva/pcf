@@ -35,6 +35,7 @@
              one-stack-one-static-arg-instruction
              cvui
              cviu
+	     cvii
              stack-arg-instruction
              one-arg-instruction
              cnd-jump-instruction
@@ -192,6 +193,10 @@
   ()
   )
 
+(defclass CVII (one-stack-one-static-arg-instruction)
+  ()
+  )
+
 (defclass stack-arg-instruction (lcc-instruction)
   ((width :initarg :width))
   (:documentation "The base class of instructions that take arguments and return values.  The \"width\" member specifies the width of the return value")
@@ -266,6 +271,10 @@
   )
 
 (defclass argu (one-arg-instruction)
+  ()
+  )
+
+(defclass argi (one-arg-instruction)
   ()
   )
 

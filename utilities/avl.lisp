@@ -13,6 +13,14 @@
             )
 (in-package :tree)
 
+;; here is what these avl tree nodes look like:
+;;   cons:  [   car   |   cdr   ]    
+;;              /             \
+;;       [  height  ]  [  data  |       ]
+;;                                     \
+;;                           [ avl-left  |  avl-right  ]
+
+
 (defmacro avl-height (tr)
   `(the fixnum
      (if (null ,tr)

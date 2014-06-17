@@ -30,13 +30,6 @@
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
-#||
-(let ((cur-addr 0))
-  (defun more-memory ()
-    (incf cur-addr)
-    )
-  )
-||#
 
 ;;;
 ;;; BEGIN ALU
@@ -89,22 +82,16 @@
 ;; the optimizer's reaching def analysis should eliminate all of the unnecessary zero-ing gates,
 ;; but we should keep to good practice in zero-ing wires before we use them to avoid unintended consequences of lingering values
 
+(defun zero-gate (gate)
+  (make-instance 'const :dest gate :op1 0)
+)
 
-(defmacro zero-gate (gate)
-  `(make-instance 'const :dest ,gate :op1 0)
-  )
-#|
-(defmacro zero-gates ( &rest rest)
-  (loop for arg in rest collect (zero-gate arg) )
-;  `(loop for arg in ,rest collect (make-instance 'const :dest arg :op1 0) )
-  )
-|#
+(defun zero-group (gates)
+  (loop for i from (car gates) to (+ (car gates) (length gates) -1) collect (make-instance 'const :dest i :op1 0) )
+  )  
 
 (defun adder-chain (xs ys zs c-in tmp1 tmp2 tmp3)
-  "Create a ripple carry adder chain.  By default, the carry-in, tmp1,
-tmp2, and tmp3 locations are simply allocated, making the stack frame
-larger.  These can (and should) be explicitly specified, as these are
-only temporary and can be safely overwritten by future instructions."
+  "Create a ripple carry adder chain."
   (assert (= (length xs) (length ys) (length zs)))
   (labels ((full-adder (x y z)
              (let* ((sum-ops (list (make-xor tmp1 x y)
@@ -128,7 +115,6 @@ only temporary and can be safely overwritten by future instructions."
 	   (zero-gate tmp2)
 	   (zero-gate tmp3)
 	   )
-;     (zero-gates c-in tmp1 tmp2 tmp3)
      (mapcan #'full-adder xs ys zs)
      )
     )
@@ -138,7 +124,6 @@ only temporary and can be safely overwritten by future instructions."
   "Create a subtractor by the method of complements"
   (assert (= (length xs) (length ys) (length zs)))
   (append
-;   (zero-gates c-in tmp1 tmp2 tmp3)
    (list
     (zero-gate c-in)
     (zero-gate tmp1)
@@ -161,82 +146,33 @@ only temporary and can be safely overwritten by future instructions."
                (list (1+ n) (append ops 
                                     (and-chain (loop for i in ys collect x) ys tmpr) ; multiply with AND
 				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) ;; next row to add
-				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs))) ;; copy over from the accumulator into our result wires
+				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length acc))) ;; copy over from the accumulator into our result wires
+				    ;; it is important that the previous op2 is (length acc) and not (length zs) because in the future zs may not be required to be the same size as xs and ys
  				    ))
                )
              )
            )
     (append  
-     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
-     (list (zero-gate c-in)
-	   (zero-gate zro)
-	   (zero-gate tmp1)
-	   (zero-gate tmp2)
-	   (zero-gate tmp3))
-;     (zero-gates c-in zro tmp1 tmp2 tmp3)
-     (second (reduce #'shift-add xs :initial-value (list 0 nil)))
-     )
+       (zero-group acc);     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
+       (list (zero-gate c-in)
+	     (zero-gate zro)
+	     (zero-gate tmp1)
+	     (zero-gate tmp2)
+	     (zero-gate tmp3))
+       (second (reduce #'shift-add xs :initial-value (list 0 nil)))
+       )
     )
   )
 
-
-
-#|
-(defun subtractor-chain (xs ys zs &optional c-in tmp1 tmp2 tmp3)
-  "Create a ripple-borrow subtractor chain."
-  (assert (= (length xs) (length ys) (length zs)))
-  (labels ((full-subtractor (x y z)
-             (let* ((diff-ops (list (make-xor tmp1 x y)
-                                    (make-xor z tmp1 c-in)
-                                    )
-                      )
-                    (borrow-ops (list (make-xnor tmp1 x y)
-                                      (make-and tmp2 c-in tmp1)
-                                      (make-not tmp1 x)
-                                      (make-and tmp3 tmp1 y)
-                                      (make-or c-in tmp3 tmp2))
-                      )
-                    )
-               (append diff-ops borrow-ops)
-               )
-             )
-           )
-    (append
-     (list 
-      (make-instance 'const :dest c-in :op1 0)
-      (make-instance 'const :dest tmp1 :op1 0)
-      (make-instance 'const :dest tmp2 :op1 0)
-      (make-instance 'const :dest tmp3 :op1 0)
-      )
-     (mapcan #'full-subtractor xs ys zs)
-     )
-    )
-  )
-
-(defun equl (xs ys z &optional tmp1 tmp2 )
-  (assert (= (length xs) (length ys)))
-  (mapcan (lambda (x y)
-            (list (make-xor tmp1 x y)
-                  (make-not tmp2 tmp1)
-                  (make-and z tmp2 z)
-                  )
-            ) 
-          xs ys)
-  )
-|#
 
 ;;;
 ;;; END ALU
 ;;; 
 
 
-#|
-; not sure what this is here for, looks like some legacy function now obsolete
-(defun alloc-wires (wires n)
-  (cons (+ n (first wires)) wires)
-  )
-
-|#
+;;;
+;;; LABELS
+;;;
 
 (defgeneric add-label (op idx labs bss base)
   )
@@ -247,6 +183,9 @@ only temporary and can be safely overwritten by future instructions."
   (values labs bss base)
   )
 
+;; *****
+;; if in the data section,  hash(first s-args) => (cons 'glob base)
+;; else, hash(first s-args) => (cons 'labl idx)
 (defmethod add-label ((op labelv) idx labs bss base)
   (with-slots (s-args) op
     (if bss
@@ -257,6 +196,7 @@ only temporary and can be safely overwritten by future instructions."
     )
   )
 
+;; sets "bss" to true so that we know we're now in the data section
 (defmethod add-label ((op bss) idx labs bss base)
   (values labs t base)
   )
@@ -265,9 +205,11 @@ only temporary and can be safely overwritten by future instructions."
   (values labs nil base)
   )
 
+;; allocates space for a variable in the data section
+;; (skip always in data section)
 (defmethod add-label ((op skip) idx labs bss base)
-  (with-slots (s-args) op
-    (values labs bss (+ base (* 8 (parse-integer (first s-args)))))
+  (with-slots (s-args) op ; get static args
+    (values labs bss (+ base (* 8 (parse-integer (first s-args))))) ; store #bits in base, not bytes, for we will need a wire per bit
     )
   )
 
@@ -283,16 +225,6 @@ only temporary and can be safely overwritten by future instructions."
           )
         )
     )
-  )
-
-;; We might want to make that last argument be a map containing all
-;; dataflow results, but for now just the one...
-(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
-  (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
-
-This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
-
-The \"argbase\" parameter represents the list of arguments for the next function call.  When a call instruction is emitted, these arguments will be copied to the base of the next stack frame.  \"argsize\" is the number of arguments for the current function, which we use for addrfp instructions and as an offset for addrlp instructions.")
   )
 
 (defun exec-instructions (ops)
@@ -346,14 +278,34 @@ to some extent."
     )
   )
 
-#||
-(defun base2 (x n)
-  (if (zerop n)
-      nil
-      (cons (mod x 2) (base2 (ash x -1) (1- n)))
-      )
+#|
+exec-instruction, as its name implies, executes an instruction. Explanation of the variables:
+op: the next op code to execute
+labels: a hash table that maps labels to their locations ** this might be wrong
+stack: holds the state of the program's execution, generally pushing and popping a constant and a group of wires - the constant describing the number of wires - that provide the inputs and outputs of our computations
+wires: an integer that contains a count of the number of wires in use. New wires are allocated for new variables, and are deallocated when variables go out of scope (with the with-tmp-wires macro). At this point, they are not completely re-allocated in a meaningful way that permits reuse -- this is a possibility for future optimization -- but some are.
+instrs:
+targets:
+arglist:
+argsize:
+icnt: instruction count
+bss: true if we are in the data section, false if not
+baseinit:
+repeat:
+iids:
+cnsts:
+|#
+
+;; We might want to make that last argument be a map containing all
+;; dataflow results, but for now just the one...
+(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
+  (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
+
+This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
+
+The \"argbase\" parameter represents the list of arguments for the next function call.  When a call instruction is emitted, these arguments will be copied to the base of the next stack frame.  \"argsize\" is the number of arguments for the current function, which we use for addrfp instructions and as an offset for addrlp instructions.")
   )
-||#
+
 
 (defmacro close-instr ()
   "This macro will finalize an instruction translator method.  It is a
@@ -434,12 +386,13 @@ number of arguments."
     `(let* ((,inslstsym ,inslst)
             (instrs (append (reverse ,inslstsym) instrs))
             )
-       (mapc #'(lambda (x) (assert (typep x 'pcf2-bc:instruction))) ,inslstsym)
+       (mapc #'(lambda (x) (assert (typep x 'pcf2-bc:instruction))) ,inslstsym) ; verify everything we're adding is a valid PCF2 instruction
        ,@body
        )
     )
   )
 
+; safely allocated and deallocate wires programmatically and at need
 (defmacro with-temp-wires (sym n &body body)
   `(let ((,sym 
 	  (if (eql 1 ,n)
@@ -1184,9 +1137,11 @@ number of arguments."
 		      (pop-arg stack arg1
 			(pop-arg stack arg2
 			  (push-stack stack width rwires
-			    (add-instrs (shift-and-add-multiplier
-					 arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
-					 )
+			    (add-instrs 
+				(shift-and-add-multiplier
+				;(karatsuba-multiplication
+				 arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
+				 )
 			      (close-instr)
 			      )
 			    )
@@ -1271,21 +1226,21 @@ number of arguments."
                                          (let ((shifted-val ,zero-concat)
                                                )
                                            (assert (= (length shifted-val) width))
-                                           (append (mux rwires 
+                                           (append (mux rwires ; mux rwires with shifted val and put result in rwires*
                                                         shifted-val 
                                                         rwires* 
                                                         x 
                                                         (+ wires (* 2 width) 1) 
                                                         (+ wires (* 2 width) 2))
-                                                   (list (make-instance 'copy 
+                                                   (list (make-instance 'copy ; then copy rwires* back into rwires
                                                                         :dest (first rwires) 
                                                                         :op1 (first rwires*) 
                                                                         :op2 width))
                                                    )
                                            )
                                          ) 
-                                       (subseq amount 0 (1+ (floor (log width 2))) )
-                                       (loop for i from 0 to (floor (log width 2)) collect i)
+                                       (subseq amount 0 (1+ (floor (log width 2))) ) ; 
+                                       (loop for i from 0 to (floor (log width 2)) collect i) ; y isn't actually used here
                                        )
                                )
                     (let ((wires (+ wires (* 2 width) 3))
@@ -1614,6 +1569,17 @@ number of arguments."
   )
 
 (definstr argu
+  (with-slots (width) op
+    (pop-arg stack arg
+      (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
+            )
+        (close-instr)
+        )
+      )
+    )
+  )
+
+(definstr argi
   (with-slots (width) op
     (pop-arg stack arg
       (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
@@ -2107,6 +2073,10 @@ number of arguments."
 (definstr cviu
   (close-instr)
   )
+
+(definstr cvii
+  (close-instr)
+)
 
 (definstr labelv
   (declare (optimize (debug 3) (speed 0)))
