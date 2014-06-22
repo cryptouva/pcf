@@ -27,9 +27,6 @@
              lshu
              rshu
              rshi
-             bxoru
-             boru
-             bandu
              cnsti
              cnstu
              one-stack-one-static-arg-instruction
@@ -43,6 +40,7 @@
              jumpv
              cmp-jump-instruction
              ltu
+	     lti
              leu
              gtu
              geu
@@ -59,7 +57,14 @@
              asgnu
              asgni
              asgnp
-             bandi
+	     bxoru
+	     bxori
+             boru
+	     bori
+             bandu
+	     bandi
+	     bcompu
+	     bcompi
              addu
              addi
              subu
@@ -167,9 +172,25 @@
   ()
   )
 
+(defclass bori (two-arg-instruction)
+  ()
+  )
+
 (defclass bxoru (two-arg-instruction)
   ()
   )
+
+(defclass bxori (two-arg-instruction)
+  ()
+  )
+
+(defclass bcompu (one-arg-instruction)
+  ()
+)
+
+(defclass bcompi (one-arg-instruction)
+  ()
+)
 
 (defclass cnsti (static-arg-instruction)
   ()
@@ -229,6 +250,11 @@
 (defclass ltu (cmp-jump-instruction)
   ()
   )
+
+(defclass lti (cmp-jump-instruction)
+  ()
+  )
+
 
 (defclass leu (cmp-jump-instruction)
   ()

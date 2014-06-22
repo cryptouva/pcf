@@ -52,28 +52,33 @@
   (mapcar #'make-xor zs xs ys)
   )
 
-(defun not-chain (xs)
+(defun not-chain (xs zs)
   (assert (not (null xs)))
-  (mapcar #'make-not xs xs)
+  (assert (= (length xs) (length zs)))
+  (mapcar #'make-not zs xs)
   )
 
-(defun add-one (xs c-in tmp)
-  (labels ((add-carry (x)
+(defun add-one (xs zs c-in tmp)
+  (labels ((add-carry (x z)
 	     (list (make-and tmp x c-in) ; new carry = old x AND old carry
-		   (make-xor x c-in x) ; new x = old x XOR old cin
+		   (make-xor z c-in x) ; new bit = old x XOR old cin
 		   (make-instance 'copy :dest c-in :op1 tmp :op2 1) ; copy over new carry
 		   )))
-    (cons (make-instance 'const :dest c-in :op1 1)
-	  (mapcan #'add-carry xs)
-	  ))
+    (append
+     (list (make-instance 'const :dest c-in :op1 1) )
+     (mapcan #'add-carry xs zs)
+     (list (make-instance 'const :dest c-in :op1 0)
+	   (make-instance 'const :dest tmp  :op1 0) ); clear after use
+     ))
   )
 
-(defun twos-complement (xs c-in tmp)
+(defun twos-complement (xs zs c-in tmp)
+; input in xs, output in zs, c-in and tmp are one-gate temporaries
   (append 
-   (not-chain xs)
-   (add-one xs c-in tmp)
-   )
-  )
+;   (not-chain xs zs)
+   (zero-group zs)	
+;   (add-one zs zs c-in tmp)
+   ))
 
 
 ;; Arithmetic operations (add, subtract, multiply, TODO:divide)
@@ -84,11 +89,11 @@
 
 (defun zero-gate (gate)
   (make-instance 'const :dest gate :op1 0)
-)
+  )
 
 (defun zero-group (gates)
   (loop for i from (car gates) to (+ (car gates) (length gates) -1) collect (make-instance 'const :dest i :op1 0) )
-  )  
+  )
 
 (defun adder-chain (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a ripple carry adder chain."
@@ -120,6 +125,37 @@
     )
   )
 
+(defun subtractor-chain (xs ys zs &optional c-in tmp1 tmp2 tmp3)
+  "Create a ripple-borrow subtractor chain."
+  (assert (= (length xs) (length ys) (length zs)))
+  (labels ((full-subtractor (x y z)
+             (let* ((diff-ops (list (make-xor tmp1 x y)
+                                    (make-xor z tmp1 c-in)
+                                    )
+                      )
+                    (borrow-ops (list (make-xnor tmp1 x y)
+                                      (make-and tmp2 c-in tmp1)
+                                      (make-not tmp1 x)
+                                      (make-and tmp3 tmp1 y)
+                                      (make-or c-in tmp3 tmp2))
+                      )
+                    )
+               (append diff-ops borrow-ops)
+               )
+             )
+           )
+    (append
+     (list 
+      (make-instance 'const :dest c-in :op1 0)
+      (make-instance 'const :dest tmp1 :op1 0)
+      (make-instance 'const :dest tmp2 :op1 0)
+      (make-instance 'const :dest tmp3 :op1 0)
+      )
+     (mapcan #'full-subtractor xs ys zs)
+     )
+    )
+  )
+
 (defun complement-subtract (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a subtractor by the method of complements"
   (assert (= (length xs) (length ys) (length zs)))
@@ -129,16 +165,21 @@
     (zero-gate tmp1)
     (zero-gate tmp2)
     (zero-gate tmp3))
-   (twos-complement ys c-in tmp1)
-   (adder-chain xs ys zs c-in tmp1 tmp2 tmp3) )
+;   (twos-complement ys zs c-in tmp1)
+   (zero-group zs)
+   (adder-chain xs ys zs c-in tmp1 tmp2 tmp3) 
+   (list
+    (zero-gate c-in)
+    (zero-gate tmp1)
+    (zero-gate tmp2)
+    (zero-gate tmp3))
+   )
   )
-
  
-(defun shift-and-add-multiplier (xs ys zs  c-in tmp1 tmp2 tmp3 zro acc tmpr)
+(defun shift-and-add-multiplier (xs ys zs c-in tmp1 tmp2 tmp3 zro acc tmpr)
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
   (assert (= (length xs) (length ys) (length zs)(length acc)(length tmpr)))
-;  (break)
   (labels ((shift-add (st x)
              (let ((n (first st))
                    (ops (second st))
@@ -146,7 +187,7 @@
                (list (1+ n) (append ops 
                                     (and-chain (loop for i in ys collect x) ys tmpr) ; multiply with AND
 				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) ;; next row to add
-				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length acc))) ;; copy over from the accumulator into our result wires
+				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs))) ;; copy over from the accumulator into our result wires
 				    ;; it is important that the previous op2 is (length acc) and not (length zs) because in the future zs may not be required to be the same size as xs and ys
  				    ))
                )
@@ -164,17 +205,19 @@
     )
   )
 
-
 ;;;
 ;;; END ALU
 ;;; 
-
 
 ;;;
 ;;; LABELS
 ;;;
 
 (defgeneric add-label (op idx labs bss base)
+  (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
+IDX is the index of a defined label - it will increment per instruction in order to provide the instruction's location within a program;LABS is the hash table that maps labels to their locations; in tandem, these two identify where in the list of opcodes each label is, and the index is how we find the label in the random access list.
+BSS is t/nil depending on if we're in the data section; BASE is the base pointer to the next spot in memory for allocating global variables"
+		  )
   )
 
 
@@ -184,13 +227,12 @@
   )
 
 ;; *****
-;; if in the data section,  hash(first s-args) => (cons 'glob base)
-;; else, hash(first s-args) => (cons 'labl idx)
+;; first s-args will be a static variable describing either the code block or the global variable name
 (defmethod add-label ((op labelv) idx labs bss base)
   (with-slots (s-args) op
     (if bss
-        (setf (gethash (first s-args) labs) (cons 'glob base))
-        (setf (gethash (first s-args) labs) (cons 'labl idx))
+        (setf (gethash (first s-args) labs) (cons 'glob base)) ;; cons 'GLOB with the base to indicate a global variable
+        (setf (gethash (first s-args) labs) (cons 'labl idx))  ;; cons 'LABL with the index to indicate a code block
         )
     (values labs bss base)
     )
@@ -209,7 +251,7 @@
 ;; (skip always in data section)
 (defmethod add-label ((op skip) idx labs bss base)
   (with-slots (s-args) op ; get static args
-    (values labs bss (+ base (* 8 (parse-integer (first s-args))))) ; store #bits in base, not bytes, for we will need a wire per bit
+    (values labs bss (+ base (* 8 (parse-integer (first s-args))))) ; store #bits (not bytes) in base, for we will need a wire per bit
     )
   )
 
@@ -227,7 +269,7 @@
     )
   )
 
-(defun exec-instructions (ops)
+(defun exec-instructions (ops) 
   "Translate a list of LCC opcodes into PCF2 opcodes.  The opcodes should be formatted as a skew-binary list.
 
 As a first step, this function uses the constant propagation analysis
@@ -238,7 +280,7 @@ to some extent."
   (let ((lbls (find-labels ops))
         (cnsts (const-dataflow-funs (list-skew ops)))
         )
-    (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000))
+    (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000)) ; last label arbitrarily set to 1mil
     (let ((rvl 
            (skew-reduce (lambda (st op) 
                           (assert (not (null st)))
@@ -281,17 +323,17 @@ to some extent."
 #|
 exec-instruction, as its name implies, executes an instruction. Explanation of the variables:
 op: the next op code to execute
-labels: a hash table that maps labels to their locations ** this might be wrong
+labels: a hash table that maps labels to their locations 
 stack: holds the state of the program's execution, generally pushing and popping a constant and a group of wires - the constant describing the number of wires - that provide the inputs and outputs of our computations
 wires: an integer that contains a count of the number of wires in use. New wires are allocated for new variables, and are deallocated when variables go out of scope (with the with-tmp-wires macro). At this point, they are not completely re-allocated in a meaningful way that permits reuse -- this is a possibility for future optimization -- but some are.
-instrs:
-targets:
+instrs: the list of PCF2 instructions (which are added in reverse)
+targets: a queue of branch targets, which consist of labels in the labels table 
 arglist:
 argsize:
 icnt: instruction count
 bss: true if we are in the data section, false if not
 baseinit:
-repeat:
+repeat: true if the instruction should be repeated
 iids:
 cnsts:
 |#
@@ -392,7 +434,7 @@ number of arguments."
     )
   )
 
-; safely allocated and deallocate wires programmatically and at need
+; allocate wires programmatically
 (defmacro with-temp-wires (sym n &body body)
   `(let ((,sym 
 	  (if (eql 1 ,n)
@@ -450,14 +492,17 @@ number of arguments."
     )
   )
 
+;;; target-label is where we're going
+;;; forward-body is ?
+;;; backward-body is ?
 (defmacro branch-case (target-label forward-body backward-body)
   (let ((t-idx (gensym))
         (cnd-sym (gensym))
         )
-    `(let ((,t-idx (cdr (gethash ,target-label labels nil)))
+    `(let ((,t-idx (cdr (gethash ,target-label labels nil))) ; default to nil in order to fail assertion on next line if label does not exist
            )
        (assert ,t-idx)
-       (if (>= ,t-idx icnt)
+       (if (>= ,t-idx icnt) ; if t-idx is greater than the current instruction count, we're jumping forward
            ,forward-body
            (add-instrs (append
                         (reverse
@@ -504,29 +549,31 @@ number of arguments."
                           )
                          )
                         )
-             (let ((targets 
-                    (let ((,cnd-sym (peek-queue targets))
-                          )
-                      (update-queue-min targets
-                                        (make-branch-target
-                                         :label (branch-target-label ,cnd-sym)
-                                         :cnd-wire (branch-target-cnd-wire ,cnd-sym)
-                                         :glob-cnd (branch-target-glob-cnd ,cnd-sym)
-                                         :mux-list (map-empty)
-                                         )
-                                        )
-                      )
-                     )
-                   )
-               ,backward-body
-               )
-             )
+		       (let ((targets 
+			      (let ((,cnd-sym (peek-queue targets))
+				    )
+				(update-queue-min targets
+						  (make-branch-target
+						   :label (branch-target-label ,cnd-sym)
+						   :cnd-wire (branch-target-cnd-wire ,cnd-sym)
+						   :glob-cnd (branch-target-glob-cnd ,cnd-sym)
+						   :mux-list (map-empty)
+						   )
+						  )
+				)
+			       )
+			     )
+			 ,backward-body
+			 )
+		       )
            )
        )
     )
   )
 
 (defun eql-gates (arg1 arg2 dest tmp1 tmp2)
+; implicitly, should dest start out as 0 or 1?
+; if it starts as 0, tmp2 (copied back to dest) will never be 0 
   (assert (= (length arg1) (length arg2)))
   (if (and arg1 arg2)
       (append (list (make-xnor tmp1 
@@ -541,99 +588,99 @@ number of arguments."
   )
 
 (definstr jumpv
-  (labels ((list-crossed-conditions (queue targ &optional (ret nil))
-             (declare (optimize (debug 3) (speed 0)))
-             (if (or (queue-emptyp queue)
-                     (string= (branch-target-label (peek-queue queue)) "$$$END$$$")
-                     )
-                 ret
-                 (let ((ctarg (peek-queue queue))
-                       (rest (dequeue queue))
-                       )
-                   (list-crossed-conditions rest targ (if (>= targ (cdr (gethash (branch-target-label ctarg) labels)))
-                                                          (cons (branch-target-cnd-wire ctarg) ret)
-                                                          ret))
-                   )
-                 )
-             )
-           (emit-and-lst (wires res &optional (ret nil))
-             (if (null wires)
-                 ret
-                 (emit-and-lst (rest wires)
-                               res
-                               (append (list (make-and res (first wires) res))
-                                       ret)
-                               )
-                 )
-             )
-           )
-    (with-slots (s-args) op
-      (pop-arg stack targ
-        (assert (and (= 1 (length targ))
-                     (typep (first targ) 'string)
+    (labels ((list-crossed-conditions (queue targ &optional (ret nil))
+	       (declare (optimize (debug 3) (speed 0)))
+	       (if (or (queue-emptyp queue)
+		       (string= (branch-target-label (peek-queue queue)) "$$$END$$$")
+		       )
+		   ret ; if we're at the end of the queue or of the program, return
+		   (let ((ctarg (peek-queue queue)) ;ctarg = current target
+			 (rest (dequeue queue))
+			 )
+		     (list-crossed-conditions rest targ (if (>= targ (cdr (gethash (branch-target-label ctarg) labels))) ;if targ is past the current target,
+							    (cons (branch-target-cnd-wire ctarg) ret) ; cons the next condition wire to ret
+							    ret)) ; otherwise just ret
+		     )
+		   )
+	       )
+	     (emit-and-lst (wires res &optional (ret nil)) ; what is "res" supposed to mean?
+	       (if (null wires)
+		   ret
+		   (emit-and-lst (rest wires)
+				 res
+				 (append (list (make-and res (first wires) res)) ; append an AND of res and first wire to the return
+					 ret)
+				 )
+		   )
+	       )
+	     )
+      (with-slots (s-args) op
+	(pop-arg stack targ
+		 (assert (and (= 1 (length targ))
+			      (typep (first targ) 'string) ; target is a string
                                         ;                   (queue-emptyp targets)
-                     )
-                )
-        (let ((targ (first targ))
-              )
+			      )
+			 )
+		 (let ((targ (first targ)) ; get that string
+		       )
                                         ;        (print targets)
-          (if (or (queue-emptyp targets)
-                  (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
-                  )
-              ;; If the priority queue is empty, then this jump should be unconditional
-              (add-instrs (list (make-instance 'const :dest wires :op1 1)
-                                (make-instance 'branch :cnd wires :targ targ)
-                                )
-                (let ((wires (1+ wires))
-                      )
-                  (close-instr)
-                  )
-                )
-              (branch-case targ 
-                           (let ((crossed-conds (list-crossed-conditions targets (cdr (gethash targ labels))))
-                                 )
-                             (add-instrs
-                                 (append
-                                  (list
-                                   (make-instance 'copy-indir :dest wires :op1 0 :op2 1)
-                                   (make-instance 'const :dest (+ 2 wires) :op1 1)
-                                   )
-                                  (emit-and-lst crossed-conds (+ 2 wires))
-                                  (list
-                                   (make-not (+ 1 wires) (+ 2 wires))
-                                   (make-and (+ 2 wires) wires (+ 1 wires))
-                                   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-                                   )
-                                  )
-                               (add-target targ (+ 1 wires) wires
-                                 (let ((wires (+ 3 wires))
-                                       )
-                                   (close-instr)
-                                   )
-                                 )
-                               )
-                             )
-                           (error 'unconditional-backwards-jump)
-                           )
-              )
-          )
-        )
+		   (if (or (queue-emptyp targets)
+			   (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
+			   )
+		       ;; If the priority queue is empty, then this jump should be unconditional
+		       (add-instrs (list (make-instance 'const :dest wires :op1 1)
+					 (make-instance 'branch :cnd wires :targ targ)
+					 )
+				   (let ((wires (1+ wires))
+					 )
+				     (close-instr)
+				     )
+				   )
+		       (branch-case targ 
+				    (let ((crossed-conds (list-crossed-conditions targets (cdr (gethash targ labels))))
+					  )
+				      (add-instrs
+				       (append
+					(list
+					 (make-instance 'copy-indir :dest wires :op1 0 :op2 1)
+					 (make-instance 'const :dest (+ 2 wires) :op1 1)
+					 )
+					(emit-and-lst crossed-conds (+ 2 wires))
+					(list
+					 (make-not (+ 1 wires) (+ 2 wires))
+					 (make-and (+ 2 wires) wires (+ 1 wires))
+					 (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+					 )
+					)
+				       (add-target targ (+ 1 wires) wires
+						   (let ((wires (+ 3 wires))
+							 )
+						     (close-instr)
+						     )
+						   )
+				       )
+				      )
+				    (error 'unconditional-backwards-jump)
+				    )
+		       )
+		   )
+		 )
+	)
       )
-    )
   )
 
 (definstr neu
 ;  (declare (optimize (speed 0) (debug 3)))
-  (with-slots (s-args width) op
-    (let ((width (* 8 width))
-          (targ (first s-args))
-          )
-      (declare (type string targ))
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (assert (and (= width (length arg1) (length arg2))))
-          (add-instrs (append 
-                       (list (make-instance 'const :dest wires :op1 1))
+    (with-slots (s-args width) op
+      (let ((width (* 8 width))
+	    (targ (first s-args))
+	    )
+	(declare (type string targ))
+	(pop-arg stack arg1
+		 (pop-arg stack arg2
+			  (assert (and (= width (length arg1) (length arg2))))
+			  (add-instrs (append 
+				       (list (make-instance 'const :dest wires :op1 1))
                        ;; AND in the fall-through case
                        (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
                                         ;
@@ -685,9 +732,9 @@ number of arguments."
           )
       (declare (type string targ))
       (pop-arg stack arg1
-        (pop-arg stack arg2
-          (assert (and (= width (length arg1) (length arg2))))
-          (add-instrs (append 
+	       (pop-arg stack arg2
+			(assert (and (= width (length arg1) (length arg2))))
+			(add-instrs (append 
                        (list (make-instance 'const :dest wires :op1 1))
                        ;; AND in the fall-through case
                        (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
@@ -732,7 +779,10 @@ number of arguments."
     )
   )
 
+
 (defun unsigned-less-than (arg1 arg2 dest tmp2 tmp3 tmp4)
+  ; dest passed as wires (simply to allocate a single wire). it acts as a temporary accumulator of results
+  ; tmp2, tmp3, tmp4 are all one wire in length
   (assert (= (length arg1) (length arg2)))
   (labels ((less-than (a1 a2)
              (list
@@ -754,6 +804,65 @@ number of arguments."
      )
     )
   )
+
+(defun signed-less-than (arg1 arg2 tmpzs dest t1 t2 t3)
+  (append 
+   ;(complement-subtract arg1 arg2 tmpzs t1 t2 t3 t4)
+   (subtractor-chain arg1 arg2 tmpzs dest t1 t2 t3)
+   (greater-than-zero tmpzs dest t1)
+   )
+  )
+
+;; TODO: make this right by accounting for the MSB
+(defun greater-than-zero (arg1 dest tmp)
+  (labels ((gt0 (a)
+	     (list (make-or dest a dest) )
+	     ))
+    (append
+     (list (make-instance 'const :dest dest :op1 0) )
+     (mapcan #'gt0 (butlast arg1)) ; the last bit of arg1 is the MSB, i.e. the sign bit
+     (list (make-not tmp (car (last arg1))) ; NOT that sign bit to AND with the chained OR
+	   (make-and dest tmp dest) ; sign bit is 0 and something else is 1
+	   )
+     )
+    )
+  )
+
+(definstr lti
+    ;  (declare (optimize (speed 0) (debug 3)))
+    (with-slots (s-args width) op
+      (let ((width (* 8 width))
+	    (targ (first s-args))
+	    )
+	(with-temp-wires tmpzs width 
+	  (with-temp-wires dst 1 
+	    (with-temp-wires t1 1 
+	      (with-temp-wires t2 1 
+		(with-temp-wires t3 1													
+	         (declare (type string targ))
+		 (pop-arg stack arg1
+		  (pop-arg stack arg2
+		   (assert (and (= width (length arg1) (length arg2))))
+		   (add-instrs
+		    (append 		
+                       ;; AND in the fall-through case
+		     (signed-less-than arg1 arg2 tmpzs dst t1 t2 t3)
+					;
+		     )
+		    (branch-case targ
+		      (add-instrs
+		       (list 
+			(make-not t3 dst)
+			(make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
+			(make-and t2 t3 t1)
+			(make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
+			)
+		       (add-target targ t3 t1
+				   (close-instr)))
+		      (add-instrs (list 
+ 				   (make-instance 'branch :cnd dst :targ targ)
+				   )
+				  (close-instr))))))))))))))
 
 (definstr ltu
 ;  (declare (optimize (speed 0) (debug 3)))
@@ -1083,28 +1192,35 @@ number of arguments."
     )
   )
 
-;; arithmetic operations
-;; add, subtract, multiply
+;;; arithmetic operations
+;;; add, subtract, multiply
+;;; these instructions are required to supply the input and output wires
+;;; the functions called by these macros will allocated their own temporary wires as necessary
+;;; the wires variable does have to keep global state
 
 (defmacro ripple-carry-adder ()
   `(with-slots (width) op
      (let* ((width (* 8 width))
-	    (rwires (loop for i from wires to (+ wires width -1) collect i))
+;	    (rwires (loop for i from wires to (+ wires width -1) collect i))
 	    )
-       (pop-arg stack arg1
-	 (pop-arg stack arg2
-	   (push-stack stack width rwires
-	     (add-instrs (adder-chain 
-			  arg1 
-			  arg2 
-			  rwires 
+       (with-temp-wires rwires width
+	 (pop-arg stack arg1
+	   (pop-arg stack arg2
+	     (push-stack stack width rwires
+	       (add-instrs (adder-chain 
+			    arg1 
+			    arg2 
+			    rwires 
 			  (+ wires width 1) 
 			  (+ wires width 2) 
 			  (+ wires width 3) 
-			  (+ wires width 4))
-	       (let ((wires (+ wires width))
-		     )
+			  (+ wires width 4)
+			  ;  wires
+			    )
+;	       (let ((wires (+ wires width))
+;		     )
 		 (close-instr)
+;		 )
 		 )
 	       )
 	     )
@@ -1121,6 +1237,7 @@ number of arguments."
 (definstr addi
   (ripple-carry-adder)
 )
+
 
 (defmacro shift-add-multiply ()
   `(with-slots (width) op
@@ -1140,7 +1257,9 @@ number of arguments."
 			    (add-instrs 
 				(shift-and-add-multiplier
 				;(karatsuba-multiplication
-				 arg1 arg2 rwires cin t2 t3 t4 t5 accum tr
+				 arg1 arg2 rwires
+;				 wires
+				 cin t2 t3 t4 t5 accum tr
 				 )
 			      (close-instr)
 			      )
@@ -1149,11 +1268,10 @@ number of arguments."
 			)
 		      )
 		    )
-		  ))))
-	  )
-	)
-      )
-    )
+		  )
+		)
+	      )
+	    )))))
   )
 
 (definstr muli
@@ -1178,14 +1296,14 @@ number of arguments."
 		(pop-arg stack arg2
 		  (pop-arg stack arg1
 		    (push-stack stack width rwires
-		      (add-instrs (complement-subtract 
-				   arg1 arg2 rwires cin t1 t2 t3)
-			(let ((wires (+ wires width))
-			      )
-			  (close-instr)
-			  ))
-		      )))))))))
-    )
+		      (add-instrs (subtractor-chain
+				  ; (complement-subtract  
+				   arg1 arg2 rwires
+				   cin t1 t2 t3
+				   )
+			(close-instr)
+			)
+		      ))))))))))
   )
 
 (definstr subu
@@ -1333,93 +1451,76 @@ number of arguments."
 ;; bitwise arithmetic operations
 ;;
 
-(definstr boru
-  (with-slots (width) op
-    (let ((width (* 8 width))
-          )
-      (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
-            )
-        (assert (= width (length rwires)))
-        (pop-arg stack arg1
-          (pop-arg stack arg2
-            (push-stack stack width rwires
-              (add-instrs (or-chain arg1 arg2 rwires)
-                (let ((wires (+ wires width))
-                      )
-                  (close-instr)
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+(defmacro bitwise-1-arg (fn)
+;  "Perform bitwise operation \"fn\" on one operator"
+  `(with-slots (width) op
+     (let* ((width (* 8 width))
+	    )
+       (with-temp-wires rwires width
+	 (pop-arg stack arg1
+	   (push-stack stack width rwires
+	     (add-instrs (,fn arg1 rwires)
+	       (close-instr)
+	       )
+	     )
+	   )
+	 )
+       )
+     )
   )
+
+(defmacro bitwise-2-arg (fn)
+;  "Perform bitwise operation \"fn\" on two operators"
+  `(with-slots (width) op
+     (let* ((width (* 8 width))
+	    )
+       (with-temp-wires rwires width
+	 (pop-arg stack arg1
+	   (pop-arg stack arg2
+	     (push-stack stack width rwires
+	       (add-instrs (,fn arg1 arg2 rwires)
+		 (close-instr)
+		 )
+	       )
+	     )
+	   )
+	 )
+       )
+     )
+  )
+
+(definstr boru
+  (bitwise-2-arg or-chain)
+)
+
+(definstr bori
+  (bitwise-2-arg or-chain)
+)
 
 (definstr bxoru
-  (with-slots (width) op
-    (let ((width (* 8 width))
-          )
-      (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
-            )
-        (assert (= width (length rwires)))
-        (pop-arg stack arg1
-          (pop-arg stack arg2
-            (push-stack stack width rwires
-              (add-instrs (xor-chain arg1 arg2 rwires)
-                (let ((wires (+ wires width))
-                      )
-                  (close-instr)
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+  (bitwise-2-arg xor-chain)
+)
+
+(definstr bxori
+  (bitwise-2-arg xor-chain)
+)
 
 (definstr bandu
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-           )
-      (with-temp-wires rwires width
-        (pop-arg stack arg1
-          (pop-arg stack arg2
-            (push-stack stack width rwires
-              (add-instrs (and-chain arg1 arg2 rwires)
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+  (bitwise-2-arg and-chain)
   )
 
 (definstr bandi
-  (with-slots (width) op
-    (let* ((width (* 8 width))
-           (rwires (loop for i from wires to (+ wires width -1) collect i))
-           )
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (and-chain arg1 arg2 rwires)
-              (let ((wires (+ wires width))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+  (bitwise-2-arg and-chain)
   )
+
+(definstr bcompu
+  (bitwise-1-arg not-chain)
+)
+
+(definstr bcompi
+  (bitwise-1-arg not-chain)
+)
+
 
 (defstruct arg 
   (len)
@@ -1431,7 +1532,7 @@ number of arguments."
     (assert (and (= 1 (length fname))
                  (typep (first fname) 'string)
                  )
-            )
+            ) 
     ;; (assert (or (queue-emptyp targets)
     ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
     (format t "callv ~A with newbase ~A with args: ~A~%" fname wires arglist)
@@ -1530,15 +1631,15 @@ number of arguments."
     )
   )
 
-(definstr reti
+(defmacro reti-retu ()
   ;; We must copy the value from the stack to the very beginning of
   ;; the stack frame, which is where return values are stored (see
   ;; above).
-  (assert (or (queue-emptyp targets)
+  `(assert (or (queue-emptyp targets)
               (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
               )
           )
-  (with-slots (width) op
+  `(with-slots (width) op
     (pop-arg stack arg
       (add-instrs (loop for j in arg for i from 0 collect
                        (make-xnor i j j)
@@ -1547,29 +1648,19 @@ number of arguments."
         )
       )
     )
+  )
+    
+
+(definstr reti
+  (reti-retu)
   )
 
 (definstr retu
-  ;; We must copy the value from the stack to the very beginning of
-  ;; the stack frame, which is where return values are stored (see
-  ;; above).
-  (assert (or (queue-emptyp targets)
-              (string= (branch-target-label (peek-queue targets)) "$$$END$$$")
-              )
-          )
-  (with-slots (width) op
-    (pop-arg stack arg
-      (add-instrs (loop for j in arg for i from 0 collect
-                       (make-xnor i j j)
-                       )
-        (close-instr)
-        )
-      )
-    )
+  (reti-retu)
   )
 
-(definstr argu
-  (with-slots (width) op
+(defmacro argu-argi ()
+  `(with-slots (width) op
     (pop-arg stack arg
       (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
             )
@@ -1577,17 +1668,14 @@ number of arguments."
         )
       )
     )
+)
+
+(definstr argu
+  (argu-argi)
   )
 
 (definstr argi
-  (with-slots (width) op
-    (pop-arg stack arg
-      (let ((arglist (append arglist (list (make-arg :len (* 8 width) :loc arg))))
-            )
-        (close-instr)
-        )
-      )
-    )
+  (argu-argi)
   )
 
 (definstr argp
@@ -1692,6 +1780,7 @@ number of arguments."
       )
     )
   )
+
 
 (definstr indiru
   ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
