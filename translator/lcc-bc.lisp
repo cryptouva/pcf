@@ -42,10 +42,15 @@
              ltu
 	     lti
              leu
+	     lei
              gtu
+	     gti
              geu
+	     gei
              neu
+	     nei
              equ
+	     eqi
              callv
              callu
              calli
@@ -255,8 +260,11 @@
   ()
   )
 
-
 (defclass leu (cmp-jump-instruction)
+  ()
+  )
+
+(defclass lei (cmp-jump-instruction)
   ()
   )
 
@@ -264,7 +272,15 @@
   ()
   )
 
+(defclass gti (cmp-jump-instruction)
+  ()
+  )
+
 (defclass geu (cmp-jump-instruction)
+  ()
+  )
+
+(defclass gei (cmp-jump-instruction)
   ()
   )
 
@@ -272,7 +288,15 @@
   ()
   )
 
+(defclass nei (cmp-jump-instruction)
+  ()
+  )
+
 (defclass equ (cmp-jump-instruction)
+  ()
+  )
+
+(defclass eqi (cmp-jump-instruction)
   ()
   )
 
