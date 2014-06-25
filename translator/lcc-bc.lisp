@@ -68,8 +68,8 @@
 	     bori
              bandu
 	     bandi
-	     bcompu
-	     bcompi
+	     bcomu
+	     bcomi
              addu
              addi
              subu
@@ -189,11 +189,11 @@
   ()
   )
 
-(defclass bcompu (one-arg-instruction)
+(defclass bcomu (one-arg-instruction)
   ()
 )
 
-(defclass bcompi (one-arg-instruction)
+(defclass bcomi (one-arg-instruction)
   ()
 )
 

@@ -917,6 +917,18 @@ number of arguments."
 	     (pop-arg stack arg2
 		      (leu-geu arg2 arg1 #'unsigned-less-than))))
 
+#|
+(definstr lei
+    (pop-arg stack arg1
+	     (pop-arg stack arg2
+		      (lei-gei arg1 arg2 #'signed-less-than))))
+
+(definstr gei
+    (pop-arg stack arg1
+	     (pop-arg stack arg2
+		      (lei-gei arg2 arg1 #'signed-less-than))))
+|#
+
 (definstr gtu
     (pop-arg stack arg1
 	     (pop-arg stack arg2
@@ -1320,11 +1332,11 @@ number of arguments."
   (bitwise-2-arg #'and-chain)
   )
 
-(definstr bcompu
+(definstr bcomu
   (bitwise-1-arg #'not-chain)
 )
 
-(definstr bcompi
+(definstr bcomi
   (bitwise-1-arg #'not-chain)
 )
 
