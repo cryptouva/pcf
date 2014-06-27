@@ -1981,7 +1981,8 @@ number of arguments."
        (pop-arg stack arg
 	 (cond
 	   ((= targwidth curwidth)
-	    (close-instr))
+	    (push-stack stack targwidth arg
+	    (close-instr)))
 	   ((< targwidth curwidth)
 	    (push-stack stack targwidth (subseq arg 0 targwidth)
 	      (close-instr)))
