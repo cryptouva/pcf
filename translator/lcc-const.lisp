@@ -14,10 +14,12 @@
 
 (defpackage :lcc-const 
   (:use :cl :utils :setmap :lcc-bc :lcc-dataflow)
-  (:export lcc-const-flow-fn const-dataflow-funs not-const)
+  (:export lcc-const-flow-fn const-dataflow-funs not-const *byte-width*)
   (:shadow import export)
   )
 (in-package :lcc-const)
+
+(defparameter *byte-width* 8)
 
 (defun constcmp (x y)
   (typecase x
@@ -110,7 +112,7 @@ as its value."
   (:documentation "Get the kill set for this op")
   )
 
-(defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize 8))
+(defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize))
         )
     (list (third genkill)

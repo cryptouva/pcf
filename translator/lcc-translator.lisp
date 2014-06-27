@@ -30,7 +30,7 @@
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
-(defparameter *byte-width* 8)
+; (defparameter *byte-width* 8)
 
 ;;;
 ;;; BEGIN ALU
@@ -1180,7 +1180,7 @@ number of arguments."
                                            )
                                          ) 
                                        (subseq amount 0 (1+ (floor (log width 2))) ) ; 
-                                       (loop for i from 0 to (floor (log width 2)) collect i) ; y isn't actually used here
+                                       (loop for i from 0 to (floor (log width 2)) collect i) ; y isn't actually used here, but is by the ,zero-concat form
                                        )
                                )
                     (let ((wires (+ wires (* 2 width) 3))
@@ -1225,7 +1225,20 @@ number of arguments."
     )
   )
 
-
+;; this one might not be correct. BT 6-26-14
+(definstr lshi ; left shift unsigned
+  (right-or-left-shift 
+      (append
+       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       (subseq rwires 0 (- width (expt 2 y)))
+       )
+      (append
+       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
+       (subseq rwires y width)
+       )
+    (close-instr)
+    )
+  )
 
 (definstr lshu ; left shift unsigned
   (right-or-left-shift 
@@ -1957,17 +1970,41 @@ number of arguments."
   (close-instr)
   )
 
+(defmacro convert-type-instr ()
+;; if first arg = second arg (same lengths), do nothing
+;; if first arg < second arg, cut off appropriate amount of second arg
+;; if first arg > second arg, extend
+  `(with-slots (s-args) op
+     (let ((targwidth  (* *byte-width* (parse-integer (first s-args))))
+	   (curwidth (* *byte-width* (parse-integer (second s-args))))
+	    )
+       (pop-arg stack arg
+	 (cond
+	   ((= targwidth curwidth)
+	    (close-instr))
+	   ((< targwidth curwidth)
+	    (push-stack stack targwidth (subseq arg 0 targwidth)
+	      (close-instr)))
+	   ((> targwidth curwidth)
+	    (with-temp-wires rwires (- targwidth curwidth)
+	      (push-stack stack targwidth (append arg rwires)
+		(close-instr)))))))))
+
 (definstr cvui ; convert from unsigned integer (to signed integer)
-  (close-instr)
+  (convert-type-instr)
   )
 
 (definstr cviu ; convert from signed integer (to unsigned integer)
-  (close-instr)
+  (convert-type-instr)
   )
 
 (definstr cvii ; convert from signed integer (to signed integer)
-  (close-instr)
-)
+  (convert-type-instr)
+  )
+
+(definstr cvuu ; convert from unsigned integer (to unsigned integer)
+  (convert-type-instr)
+  )
 
 (definstr labelv ; label definition (void)
   (declare (optimize (debug 3) (speed 0)))

@@ -25,6 +25,7 @@
              addp
              argp
              lshu
+	     lshi
              rshu
              rshi
              cnsti
@@ -33,6 +34,7 @@
              cvui
              cviu
 	     cvii
+	     cvuu
              stack-arg-instruction
              one-arg-instruction
              cnd-jump-instruction
@@ -165,6 +167,10 @@
   ()
   )
 
+(defclass lshi (two-arg-instruction)
+  ()
+  )
+
 (defclass rshu (two-arg-instruction)
   ()
   )
@@ -220,6 +226,10 @@
   )
 
 (defclass CVII (one-stack-one-static-arg-instruction)
+  ()
+  )
+
+(defclass CVUU (one-stack-one-static-arg-instruction)
   ()
   )
 
