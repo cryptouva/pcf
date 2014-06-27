@@ -391,37 +391,26 @@ number of arguments."
   "pushes two things onto the stack:
   1) a value (val) which is a list of wires
   2) the length of said list"
-  (let ((valsym (gensym))
-        )
-    `(let ((,valsym ,val)
-           )
+  (let ((valsym (gensym)))
+    `(let ((,valsym ,val))
        (declare (type list ,valsym))
-       (let ((,stack (append ,valsym ,stack)) ; append the list of wires to the front of the stack
-             )
-         (let ((,stack (cons ,width ,stack)) ; append a parameter describing the number of wires appended to the stack
-               )
+       (let ((,stack (append ,valsym ,stack))) ; append the list of wires to the front of the stack
+         (let ((,stack (cons ,width ,stack))) ; append a parameter describing the number of wires appended to the stack
 	   (assert (= (length ,valsym) ,width))
            ,@body
-           )
-         )
-       )
-    )
-  )
+           )))))
 
 
 (defmacro pop-arg (stack argname &body body)
   "pops off how many wires the argument will be, then pops the wires off the stack, assigning the list to argname"
-  (let ((wsym (gensym))
-        )
+  (let ((wsym (gensym)))
     `(let* ((,wsym (first ,stack)) ; the first argument is how many wires to pop off next
             (,stack (rest ,stack)) ; discard first value
             (,argname (subseq ,stack 0 ,wsym)) ; the list is the 0-,wsm spots on the stack
             (,stack (nthcdr ,wsym ,stack)) ; nthcdr the stack to pop
             )
        ,@body
-       )
-    )
-  )
+       )))
 
 (defmacro add-instrs (inslst &body body)
   (let ((inslstsym (gensym))
@@ -495,12 +484,11 @@ number of arguments."
 ;;; backward-body is ?
 (defmacro branch-case (target-label forward-body backward-body)
   (let ((t-idx (gensym))
-        (cnd-sym (gensym))
-        )
+        (cnd-sym (gensym)))
     `(let ((,t-idx (cdr (gethash ,target-label labels nil))) ; default to nil in order to fail assertion on next line if label does not exist
            )
        (assert ,t-idx)
-       (if (>= ,t-idx icnt) ; if t-idx is greater than the current instruction count, we're jumping forward
+       (if (>= ,t-idx icnt) ; if t-idx is greater than the current instruction count, we're jumping forward and this is easy
            ,forward-body
            (add-instrs (append
                         (reverse
@@ -511,8 +499,7 @@ number of arguments."
                                    (tmp1 (+ wires (* 2 width)))
                                    (tmp2 (+ wires (* 2 width) 1))
                                    (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
-                                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i))
-                                   )
+                                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i)))
                               (append (reverse
                                        (append
                                         (list (make-instance 'copy-indir
@@ -527,15 +514,12 @@ number of arguments."
                                          tmp1
                                          tmp2
                                          )
-                                        (list
-                                         (make-instance 'indir-copy 
-                                                        :dest (the integer (mux-item-address x))
-                                                        :op1 (car mux-dest)
-                                                        :op2 width)
-                                         )))
-                                      st)))
-                          (let ((,cnd-sym (peek-queue targets))
-                                )
+                                        (list (make-instance 'indir-copy 
+							     :dest (the integer (mux-item-address x))
+							     :op1 (car mux-dest)
+							     :op2 width))))
+				      st)))
+                          (let ((,cnd-sym (peek-queue targets)))
                             (branch-target-mux-list ,cnd-sym))
                           nil
                           )))
@@ -547,18 +531,9 @@ number of arguments."
 						   :cnd-wire (branch-target-cnd-wire ,cnd-sym)
 						   :glob-cnd (branch-target-glob-cnd ,cnd-sym)
 						   :mux-list (map-empty)
-						   )
-						  )
-				)
-			       )
-			     )
+						   )))))
 			 ,backward-body
-			 )
-		       )
-           )
-       )
-    )
-  )
+			 ))))))
 
 (defun eql-gates (arg1 arg2 dest tmp1 tmp2)
   ; implicitly, should dest start out as 0 or 1?
@@ -658,40 +633,39 @@ number of arguments."
 (defmacro neu-nei ()
   ;  (declare (optimize (speed 0) (debug 3)))
   `(with-slots (s-args width) op
-   (let ((width (* *byte-width* width))
-    (targ (first s-args))
-    )
-   (declare (type string targ))
-   (pop-arg stack arg1
-    (pop-arg stack arg2
-     (assert (and (= width (length arg1) (length arg2))))
-     (add-instrs (append 
-      (list (make-instance 'const :dest wires :op1 1))
-                       ;; AND in the fall-through case
-                       (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
-                                        ;
-                                        )
-     (let ((wires (1+ wires))
-      (cnd-wires wires)
-      )
-     (branch-case targ 
-       (let ((wires cnd-wires))
-         (add-instrs
-           (list 
-            (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-            (make-and (+ 2 wires) wires (1+ wires))
-            (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-            )
-           (add-target targ wires (1+ wires)
-             (let ((wires (+ 3 wires)))
-               (close-instr)))))
-       (let ((wires cnd-wires))
-         (add-instrs (list 
-          (make-not (1+ wires) wires)
-          (make-instance 'branch :cnd (1+ wires) :targ targ)
-          )
-         (let ((wires (+ 2 wires)))
-           (close-instr))))))))))))
+     (let ((width (* *byte-width* width))
+	   (targ (first s-args))
+	   )
+       (declare (type string targ))
+       (pop-arg stack arg1
+	 (pop-arg stack arg2
+	   (assert (and (= width (length arg1) (length arg2))))
+	   (add-instrs (append 
+			(list (make-instance 'const :dest wires :op1 1))
+			;; AND in the fall-through case
+			(eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires))
+			)
+	     (let ((wires (1+ wires))
+		   (cnd-wires wires)
+		   )
+	       (branch-case targ 
+			    (let ((wires cnd-wires))
+			      (add-instrs
+				  (list 
+				   (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1) ; global condition wire?
+				   (make-and (+ 2 wires) wires (1+ wires))
+				   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+				   )
+				(add-target targ wires (1+ wires)
+				  (let ((wires (+ 3 wires)))
+				    (close-instr)))))
+			    (let ((wires cnd-wires))
+			      (add-instrs (list 
+					   (make-not (1+ wires) wires)
+					   (make-instance 'branch :cnd (1+ wires) :targ targ)
+					   )
+				(let ((wires (+ 2 wires)))
+				  (close-instr))))))))))))
 
 (definstr neu ; not equal unsigned
     (neu-nei)
@@ -704,42 +678,42 @@ number of arguments."
 (defmacro equ-eqi ()
   ;  (declare (optimize (speed 0) (debug 3)))
   `(with-slots (s-args width) op
-   (let ((width (* *byte-width* width))
-    (targ (first s-args))
-    )
-   (declare (type string targ))
-   (pop-arg stack arg1
-    (pop-arg stack arg2
-     (assert (and (= width (length arg1) (length arg2))))
-     (add-instrs (append 
-       (list (make-instance 'const :dest wires :op1 1))
-				     ;; AND in the fall-through case
-				     (eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires)))
-     (let ((wires (1+ wires))
-       (cnd-wires wires)
-       )
-     (branch-case targ 
-       (let ((wires cnd-wires))
-         (add-instrs
-          (list 
-           (make-not (1+ wires) wires)
-           (make-instance 'copy-indir :dest (+ 3 wires) :op1 0 :op2 1)
-           (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
-           (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-           )
-          (add-target targ (+ 1 wires) (+ 3 wires)
-            (let ((wires (+ 4 wires))
-             )
-            (close-instr)
-            ))))
-       (let ((wires cnd-wires))
-         (add-instrs (list 
-          (make-instance 'branch :cnd wires :targ targ)
-          )
-         (let ((wires (+ 1 wires))
-           )
-         (close-instr)
-         )))))))))))
+     (let ((width (* *byte-width* width))
+	   (targ (first s-args))
+	   )
+       (declare (type string targ))
+       (pop-arg stack arg1
+	 (pop-arg stack arg2
+	   (assert (and (= width (length arg1) (length arg2))))
+	   (add-instrs (append 
+			(list (make-instance 'const :dest wires :op1 1))
+			;; AND in the fall-through case
+			(eql-gates arg1 arg2 wires (1+ wires) (+ 2 wires)))
+	     (let ((wires (1+ wires))
+		   (cnd-wires wires)
+		   )
+	       (branch-case targ 
+			    (let ((wires cnd-wires))
+			      (add-instrs
+				  (list 
+				   (make-not (1+ wires) wires)
+				   (make-instance 'copy-indir :dest (+ 3 wires) :op1 0 :op2 1)
+				   (make-and (+ 2 wires) (1+ wires) (+ 3 wires))
+				   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+				   )
+				(add-target targ (+ 1 wires) (+ 3 wires)
+				  (let ((wires (+ 4 wires))
+					)
+				    (close-instr)
+				    ))))
+			    (let ((wires cnd-wires))
+			      (add-instrs (list 
+					   (make-instance 'branch :cnd wires :targ targ)
+					   )
+				(let ((wires (+ 1 wires))
+				      )
+				  (close-instr)
+				  )))))))))))
 
 (definstr equ ; equal unsigned
     (equ-eqi)
@@ -781,10 +755,9 @@ number of arguments."
 
 (defun greater-than-zero (arg1 dest tmp)
   (labels ((gt0 (a)
-    (list (make-or dest a dest) )
-    ))
-  (append
-   (list (make-instance 'const :dest dest :op1 0) )
+	     (list (make-or dest a dest) )))
+    (append
+     (list (make-instance 'const :dest dest :op1 0) )
      (mapcan #'gt0 (butlast arg1)) ; the last bit of arg1 is the MSB, i.e. the sign bit
      (list (make-not tmp (car (last arg1))) ; NOT that sign bit to AND with the chained OR
 	   (make-and dest tmp dest) ; sign bit is 0 and something else is 1
@@ -792,40 +765,40 @@ number of arguments."
 
 (defmacro lti-gti (a1 a2 fn)
   (let ((arg1 (gensym))
-   (arg2 (gensym))
-   (fun (gensym))
-   )
-  `(let ((,arg1 ,a1)
-    (,arg2 ,a2)
-    (,fun ,fn)
-    )
-  (with-slots (s-args width) op
-    (let ((width (* *byte-width* width))
-      (targ (first s-args)))
-    (with-temp-wires tmpzs width 
-     (with-temp-wires dst 1 
-       (with-temp-wires t1 1 
-         (with-temp-wires t2 1 
-           (with-temp-wires t3 1 
-            (declare (type string targ))
-            (assert (and (= width (length ,arg1) (length ,arg2))))
-            (add-instrs
-             (append ;; AND in the fall-through case
-              (funcall ,fun ,arg1 ,arg2 tmpzs dst t1 t2 t3))
-             (branch-case targ
-               (add-instrs
-                (list 
-                  (make-not t3 dst)
-                  (make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
-                  (make-and t2 t3 t1)
-                  (make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
-                  )
-                (add-target targ t3 t1
-                  (close-instr)))
-               (add-instrs (list 
-                (make-instance 'branch :cnd dst :targ targ)
-                )
-               (close-instr))))))))))))))
+	(arg2 (gensym))
+	(fun (gensym))
+	)
+    `(let ((,arg1 ,a1)
+	   (,arg2 ,a2)
+	   (,fun ,fn)
+	   )
+       (with-slots (s-args width) op
+	 (let ((width (* *byte-width* width))
+	       (targ (first s-args)))
+	   (with-temp-wires tmpzs width 
+	     (with-temp-wires dst 1 
+	       (with-temp-wires t1 1 
+		 (with-temp-wires t2 1 
+		   (with-temp-wires t3 1 
+		     (declare (type string targ))
+		     (assert (and (= width (length ,arg1) (length ,arg2))))
+		     (add-instrs
+			 (append ;; AND in the fall-through case
+			  (funcall ,fun ,arg1 ,arg2 tmpzs dst t1 t2 t3))
+		       (branch-case targ
+				    (add-instrs
+					(list 
+					 (make-not t3 dst)
+					 (make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
+					 (make-and t2 t3 t1)
+					 (make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
+					 )
+				      (add-target targ t3 t1
+					(close-instr)))
+				    (add-instrs (list 
+						 (make-instance 'branch :cnd dst :targ targ)
+						 )
+				      (close-instr))))))))))))))
 
 
 (defmacro ltu-gtu (a1 a2 fn)
@@ -842,108 +815,144 @@ number of arguments."
 	     (let ((width (* *byte-width* width))
 		    (targ (first s-args))
 		    )
-	     (declare (type string targ))
-	     (assert (and (= width (length arg1) (length arg2))))
-	     (add-instrs (append 
+	       (declare (type string targ))
+	       (assert (and (= width (length arg1) (length arg2))))
+	       (with-temp-wires dst 1 
+		 (with-temp-wires t1 1 
+		   (with-temp-wires t2 1 
+		     (with-temp-wires t3 1 
+		       (add-instrs (append 
 			 ;; AND in the fall-through case
-			   (funcall ,fun ,arg2 ,arg1 wires (1+ wires) (+ 2 wires) (+ 3 wires))
-			   )
-			 (let ((wires (1+ wires))
-			      (cnd-wires wires))
-			  (branch-case targ
-				       (let ((wires cnd-wires))
-					 (add-instrs
+				    (funcall ,fun ,arg2 ,arg1 dst t1 t2 t3))
+			 (branch-case targ
+				      (add-instrs
 					  (list 
-					   (make-not (+ 3 wires) wires)
-					   (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-					   (make-and (+ 2 wires) (+ 3 wires) (1+ wires))
-					   (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
+					   (make-not t3 dst)
+					   (make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
+					   (make-and t2 t3 t1)
+					   (make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
 					   )
-					  (add-target targ (+ 3 wires) (1+ wires)
-						      (let ((wires (+ 4 wires)))
-							(close-instr)))))
-				       (let ((wires cnd-wires))
-					 (add-instrs (list 
-                                        ;(make-not (1+ wires) wires)
-						      (make-instance 'branch :cnd wires :targ targ)
-						      )
-						     (let ((wires (+ 4 wires)))
-						       (close-instr)
-						       )))))))))))
+					(add-target targ t3 t1
+					  (close-instr)))
+				      (add-instrs (list (make-instance 'branch :cnd dst :targ targ))
+					(close-instr)
+					))))))))))))
 
 
 (defmacro leu-geu (a1 a2 fn)
   ;  (declare (optimize (speed 0) (debug 3)))
-  `(with-slots (s-args width) op
-     (let ((width (* *byte-width* width))
-	   (targ (first s-args)))
-       (declare (type string targ))
-       (assert (and (= width (length arg1) (length arg2))))
-       (add-instrs (append 
-		    ;; AND in the fall-through case
-		    (unsigned-less-than arg1 arg2 wires (1+ wires) (+ 2 wires) (+ 3 wires))
-		    )
-		   (let ((wires (1+ wires))
-			 (cnd-wires wires))
-		     (branch-case targ
-				  (let ((wires cnd-wires))
+  (let ((arg1 (gensym))
+	(arg2 (gensym))
+	(fun (gensym))
+	)
+    `(let ((,arg1 ,a1)
+	   (,arg2 ,a2)
+	   (,fun ,fn)
+	   )
+       (with-slots (s-args width) op
+	  (let ((width (* *byte-width* width))
+		(targ (first s-args)))
+	    (declare (type string targ))
+	    (assert (and (= width (length arg1) (length arg2))))
+	    (with-temp-wires dst 1 
+	      (with-temp-wires t1 1 
+		(with-temp-wires t2 1 
+		  (with-temp-wires t3 1 
+		    (add-instrs (append 
+				 ;; AND in the fall-through case
+				 (funcall ,fun ,arg2 ,arg1 dst t1 t2 t3)
+				 )
+		      (branch-case targ
+				   (add-instrs
+				       (list 
+					(make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
+					(make-and t2 dst t1)
+					(make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
+					)
+				     (add-target targ dst t1
+				       (close-instr)))
+				   (add-instrs (list 
+						(make-not t1 dst)
+						(make-instance 'branch :cnd t1 :targ targ))
+				     (close-instr)))))))))))))
+	  
+(defmacro lei-gei (a1 a2 fn)
+  ;  (declare (optimize (speed 0) (debug 3)))
+  (let ((arg1 (gensym))
+	(arg2 (gensym))
+	(fun (gensym))
+	)
+    `(let ((,arg1 ,a1)
+	   (,arg2 ,a2)
+	   (,fun ,fn)
+	   )
+       (with-slots (s-args width) op
+	 (let ((width (* *byte-width* width))
+	       (targ (first s-args)))
+	   (declare (type string targ))
+	   (assert (and (= width (length arg1) (length arg2))))
+	   (with-temp-wires dst 1 
+	     (with-temp-wires t1 1 
+	       (with-temp-wires t2 1 
+		 (with-temp-wires t3 1 
+		   (with-temp-wires t4 1
+		     (add-instrs (append 
+				  ;; AND in the fall-through case
+				  (funcall ,fun ,arg1 ,arg2 dst t1 t2 t3 t4)
+				  )
+		       (branch-case targ
 				    (add-instrs
-				     (list 
-				      (make-instance 'copy-indir :dest (1+ wires) :op1 0 :op2 1)
-				      (make-and (+ 2 wires) wires (1+ wires))
-				      (make-instance 'indir-copy :dest 0 :op1 (+ 2 wires) :op2 1)
-				      )
-				     (add-target targ wires (1+ wires)
-						 (let ((wires (+ 4 wires)))
-						   (close-instr)))))
-				  (let ((wires cnd-wires))
+					(list 
+					 (make-instance 'copy-indir :dest t1 :op1 0 :op2 1)
+					 (make-and t2 dst t1)
+					 (make-instance 'indir-copy :dest 0 :op1 t2 :op2 1)
+					 )
+				      (add-target targ dst t1
+					(close-instr)))
 				    (add-instrs (list 
-						 (make-not (1+ wires) wires)
-						 (make-instance 'branch :cnd (1+ wires) :targ targ))
-						(let ((wires (+ 4 wires)))
-						  (close-instr))))))))))
+						 (make-not t1 dst)
+						 (make-instance 'branch :cnd t1 :targ targ))
+				      (close-instr))))))))))))))
 
 (definstr leu ; less than or equal unsigned
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (leu-geu arg1 arg2 #'unsigned-less-than))))
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (leu-geu arg1 arg2 #'unsigned-less-than))))
 
 (definstr geu ; greater than or equal unsigned
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (leu-geu arg2 arg1 #'unsigned-less-than))))
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (leu-geu arg2 arg1 #'unsigned-less-than))))
 
-#|
-(definstr lei
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (lei-gei arg1 arg2 #'signed-less-than))))
+(definstr lei ; less than or equal signed
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (lei-gei arg1 arg2 #'signed-less-than))))
 
-(definstr gei
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (lei-gei arg2 arg1 #'signed-less-than))))
-|#
-
-(definstr gtu ; greater than unsigned
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (ltu-gtu arg2 arg1 #'unsigned-less-than))))
+(definstr gei ; greater than or equal signed
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (lei-gei arg2 arg1 #'signed-less-than))))
 
 (definstr ltu ; less than unsigned
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (ltu-gtu arg1 arg2 #'unsigned-less-than))))
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (ltu-gtu arg1 arg2 #'unsigned-less-than))))
+
+(definstr gtu ; greater than unsigned
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (ltu-gtu arg2 arg1 #'unsigned-less-than))))
 
 (definstr lti ; less than signed
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (lti-gti arg1 arg2 #'signed-less-than))))
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (lti-gti arg1 arg2 #'signed-less-than))))
 
 (definstr gti ; greater than signed
-    (pop-arg stack arg1
-	     (pop-arg stack arg2
-		      (lti-gti arg2 arg1 #'signed-less-than))))
+  (pop-arg stack arg1
+    (pop-arg stack arg2
+      (lti-gti arg2 arg1 #'signed-less-than))))
 
 
 (defmacro intcnst ()
@@ -1050,24 +1059,22 @@ number of arguments."
 
 (defmacro ripple-carry-adder ()
   `(with-slots (width) op
-     (let* ((width (* *byte-width* width))
-;	    (rwires (loop for i from wires to (+ wires width -1) collect i))
-	    )
-     (with-temp-wires rwires width
-      (pop-arg stack arg1
-        (pop-arg stack arg2
-          (push-stack stack width rwires
-            (add-instrs (adder-chain 
-             arg1 
-             arg2
-             rwires 
-             (+ wires width 1) 
-             (+ wires width 2) 
-             (+ wires width 3) 
-             (+ wires width 4)
+     (let ((width (* *byte-width* width)))
+       (with-temp-wires rwires width
+	 (pop-arg stack arg1
+	   (pop-arg stack arg2
+	     (push-stack stack width rwires
+	       (add-instrs (adder-chain 
+			    arg1 
+			    arg2
+			    rwires 
+			    (+ wires width 1) 
+			    (+ wires width 2) 
+			    (+ wires width 3) 
+			    (+ wires width 4)
 			       ;  wires
-            )
-            (close-instr)))))))))
+			    )
+		 (close-instr)))))))))
 
 (definstr addu ; add unsigned
   (ripple-carry-adder)
@@ -1082,23 +1089,23 @@ number of arguments."
     (let ((width (* *byte-width* width))
 	  )
       (with-temp-wires rwires width 
-       (with-temp-wires cin 1
-         (with-temp-wires t2 1
-           (with-temp-wires t3 1
-             (with-temp-wires t4 1
-              (with-temp-wires t5 1
-                (with-temp-wires accum width
-                  (with-temp-wires tr width
-                    (pop-arg stack arg1
-                     (pop-arg stack arg2
-                       (push-stack stack width rwires
-                         (add-instrs 
-                          (shift-and-add-multiplier ;(karatsuba-multiplication
-                           arg1 arg2 rwires
-                            ;				 wires
-                            cin t2 t3 t4 t5 accum tr
-                            )
-                          (close-instr))))))))))))))))
+	(with-temp-wires cin 1
+	  (with-temp-wires t2 1
+	    (with-temp-wires t3 1
+	      (with-temp-wires t4 1
+		(with-temp-wires t5 1
+		  (with-temp-wires accum width
+		    (with-temp-wires tr width
+		      (pop-arg stack arg1
+			(pop-arg stack arg2
+			  (push-stack stack width rwires
+			    (add-instrs 
+				(shift-and-add-multiplier ;(karatsuba-multiplication
+				 arg1 arg2 rwires
+					;				 wires
+				 cin t2 t3 t4 t5 accum tr
+				 )
+			      (close-instr))))))))))))))))
 
 (definstr muli ; multiply signed
   (shift-add-multiply)
@@ -1290,28 +1297,26 @@ number of arguments."
 ;  "Perform bitwise operation \"fn\" on one operator"
   (let ((fun (gensym)))
     `(let ((,fun ,fn))
-  (with-slots (width) op
-     (let* ((width (* *byte-width* width))
-	    )
-       (with-temp-wires rwires width
-	 (pop-arg stack arg1
-	   (push-stack stack width rwires
-	     (add-instrs (funcall ,fun arg1 rwires)
-	       (close-instr))))))))))
+       (with-slots (width) op
+	 (let ((width (* *byte-width* width)))
+	   (with-temp-wires rwires width
+	     (pop-arg stack arg1
+	       (push-stack stack width rwires
+		 (add-instrs (funcall ,fun arg1 rwires)
+		   (close-instr))))))))))
 
 (defmacro bitwise-2-arg (fn)
 ;  "Perform bitwise operation \"fn\" on two operators"
   (let ((fun (gensym)))
     `(let ((,fun ,fn))
        (with-slots (width) op
-	  (let* ((width (* *byte-width* width))
-		 )
+	  (let ((width (* *byte-width* width)))
 	    (with-temp-wires rwires width
-	 (pop-arg stack arg1
-	   (pop-arg stack arg2
-	     (push-stack stack width rwires
-	       (add-instrs (funcall ,fun arg1 arg2 rwires)
-		 (close-instr)))))))))))
+	      (pop-arg stack arg1
+		(pop-arg stack arg2
+		  (push-stack stack width rwires
+		    (add-instrs (funcall ,fun arg1 arg2 rwires)
+		      (close-instr)))))))))))
 
 (definstr boru
   (bitwise-2-arg #'or-chain)
@@ -1387,72 +1392,36 @@ number of arguments."
     )
   )
 
+(defmacro calli-callu ()
+  `(with-slots (width) op
+     ;; (assert (or (queue-emptyp targets)
+     ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
+     (let ((width (* *byte-width* width))
+	   )
+       (pop-arg stack fname
+	 (let ((i 0)) 
+	   (add-instrs  
+	       (append (loop for arg in (reverse arglist) collect
+			    (prog1
+				(make-instance 'copy 
+					       :dest (+ wires i)
+					       :op1 (first (arg-loc arg))
+					       :op2 (arg-len arg))
+			      (incf i (arg-len arg))))
+		       (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
+		       )
+	     (push-stack stack width (loop for j from (+ i wires) to (+ wires width i -1) collect j)
+	       (let ((wires (+ wires width i 1))
+		     (arglist nil)
+		     )
+		 (close-instr)))))))))
+
 (definstr callu ; call unsigned int function
-  (with-slots (width) op
-    ;; (assert (or (queue-emptyp targets)
-    ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
-    (let ((width (* *byte-width* width))
-          )
-      (pop-arg stack fname
-        (let ((i 0)) 
-          (add-instrs  
-              (append (loop for arg in (reverse arglist) collect
-                           (prog1
-                               (make-instance 'copy 
-                                              :dest (+ wires i)
-                                              :op1 (first (arg-loc arg))
-                                              :op2 (arg-len arg))
-                             (incf i (arg-len arg))
-                             )
-                           )
-                      (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
-                      )
-            (push-stack stack width (loop for j from (+ i wires) to (+ wires width i -1) collect j)
-              (let ((wires (+ wires width i 1))
-                    (arglist nil)
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+  (calli-callu)
   )
 
 (definstr calli ; call signed int function
-  (with-slots (width) op
-    ;; (assert (or (queue-emptyp targets)
-    ;;             (string= (branch-target-label (peek-queue targets)) "$$$END$$$")))
-    (let ((width (* *byte-width* width))
-          )
-      (pop-arg stack fname
-        (let ((i 0)) 
-          (add-instrs  
-              (append (loop for arg in (reverse arglist) collect
-                           (prog1
-                               (make-instance 'copy 
-                                              :dest (+ wires i)
-                                              :op1 (first (arg-loc arg))
-                                              :op2 (arg-len arg))
-                             (incf i (arg-len arg))
-                             )
-                           )
-                      (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
-                      )
-            (push-stack stack width (loop for j from (+ i wires) to (+ wires width i -1) collect j)
-              (let ((wires (+ wires width i 1))
-                    (arglist nil)
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+  (calli-callu)
   )
 
 (defmacro reti-retu ()
@@ -1468,12 +1437,7 @@ number of arguments."
       (add-instrs (loop for j in arg for i from 0 collect
                        (make-xnor i j j)
                        )
-        (close-instr)
-        )
-      )
-    )
-  )
-    
+        (close-instr)))))
 
 (definstr reti ; return signed int 
   (reti-retu)
@@ -1489,10 +1453,7 @@ number of arguments."
       (let ((arglist (append arglist (list (make-arg :len (* *byte-width* width) :loc arg))))
             )
         (close-instr)
-        )
-      )
-    )
-)
+        ))))
 
 (definstr argu ; unsigned int argument
   (argu-argi)
@@ -1593,7 +1554,6 @@ number of arguments."
       (add-instrs (list (make-instance 'const :dest wires :op1 (- (* (* -1 *byte-width*) addr) width))
                         (make-instance 'mkptr :dest wires)
                         )
-
         (push-stack stack 1 (list wires)
           (let ((wires (1+ wires))
                 )
@@ -1605,21 +1565,34 @@ number of arguments."
     )
   )
 
+#|
 (defmacro indiri-indiru ()
   ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
   `(with-slots (width) op
-    (pop-arg stack ptr
-      (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* *byte-width* width)))
-        (push-stack stack (* *byte-width* width) (loop for i from wires to (+ wires (* *byte-width* width) -1) collect i)
-          (let ((wires (+ wires (* *byte-width* width)))
-                )
-            (close-instr)
-            )
-          )
-        )
-      )
-    )
-)
+     (pop-arg stack ptr
+       (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* *byte-width* width)))
+	 (push-stack stack (* *byte-width* width) (loop for i from wires to (+ wires (* *byte-width* width) -1) collect i)
+	   (let ((wires (+ wires (* *byte-width* width)))
+		 )
+	     (close-instr)
+	     )
+	   )
+	 )
+       )
+     )
+  )
+|#
+
+(defmacro indiri-indiru ()
+  ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
+  `(with-slots (width) op
+     (let ((width (* *byte-width* width)))
+       (with-temp-wires rwires width
+	   (pop-arg stack ptr
+	     (add-instrs (list (make-instance 'copy-indir :dest (first rwires) :op1 (first ptr) :op2 width))
+	       (push-stack stack width rwires
+		 (close-instr)
+		 )))))))
 
 (definstr indiru ; fetch unsigned int
     (indiri-indiru)
@@ -1970,7 +1943,7 @@ number of arguments."
   (close-instr)
   )
 
-(defmacro convert-type-instr ()
+(defmacro convert-type-instr (&body body)
 ;; if first arg = second arg (same lengths), do nothing
 ;; if first arg < second arg, cut off appropriate amount of second arg
 ;; if first arg > second arg, extend
@@ -1982,30 +1955,31 @@ number of arguments."
 	 (cond
 	   ((= targwidth curwidth)
 	    (push-stack stack targwidth arg
-	    (close-instr)))
+	      (close-instr)))
 	   ((< targwidth curwidth)
 	    (push-stack stack targwidth (subseq arg 0 targwidth)
 	      (close-instr)))
 	   ((> targwidth curwidth)
 	    (with-temp-wires rwires (- targwidth curwidth)
 	      (push-stack stack targwidth (append arg rwires)
+		,@body
 		(close-instr)))))))))
 
 (definstr cvui ; convert from unsigned integer (to signed integer)
-  (convert-type-instr)
-  )
+  (convert-type-instr))
 
 (definstr cviu ; convert from signed integer (to unsigned integer)
-  (convert-type-instr)
-  )
+  (convert-type-instr))
 
 (definstr cvii ; convert from signed integer (to signed integer)
-  (convert-type-instr)
-  )
+  (convert-type-instr
+   (add-instrs
+       (loop for i in rwires collect
+	    (make-instance 'copy :dest i :op1 (last arg) :op2 1)) ; sign extend
+     )))
 
 (definstr cvuu ; convert from unsigned integer (to unsigned integer)
-  (convert-type-instr)
-  )
+  (convert-type-instr))
 
 (definstr labelv ; label definition (void)
   (declare (optimize (debug 3) (speed 0)))
