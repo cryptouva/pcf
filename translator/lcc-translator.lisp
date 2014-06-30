@@ -205,7 +205,7 @@
      )
     )
   )
-
+#|
 (defun shift-and-subtract-diviser (xs ys zs accum cnd c-in tmp2 tmp3 tmp4)
   ;; shift-and subtract division:
   ;; extend ys with exts, then shift, compare, and subtract (and mux) along the way
@@ -236,7 +236,7 @@
 			     ))
 			     
     ))
-
+|#
 ;;;
 ;;; END ALU
 ;;; 
@@ -1114,8 +1114,7 @@ number of arguments."
 
 (defmacro shift-add-multiply ()
   `(with-slots (width) op
-    (let ((width (* *byte-width* width))
-	  )
+    (let ((width (* *byte-width* width)))
       (with-temp-wires rwires width 
 	(with-temp-wires cin 1
 	  (with-temp-wires t2 1
@@ -1191,7 +1190,7 @@ number of arguments."
 		      (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
 		      (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
 		      (if (equalp cnst 'not-const)
-			  (assert (= (length rwires) (length rwires*) width))
+			  ; (assert (= (length rwires) (length rwires*) width))
 			  (add-instrs (append
 				       (list 
 					(make-instance 'const :dest zro :op1 0)
