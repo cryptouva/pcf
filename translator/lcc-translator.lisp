@@ -126,7 +126,7 @@
     )
   )
 
-(defun subtractor-chain (xs ys zs &optional c-in tmp1 tmp2 tmp3)
+(defun subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a ripple-borrow subtractor chain."
   (assert (= (length xs) (length ys) (length zs)))
   (labels ((full-subtractor (x y z)
@@ -205,6 +205,37 @@
      )
     )
   )
+
+(defun shift-and-subtract-diviser (xs ys zs accum cnd c-in tmp2 tmp3 tmp4)
+  ;; shift-and subtract division:
+  ;; extend ys with exts, then shift, compare, and subtract (and mux) along the way
+  ;; we have to go backwards through the bits because the lsb is first
+  ;; unsigned-less-than (arg1 arg2 dest tmp2 tmp3 tmp4)
+  ;; mux (olds news res cnd tmp1 tmp2)
+  ;; subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
+  (assert (= (length xs)(length ys)(length zs)))
+  (labels ((subtract-and-check (divisor dividend difference res)
+	     (append
+	      (unsigned-less-than divisor dividend cnd tmp2 tmp3 tmp4)
+	      (subtractor-chain divisor dividend difference c-in tmp2 tmp3 tmp4)
+	      (mux dividend difference res cnd tmp2 tmp3) ;; can probably just put res back into dividend
+	       ;now: old divisor is (still) in divisor, new difference is in difference, and we have a mux on whether divisor < dividend to put difference/dividend into dividend
+	      ))
+	   (subtract-divide (dividend)
+	     (subtract-and-check xs dividend zs dividend)
+	     )
+	   )
+    (loop for i from 0 to (length zs) collect
+	 (subtract-and-check xs
+			     (append
+			      (subseq ys (- (length (zs) i)))
+			      (subseq zs i (- (length zs) i))
+			      )
+			     accum
+			     zs
+			     ))
+			     
+    ))
 
 ;;;
 ;;; END ALU
@@ -755,11 +786,11 @@ number of arguments."
 
 (defun greater-than-zero (arg1 dest tmp)
   (labels ((gt0 (a)
-	     (list (make-or dest a dest) )))
+	     (list (make-or tmp a tmp) )))
     (append
-     (list (make-instance 'const :dest dest :op1 0) )
+     (list (make-instance 'const :dest tmp :op1 0) )
      (mapcan #'gt0 (butlast arg1)) ; the last bit of arg1 is the MSB, i.e. the sign bit
-     (list (make-not tmp (car (last arg1))) ; NOT that sign bit to AND with the chained OR
+     (list (make-not dest (car (last arg1))) ; NOT that sign bit to AND with the chained OR
 	   (make-and dest tmp dest) ; sign bit is 0 and something else is 1
 	   ))))
 
@@ -860,7 +891,7 @@ number of arguments."
 		  (with-temp-wires t3 1 
 		    (add-instrs (append 
 				 ;; AND in the fall-through case
-				 (funcall ,fun ,arg2 ,arg1 dst t1 t2 t3)
+				 (funcall ,fun ,arg1 ,arg2 dst t1 t2 t3)
 				 )
 		      (branch-case targ
 				   (add-instrs
@@ -964,17 +995,10 @@ number of arguments."
              )
          (add-instrs (list (make-instance 'const :dest wires :op1 value)
                            (make-instance 'bits :dest dwires :op1 wires))
-           (let ((wires (+ wires width))
-                 )
+           (let ((wires (+ wires width)))
              (push-stack stack width dwires
                (close-instr)
-               )
-             )
-           )
-         )
-       )
-     )
-  )
+               )))))))
 
 (definstr cnstu ; unsigned constant
   (intcnst)
@@ -1061,20 +1085,24 @@ number of arguments."
   `(with-slots (width) op
      (let ((width (* *byte-width* width)))
        (with-temp-wires rwires width
-	 (pop-arg stack arg1
-	   (pop-arg stack arg2
-	     (push-stack stack width rwires
-	       (add-instrs (adder-chain 
-			    arg1 
-			    arg2
-			    rwires 
-			    (+ wires width 1) 
-			    (+ wires width 2) 
-			    (+ wires width 3) 
-			    (+ wires width 4)
-			       ;  wires
-			    )
-		 (close-instr)))))))))
+	 (with-temp-wires tmp1 1
+	   (with-temp-wires tmp2 1
+	     (with-temp-wires tmp3 1
+	       (with-temp-wires tmp4 1
+		 (pop-arg stack arg1
+		   (pop-arg stack arg2
+		     (push-stack stack width rwires
+		       (add-instrs (adder-chain 
+				    arg1 
+				    arg2
+				    rwires 
+				    tmp1 
+				    tmp2 
+				    tmp3 
+				    tmp4
+					;  wires
+				    )
+		 (close-instr)))))))))))))
 
 (definstr addu ; add unsigned
   (ripple-carry-adder)
@@ -1119,8 +1147,7 @@ number of arguments."
 (defmacro subtract-by-complement ()
   "subtraction by the method of complements."
   `(with-slots (width) op
-    (let* ((width (* *byte-width* width))
-           )
+    (let ((width (* *byte-width* width)))
       (with-temp-wires rwires width
         (with-temp-wires cin 1
           (with-temp-wires t1 1
@@ -1150,126 +1177,82 @@ number of arguments."
 
 (defmacro right-or-left-shift (zero-concat cnst-shift &body body)
   `(with-slots (width) op
-    (let ((width (* *byte-width* width))
-          )
+    (let ((width (* *byte-width* width)))
       (pop-arg stack amount
         (pop-arg stack val
-          ;; Check to see if there is a constant on top of the stack (this is the shift amount)
-          (let ((cnst (car (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
-                )
-            (print cnst)
-            (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
-            (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
-            (if (equalp cnst 'not-const)
-                (let ((rwires (loop for i from wires to (+ wires width -1) collect i))
-                      (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
-                      )
-                  (assert (= (length rwires) (length rwires*) width))
-                  (add-instrs (append
-                               (list 
-                                (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
-                                (make-instance 'copy :dest wires :op1 (first val) :op2 width))
-                               (mapcan (lambda (x y)
-                                         (let ((shifted-val ,zero-concat)
-                                               )
-                                           (assert (= (length shifted-val) width))
-                                           (append (mux rwires ; mux rwires with shifted val and put result in rwires*
-                                                        shifted-val 
-                                                        rwires* 
-                                                        x 
-                                                        (+ wires (* 2 width) 1) 
-                                                        (+ wires (* 2 width) 2))
-                                                   (list (make-instance 'copy ; then copy rwires* back into rwires
-                                                                        :dest (first rwires) 
-                                                                        :op1 (first rwires*) 
-                                                                        :op2 width))
-                                                   )
-                                           )
-                                         ) 
-                                       (subseq amount 0 (1+ (floor (log width 2))) ) ; 
-                                       (loop for i from 0 to (floor (log width 2)) collect i) ; y isn't actually used here, but is by the ,zero-concat form
-                                       )
-                               )
-                    (let ((wires (+ wires (* 2 width) 3))
-                          )
-                      
-                      (push-stack stack width rwires*
-                        ,@body
-                        )
-                      )
-                    )
-                  )
-                ;; TODO: shift only by a constant amount
-                (let ((y cnst)
-                      (rwires (loop for i from wires to (+ wires width -1) collect i))
-                      (rwires* (loop for i from (+ wires width) to (+ wires (* 2 width) -1) collect i))
-                      )
-                  (add-instrs (append
-                               (list 
-                                (make-instance 'const :dest (+ wires (* 2 width)) :op1 0)
-                                (make-instance 'copy :dest wires :op1 (first val) :op2 width)
-                                )
-                               (let ((shifted-value ,cnst-shift))
-                                 (assert (= (length shifted-value) width))
-                                 (loop for i in (reverse shifted-value) for j in (reverse rwires*) collect ; why reverse both here?
-                                      (make-instance 'copy :dest j :op1 i :op2 1)
-                                      )
-                                 )
-                               )
-                    (let ((wires (+ wires (* 2 width) 1))
-                          )
-                      (push-stack stack width rwires*
-                        ,@body
-                        )
-                      )
-                    )
-                  )
-                )
-            )
-          )
-        )
-      )
-    )
-  )
-
-;; this one might not be correct. BT 6-26-14
-(definstr lshi ; left shift unsigned
-  (right-or-left-shift 
-      (append
-       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
-       (subseq rwires 0 (- width (expt 2 y)))
-       )
-      (append
-       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
-       (subseq rwires y width)
-       )
-    (close-instr)
-    )
-  )
+	  (with-temp-wires rwires width
+	    (with-temp-wires rwires* width
+	      (with-temp-wires zro 1
+		(with-temp-wires tmp1 1
+		  (with-temp-wires tmp2 1
+		    ;; Check to see if there is a constant on top of the stack (this is the shift amount)
+		    (let ((cnst (car (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts)))))))
+		      (print cnst)
+		      (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
+		      (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
+		      (if (equalp cnst 'not-const)
+			  (assert (= (length rwires) (length rwires*) width))
+			  (add-instrs (append
+				       (list 
+					(make-instance 'const :dest zro :op1 0)
+					(make-instance 'copy :dest (first rwires) :op1 (first val) :op2 width))
+				       (mapcan (lambda (x y)
+						 (let ((shifted-val ,zero-concat))
+						   (assert (= (length shifted-val) width))
+						   (append (mux rwires ; mux rwires with shifted val and put result in rwires*
+								shifted-val 
+								rwires* 
+								x 
+								tmp1 
+								tmp2)
+							   (list (make-instance 'copy ; then copy rwires* back into rwires
+										:dest (first rwires) 
+										:op1 (first rwires*) 
+										:op2 width))))) 
+					       (subseq amount 0 (1+ (floor (log width 2))) ) ; x: a series of cascading muxes on each bit
+					       (loop for i from 0 to (floor (log width 2)) collect i) ; y will be used in shifted-val
+					       ))
+			    (push-stack stack width rwires*
+			      ,@body ))
+			  ;; TODO: shift only by a constant amount
+			  (let ((y cnst))
+			    (add-instrs (append
+					 (list 
+					  (make-instance 'const :dest zro :op1 0)
+					  (make-instance 'copy :dest (first rwires) :op1 (first val) :op2 width)
+					  )
+					 (let ((shifted-value ,cnst-shift))
+					   (assert (= (length shifted-value) width))
+					   (loop for i in (reverse shifted-value) for j in (reverse rwires*) collect ; why reverse both here?
+						(make-instance 'copy :dest j :op1 i :op2 1)
+						)))
+			      (push-stack stack width rwires*
+				,@body
+				)))))))))))))))
 
 (definstr lshu ; left shift unsigned
   (right-or-left-shift 
       (append
-       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       (loop for i from 0 to (1- (expt 2 y)) collect zro)
        (subseq rwires 0 (- width (expt 2 y)))
        )
       (append
-       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
+       (loop for i from 0 to (1- y) collect zro)
        (subseq rwires 0 (- width y))
        )
     (close-instr)
     )
   )
 
-(definstr rshi ; right shift signed
-  (right-or-left-shift
+(definstr lshi ; left shift unsigned
+  (right-or-left-shift 
       (append
-       (subseq rwires (expt 2 y) width)
-       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       (loop for i from 0 to (1- (expt 2 y)) collect zro)
+       (subseq rwires 0 (- width (expt 2 y)))
        )
       (append
+       (loop for i from 0 to (1- y) collect zro)
        (subseq rwires y width)
-       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
        )
     (close-instr)
     )
@@ -1279,11 +1262,25 @@ number of arguments."
   (right-or-left-shift
       (append
        (subseq rwires (expt 2 y) width)
-       (loop for i from 0 to (1- (expt 2 y)) collect (+ wires (* 2 width)))
+       (loop for i from 0 to (1- (expt 2 y)) collect zro)
        )
       (append
        (subseq rwires 0 (- width y))
-       (loop for i from 0 to (1- y) collect (+ wires (* 2 width)))
+       (loop for i from 0 to (1- y) collect zro)
+       )
+    (close-instr)
+    )
+  )
+
+(definstr rshi ; right shift signed
+  (right-or-left-shift
+      (append
+       (subseq rwires (expt 2 y) width)
+       (loop for i from 0 to (1- (expt 2 y)) collect zro)
+       )
+      (append
+       (subseq rwires y width)
+       (loop for i from 0 to (1- y) collect zro)
        )
     (close-instr)
     )
