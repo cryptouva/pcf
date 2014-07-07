@@ -14,12 +14,10 @@
 
 (defpackage :lcc-const 
   (:use :cl :utils :setmap :lcc-bc :lcc-dataflow)
-  (:export lcc-const-flow-fn const-dataflow-funs not-const *byte-width*)
+  (:export lcc-const-flow-fn const-dataflow-funs not-const)
   (:shadow import export)
   )
 (in-package :lcc-const)
-
-(defparameter *byte-width* 8)
 
 (defun constcmp (x y)
   (typecase x

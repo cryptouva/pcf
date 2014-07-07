@@ -922,14 +922,14 @@ number of arguments."
 	       (targ (first s-args)))
 	   (declare (type string targ))
 	   (assert (and (= width (length arg1) (length arg2))))
-	   (with-temp-wires dst 1 
-	     (with-temp-wires t1 1 
-	       (with-temp-wires t2 1 
-		 (with-temp-wires t3 1 
-		   (with-temp-wires t4 1
+	   (with-temp-wires tmpzs width 
+	     (with-temp-wires dst 1 
+	       (with-temp-wires t1 1 
+		 (with-temp-wires t2 1 
+		   (with-temp-wires t3 1 
 		     (add-instrs (append 
 				  ;; AND in the fall-through case
-				  (funcall ,fun ,arg1 ,arg2 dst t1 t2 t3 t4)
+				  (funcall ,fun ,arg1 ,arg2 tmpzs dst t1 t2 t3)
 				  )
 		       (branch-case targ
 				    (add-instrs
@@ -984,6 +984,38 @@ number of arguments."
   (pop-arg stack arg1
     (pop-arg stack arg2
       (lti-gti arg2 arg1 #'signed-less-than))))
+
+(defmacro lt-gt-eq-neq-compare (a1 a2 fncall fwd bwd)
+  (let ((arg1 (gensym))
+	(arg2 (gensym))
+	(fun (gensym))
+	(fwd (gensym))
+	(bwd (gensym))
+	)
+    `(let ((,arg1 ,a1)
+	   (,arg2 ,a2)
+	   (,fun ,fncall)
+	   (,forward ,fwd)
+	   (,backward ,bwd)
+	   )
+       (with-slots (s-args width) op
+	 (let ((width (* *byte-width* width))
+	       (targ (first s-args)))
+	   (with-temp-wires tmpzs width 
+	     (with-temp-wires dst 1 
+	       (with-temp-wires t1 1 
+		 (with-temp-wires t2 1 
+		   (with-temp-wires t3 1
+		     (with-temp-wires t4 1
+		       (declare (type string targ))
+		       (assert (and (= width (length ,arg1) (length ,arg2))))
+		       (add-instrs
+			   (append ;; AND in the fall-through case
+			    ,fun)
+			 (branch-case targ
+				      ,forward
+				      ,backward
+				      )))))))))))))
 
 
 (defmacro intcnst ()
@@ -1190,29 +1222,30 @@ number of arguments."
 		      (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
 		      (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
 		      (if (equalp cnst 'not-const)
-			  ; (assert (= (length rwires) (length rwires*) width))
-			  (add-instrs (append
-				       (list 
-					(make-instance 'const :dest zro :op1 0)
-					(make-instance 'copy :dest (first rwires) :op1 (first val) :op2 width))
-				       (mapcan (lambda (x y)
-						 (let ((shifted-val ,zero-concat))
-						   (assert (= (length shifted-val) width))
-						   (append (mux rwires ; mux rwires with shifted val and put result in rwires*
-								shifted-val 
-								rwires* 
-								x 
-								tmp1 
-								tmp2)
-							   (list (make-instance 'copy ; then copy rwires* back into rwires
-										:dest (first rwires) 
-										:op1 (first rwires*) 
-										:op2 width))))) 
-					       (subseq amount 0 (1+ (floor (log width 2))) ) ; x: a series of cascading muxes on each bit
-					       (loop for i from 0 to (floor (log width 2)) collect i) ; y will be used in shifted-val
-					       ))
-			    (push-stack stack width rwires*
-			      ,@body ))
+			  (progn
+			    (assert (= (length rwires) (length rwires*) width))
+			    (add-instrs (append
+					 (list 
+					  (make-instance 'const :dest zro :op1 0)
+					  (make-instance 'copy :dest (first rwires) :op1 (first val) :op2 width))
+					 (mapcan (lambda (x y)
+						   (let ((shifted-val ,zero-concat))
+						     (assert (= (length shifted-val) width))
+						     (append (mux rwires ; mux rwires with shifted val and put result in rwires*
+								  shifted-val 
+								  rwires* 
+								  x 
+								  tmp1 
+								  tmp2)
+							     (list (make-instance 'copy ; then copy rwires* back into rwires
+										  :dest (first rwires) 
+										  :op1 (first rwires*) 
+										  :op2 width))))) 
+						 (subseq amount 0 (1+ (floor (log width 2))) ) ; x: a series of cascading muxes on each bit
+						 (loop for i from 0 to (floor (log width 2)) collect i) ; y will be used in shifted-val
+						 ))
+			      (push-stack stack width rwires*
+			      ,@body )))
 			  ;; TODO: shift only by a constant amount
 			  (let ((y cnst))
 			    (add-instrs (append
@@ -1969,10 +2002,10 @@ number of arguments."
 
 (definstr cvii ; convert from signed integer (to signed integer)
   (convert-type-instr
-   (add-instrs
-       (loop for i in rwires collect
-	    (make-instance 'copy :dest i :op1 (last arg) :op2 1)) ; sign extend
-     )))
+    (add-instrs
+	(loop for i in rwires collect
+	     (make-instance 'copy :dest i :op1 (last arg) :op2 1)) ; sign extend
+      )))
 
 (definstr cvuu ; convert from unsigned integer (to unsigned integer)
   (convert-type-instr))

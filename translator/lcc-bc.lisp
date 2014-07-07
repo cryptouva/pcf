@@ -5,6 +5,7 @@
                      #+sbcl :sb-mop #+cmu :mop)
             (:export
              width
+	     *byte-width*
              parse-instruction
              read-instructions
              lcc-instruction
@@ -88,6 +89,8 @@
              import)
             )
 (in-package :lcc-bc)
+
+(defparameter *byte-width* 8)
 
 (defclass lcc-instruction ()
     ()
