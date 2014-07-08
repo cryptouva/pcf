@@ -82,7 +82,7 @@
    ))
 
 
-;; Arithmetic operations (add, subtract, multiply, TODO:divide)
+;; Arithmetic operations (add, subtract, multiply, divide)
 ;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps),
 ;; while it was the responsibility of the instruction macro to allocate them
 ;; the optimizer's reaching def analysis should eliminate all of the unnecessary zero-ing gates,
@@ -205,38 +205,43 @@
      )
     )
   )
-#|
-(defun shift-and-subtract-diviser (xs ys zs accum cnd c-in tmp2 tmp3 tmp4)
-  ;; shift-and subtract division:
-  ;; extend ys with exts, then shift, compare, and subtract (and mux) along the way
-  ;; we have to go backwards through the bits because the lsb is first
-  ;; unsigned-less-than (arg1 arg2 dest tmp2 tmp3 tmp4)
-  ;; mux (olds news res cnd tmp1 tmp2)
-  ;; subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
+
+;; shift-and subtract division:
+;; extend ys with extras, then shift, compare, and subtract (and mux) along the way
+;; we have to go backwards through the bits because the lsb is first
+;; unsigned-less-than (arg1 arg2 dest tmp2 tmp3 tmp4)
+;; mux (olds news res cnd tmp1 tmp2)
+;; subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
+(defun shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
   (assert (= (length xs)(length ys)(length zs)))
-  (labels ((subtract-and-check (divisor dividend difference res)
+  (labels ((subtract-and-check (divisor dividend difference res condition)
 	     (append
-	      (unsigned-less-than divisor dividend cnd tmp2 tmp3 tmp4)
+	      (unsigned-less-than divisor dividend condition tmp2 tmp3 tmp4)
 	      (subtractor-chain divisor dividend difference c-in tmp2 tmp3 tmp4)
-	      (mux dividend difference res cnd tmp2 tmp3) ;; can probably just put res back into dividend
-	       ;now: old divisor is (still) in divisor, new difference is in difference, and we have a mux on whether divisor < dividend to put difference/dividend into dividend
+	      (mux dividend difference res condition tmp2 tmp3) ;; can probably just put res back into dividend
+	      ;; cnd now tells whether we were less than and subtracted -- it is the next bit of the quotient!
+	      ;; now: old divisor is (still) in divisor, new difference is in difference, and we have a mux on whether divisor < dividend to put difference/dividend into dividend
 	      ))
-	   (subtract-divide (dividend)
-	     (subtract-and-check xs dividend zs dividend)
+	   (subtract-divide (st yz)
+	     (let ((ops (first st)) 
+		   (dividend (second st))
+		   (y (first yz))
+		   (z (second yz)))
+	       (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
+		 (list 
+		  (append ops (subtract-and-check xs newdiv extras newdiv z))
+		  newdiv)))))
+    (let ((ys-rev (reverse ys))
+	  (zs-rev (reverse zs)))
+      (first (reduce #'subtract-divide
+		     (mapcar (lambda(a b) (list a b) ys-rev zs-rev))
+		     :initial-value (list nil padding)
+		     )
 	     )
-	   )
-    (loop for i from 0 to (length zs) collect
-	 (subtract-and-check xs
-			     (append
-			      (subseq ys (- (length (zs) i)))
-			      (subseq zs i (- (length zs) i))
-			      )
-			     accum
-			     zs
-			     ))
-			     
-    ))
-|#
+      )
+    )
+  )
+
 ;;;
 ;;; END ALU
 ;;; 
@@ -455,9 +460,9 @@ number of arguments."
     )
   )
 
-; allocate wires programmatically
+;; allocate wires programmatically
 (defmacro with-temp-wires (sym n &body body)
-  ;(declare (indent defun))
+  ;;(declare (indent defun))
   `(let ((,sym 
 	  (if (eql 1 ,n)
 	      wires
@@ -669,7 +674,7 @@ number of arguments."
 	   )
        (declare (type string targ))
        (pop-arg stack arg1
-	 (pop-arg stack arg2
+        (pop-arg stack arg2
 	   (assert (and (= width (length arg1) (length arg2))))
 	   (add-instrs (append 
 			(list (make-instance 'const :dest wires :op1 1))
@@ -1174,6 +1179,22 @@ number of arguments."
   (shift-add-multiply)
   )
 
+;; shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
+(definstr divu
+    (with-slots (width) op
+      (let ((width (* *byte-width* width)))
+	(with-temp-wires rwires width
+	 (with-temp-wires pad width
+	  (with-temp-wires extras width
+	   (with-temp-wires cin 1
+	    (with-temp-wires tmp2 1
+	     (with-temp-wires tmp3 1
+	      (with-temp-wires tmp4 1
+	       (pop-arg stack arg2
+		(pop-arg stack arg1
+	         (add-instrs 
+		  (shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
+		  (close-instr))))))))))))))
 
 (defmacro subtract-by-complement ()
   "subtraction by the method of complements."

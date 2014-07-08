@@ -79,6 +79,7 @@
 	     subi
              mulu
 	     muli
+	     divu
              argi
              argu
              read-instructions
@@ -393,6 +394,10 @@
 (defclass muli (two-arg-instruction)
   ()
   )
+
+(defclass divu (two-arg-instruction)
+  ()
+)
 
 (defun parse-instruction (ln)
   "Parse an LCC bytecode instruction from a string"
