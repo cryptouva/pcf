@@ -1181,7 +1181,6 @@ number of arguments."
 
 ;; shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
 (definstr divu
-  (break)
   (with-slots (width) op
     (let ((width (* *byte-width* width)))
       (with-temp-wires rwires width
