@@ -72,7 +72,7 @@
 	   (make-instance 'const :dest tmp  :op1 0) ); clear after use
      ))
   )
-
+#|
 (defun twos-complement (xs zs c-in tmp)
 ; input in xs, output in zs, c-in and tmp are one-gate temporaries
   (append 
@@ -80,7 +80,7 @@
    (zero-group zs)	
 ;   (add-one zs zs c-in tmp)
    ))
-
+|#
 
 ;; Arithmetic operations (add, subtract, multiply, divide)
 ;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps),
@@ -234,7 +234,7 @@
     (let ((ys-rev (reverse ys))
 	  (zs-rev (reverse zs)))
       (first (reduce #'subtract-divide
-		     (mapcar (lambda(a b) (list a b) ys-rev zs-rev))
+		     (mapcar (lambda(a b) (list a b)) ys-rev zs-rev)
 		     :initial-value (list nil padding)
 		     )
 	     )
@@ -701,7 +701,7 @@ number of arguments."
 					   (make-instance 'branch :cnd (1+ wires) :targ targ)
 					   )
 				(let ((wires (+ 2 wires)))
-				  (close-instr))))))))))))
+ 				  (close-instr))))))))))))
 
 (definstr neu ; not equal unsigned
     (neu-nei)
@@ -989,7 +989,7 @@ number of arguments."
   (pop-arg stack arg1
     (pop-arg stack arg2
       (lti-gti arg2 arg1 #'signed-less-than))))
-
+#|
 (defmacro lt-gt-eq-neq-compare (a1 a2 fncall fwd bwd)
   (let ((arg1 (gensym))
 	(arg2 (gensym))
@@ -1021,7 +1021,7 @@ number of arguments."
 				      ,forward
 				      ,backward
 				      )))))))))))))
-
+|#
 
 (defmacro intcnst ()
   `(with-slots (s-args) op
@@ -1181,20 +1181,22 @@ number of arguments."
 
 ;; shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
 (definstr divu
-    (with-slots (width) op
-      (let ((width (* *byte-width* width)))
-	(with-temp-wires rwires width
-	 (with-temp-wires pad width
+  (break)
+  (with-slots (width) op
+    (let ((width (* *byte-width* width)))
+      (with-temp-wires rwires width
+	(with-temp-wires pad width
 	  (with-temp-wires extras width
-	   (with-temp-wires cin 1
-	    (with-temp-wires tmp2 1
-	     (with-temp-wires tmp3 1
-	      (with-temp-wires tmp4 1
-	       (pop-arg stack arg2
-		(pop-arg stack arg1
-	         (add-instrs 
-		  (shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
-		  (close-instr))))))))))))))
+	    (with-temp-wires cin 1
+	      (with-temp-wires tmp2 1
+		(with-temp-wires tmp3 1
+		  (with-temp-wires tmp4 1
+		    (pop-arg stack arg2
+		      (pop-arg stack arg1
+			(push-stack stack width rwires
+			    (add-instrs 
+				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
+			      (close-instr)))))))))))))))
 
 (defmacro subtract-by-complement ()
   "subtraction by the method of complements."
