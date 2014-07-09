@@ -146,13 +146,13 @@
              )
            )
     (append
+     (mapcan #'full-subtractor xs ys zs)
      (list 
       (make-instance 'const :dest c-in :op1 0)
       (make-instance 'const :dest tmp1 :op1 0)
       (make-instance 'const :dest tmp2 :op1 0)
       (make-instance 'const :dest tmp3 :op1 0)
       )
-     (mapcan #'full-subtractor xs ys zs)
      )
     )
   )
@@ -213,14 +213,15 @@
 ;; mux (olds news res cnd tmp1 tmp2)
 ;; subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
 (defun shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
-  (assert (= (length xs)(length ys)(length zs)))
+  (assert (= (length xs)(length ys)(length zs)(length padding)(length extras)))
   (labels ((subtract-and-check (divisor dividend difference res condition)
 	     (append
-	      (unsigned-less-than divisor dividend condition tmp2 tmp3 tmp4)
-	      (subtractor-chain divisor dividend difference c-in tmp2 tmp3 tmp4)
-	      (mux dividend difference res condition tmp2 tmp3) ;; can probably just put res back into dividend
-	      ;; cnd now tells whether we were less than and subtracted -- it is the next bit of the quotient!
-	      ;; now: old divisor is (still) in divisor, new difference is in difference, and we have a mux on whether divisor < dividend to put difference/dividend into dividend
+	      (unsigned-less-than dividend divisor condition tmp2 tmp3 tmp4) ; cond := (divisor <= dividend)
+	      (list (make-not condition condition))
+	      (subtractor-chain dividend divisor difference c-in tmp2 tmp3 tmp4) ; difference := dividend - divisor
+	      (mux dividend difference res condition tmp2 tmp3) ; res = ( condition ? dividend : dfference)
+	      ;; res = ( divisor < dividend ? dividend : dividend - divisor )
+	      ;; cond ( := (divisor ?< dividend) )  is the next bit of the quotient
 	      ))
 	   (subtract-divide (st yz)
 	     (let ((ops (first st)) 
@@ -231,16 +232,10 @@
 		 (list 
 		  (append ops (subtract-and-check xs newdiv extras newdiv z))
 		  newdiv)))))
-    (let ((ys-rev (reverse ys))
-	  (zs-rev (reverse zs)))
       (first (reduce #'subtract-divide
-		     (mapcar (lambda(a b) (list a b)) ys-rev zs-rev)
+		     (mapcar (lambda(a b) (list a b)) (reverse ys) (reverse zs))
 		     :initial-value (list nil padding)
-		     )
-	     )
-      )
-    )
-  )
+		     ))))
 
 ;;;
 ;;; END ALU
@@ -777,10 +772,14 @@ number of arguments."
               )
              )
            )
-    (cons
-     (make-instance 'const :dest dest :op1 0)
+    (append
+     (list (make-instance 'const :dest dest :op1 0))
      (mapcan #'less-than arg1 arg2)
-     )))
+     (list
+      (make-instance 'const :dest tmp2 :op1 0)
+      (make-instance 'const :dest tmp3 :op1 0)
+      (make-instance 'const :dest tmp4 :op1 0)
+     ))))
 
 (defun signed-less-than (arg1 arg2 tmpzs dest t1 t2 t3)
   (append 
@@ -1190,11 +1189,11 @@ number of arguments."
 	      (with-temp-wires tmp2 1
 		(with-temp-wires tmp3 1
 		  (with-temp-wires tmp4 1
-		    (pop-arg stack arg2
-		      (pop-arg stack arg1
+		    (pop-arg stack arg1
+		      (pop-arg stack arg2
 			(push-stack stack width rwires
 			    (add-instrs 
-				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
+				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cpywires cin tmp2 tmp3 tmp4)
 			      (close-instr)))))))))))))))
 
 (defmacro subtract-by-complement ()
@@ -1670,6 +1669,7 @@ number of arguments."
 (defun mux (olds news res cnd tmp1 tmp2)
   "Emit a chain of muxes for condition \"cnd\".  It should be safe for \"res\" to be equal to either \"olds\" or \"news\"."
   (assert (= (length olds) (length news) (length res)))
+  (append
   (mapcan (lambda (x y r)
             (list
              (make-xor tmp1 x y)
@@ -1678,6 +1678,9 @@ number of arguments."
              )
             )
           olds news res)
+   (list
+    (make-instance 'const :dest tmp1 :op1 0)
+    (make-instance 'const :dest tmp2 :op1 0)))
   )
 
 (defmacro asgn-mux (&body body)
