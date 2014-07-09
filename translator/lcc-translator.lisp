@@ -206,36 +206,57 @@
     )
   )
 
-;; shift-and subtract division:
-;; extend ys with extras, then shift, compare, and subtract (and mux) along the way
-;; we have to go backwards through the bits because the lsb is first
 ;; unsigned-less-than (arg1 arg2 dest tmp2 tmp3 tmp4)
 ;; mux (olds news res cnd tmp1 tmp2)
 ;; subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
-(defun shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
+(defun subtract-and-check (divisor dividend difference res condition tmp1 tmp2 tmp3 tmp4)
+  (append
+   (unsigned-less-than dividend divisor condition tmp2 tmp3 tmp4) ; cond := (divisor <= dividend)
+   (list (make-not condition condition))
+   (subtractor-chain dividend divisor difference tmp1 tmp2 tmp3 tmp4) ; difference := dividend - divisor
+   (mux dividend difference res condition tmp2 tmp3) ; res = ( condition ? dividend : dfference)
+   ;; res = ( divisor < dividend ? dividend : dividend - divisor )
+   ;; cond ( := (divisor ?< dividend) )  is the next bit of the quotient
+   )
+)
+
+;; shift-and subtract division:
+;; extend ys with extras, then shift, compare, and subtract (and mux) along the way
+;; we have to go backwards through the bits because the lsb is first
+(defun shift-and-subtract-diviser (xs ys zs padding extras tmp1 tmp2 tmp3 tmp4)
   (assert (= (length xs)(length ys)(length zs)(length padding)(length extras)))
-  (labels ((subtract-and-check (divisor dividend difference res condition)
-	     (append
-	      (unsigned-less-than dividend divisor condition tmp2 tmp3 tmp4) ; cond := (divisor <= dividend)
-	      (list (make-not condition condition))
-	      (subtractor-chain dividend divisor difference c-in tmp2 tmp3 tmp4) ; difference := dividend - divisor
-	      (mux dividend difference res condition tmp2 tmp3) ; res = ( condition ? dividend : dfference)
-	      ;; res = ( divisor < dividend ? dividend : dividend - divisor )
-	      ;; cond ( := (divisor ?< dividend) )  is the next bit of the quotient
-	      ))
-	   (subtract-divide (st yz)
+  (labels ((subtract-divide (st yz)
 	     (let ((ops (first st)) 
 		   (dividend (second st))
 		   (y (first yz))
 		   (z (second yz)))
 	       (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
 		 (list 
-		  (append ops (subtract-and-check xs newdiv extras newdiv z))
+		  (append ops (subtract-and-check xs newdiv extras newdiv z tmp1 tmp2 tmp3 tmp4))
 		  newdiv)))))
       (first (reduce #'subtract-divide
 		     (mapcar (lambda(a b) (list a b)) (reverse ys) (reverse zs))
 		     :initial-value (list nil padding)
 		     ))))
+
+(defun shift-subtract-divide-mod (xs ys zs padding extras tmp1 tmp2 tmp3 tmp4)
+  (assert (= (length xs)(length ys)(length zs)(length padding)(length extras)))
+  (labels ((subtract-divide (st yz)
+	     (let ((ops (first st)) 
+		   (dividend (second st))
+		   (y (first yz))
+		   (z (second yz)))
+	       (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
+		 (list 
+		  (append ops (subtract-and-check xs newdiv extras newdiv z tmp1 tmp2 tmp3 tmp4))
+		  newdiv)))))
+    (append
+     (first (reduce #'subtract-divide
+		   (mapcar (lambda(a b) (list a b)) (reverse ys) (reverse zs))
+		     :initial-value (list nil padding)
+		     ))
+     (list (make-instance 'copy :dest (first zs) :op1 (first ys) :op2 (length zs)) ;; use the fact that the final remainder is simply stuck in ys
+     ))))
 
 ;;;
 ;;; END ALU
@@ -1178,7 +1199,6 @@ number of arguments."
   (shift-add-multiply)
   )
 
-;; shift-and-subtract-diviser (xs ys zs padding extras c-in tmp2 tmp3 tmp4)
 (definstr divu
   (with-slots (width) op
     (let ((width (* *byte-width* width)))
@@ -1194,6 +1214,23 @@ number of arguments."
 			(push-stack stack width rwires
 			    (add-instrs 
 				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
+			      (close-instr)))))))))))))))
+
+(definstr modu
+  (with-slots (width) op
+    (let ((width (* *byte-width* width)))
+      (with-temp-wires rwires width
+	(with-temp-wires pad width
+	  (with-temp-wires extras width
+	    (with-temp-wires cin 1
+	      (with-temp-wires tmp2 1
+		(with-temp-wires tmp3 1
+		  (with-temp-wires tmp4 1
+		    (pop-arg stack arg1
+		      (pop-arg stack arg2
+			(push-stack stack width rwires
+			    (add-instrs 
+				(shift-subtract-divide-mod arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
 			      (close-instr)))))))))))))))
 
 (defmacro subtract-by-complement ()

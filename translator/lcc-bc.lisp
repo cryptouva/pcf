@@ -80,6 +80,7 @@
              mulu
 	     muli
 	     divu
+	     modu
              argi
              argu
              read-instructions
@@ -396,6 +397,10 @@
   )
 
 (defclass divu (two-arg-instruction)
+  ()
+)
+
+(defclass modu (two-arg-instruction)
   ()
 )
 
