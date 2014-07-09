@@ -1193,7 +1193,7 @@ number of arguments."
 		      (pop-arg stack arg2
 			(push-stack stack width rwires
 			    (add-instrs 
-				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cpywires cin tmp2 tmp3 tmp4)
+				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
 			      (close-instr)))))))))))))))
 
 (defmacro subtract-by-complement ()
