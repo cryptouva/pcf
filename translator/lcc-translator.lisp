@@ -2068,23 +2068,26 @@ number of arguments."
 	    (with-temp-wires rwires (- targwidth curwidth)
 	      (push-stack stack targwidth (append arg rwires)
 		,@body
-		(close-instr)))))))))
+		))))))))
 
 (definstr cvui ; convert from unsigned integer (to signed integer)
-  (convert-type-instr))
+  (convert-type-instr
+    (close-instr)))
 
 (definstr cviu ; convert from signed integer (to unsigned integer)
-  (convert-type-instr))
+  (convert-type-instr
+    (close-instr)))
 
 (definstr cvii ; convert from signed integer (to signed integer)
   (convert-type-instr
     (add-instrs
 	(loop for i in rwires collect
-	     (make-instance 'copy :dest i :op1 (car (last arg)) :op2 1)) ; sign extend
-      )))
+	     (make-instance 'copy :dest i :op1 (car (last arg)) :op2 1));sign extend
+      (close-instr))))
 
 (definstr cvuu ; convert from unsigned integer (to unsigned integer)
-  (convert-type-instr))
+  (convert-type-instr
+    (close-instr)))
 
 (definstr labelv ; label definition (void)
   (declare (optimize (debug 3) (speed 0)))
