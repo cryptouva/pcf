@@ -131,12 +131,12 @@
       (make-instance 'const :dest tmp3 :op1 0))
      )))
 
-(defun complement-subtract (xs ys zs c-in tmp1 tmp2 tmp3)
+(defun complement-subtract (xs ys zs tmps c-in tmp1 tmp2 tmp3)
   "Create a subtractor by the method of complements"
   (assert (= (length xs) (length ys) (length zs)))
   (append
-   (twos-complement ys zs c-in tmp1)
-   (adder-chain xs zs zs c-in tmp1 tmp2 tmp3) 
+   (twos-complement ys tmps c-in tmp1)
+   (adder-chain xs tmps zs c-in tmp1 tmp2 tmp3) 
    (list
     (zero-gate c-in)
     (zero-gate tmp1)
@@ -772,7 +772,7 @@ number of arguments."
 
 (defun signed-less-than (arg1 arg2 tmpzs dest t1 t2 t3)
   (append 
-   ;(complement-subtract arg1 arg2 tmpzs t1 t2 t3 t4)
+   ;;(complement-subtract arg1 arg2 tmpzs t1 t2 t3 t4)
    (subtractor-chain arg1 arg2 tmpzs dest t1 t2 t3)
    (greater-than-zero tmpzs dest t1)
    ))
@@ -1206,20 +1206,22 @@ number of arguments."
   `(with-slots (width) op
     (let ((width (* *byte-width* width)))
       (with-temp-wires rwires width
-        (with-temp-wires cin 1
-          (with-temp-wires t1 1
-            (with-temp-wires t2 1
-              (with-temp-wires t3 1
-                (pop-arg stack arg2
-                  (pop-arg stack arg1
-                    (push-stack stack width rwires
-                      (add-instrs 
-			  ;;(subtractor-chain 
-			  (complement-subtract  
-			   arg1 arg2 rwires
-			   cin t1 t2 t3
-			   )
-			(close-instr)))))))))))))
+	(with-temp-wires tmps width
+	  (with-temp-wires cin 1
+	    (with-temp-wires t1 1
+	      (with-temp-wires t2 1
+		(with-temp-wires t3 1
+		  (pop-arg stack arg2
+		    (pop-arg stack arg1
+		      (push-stack stack width rwires
+			(add-instrs 
+			    ;;(subtractor-chain 
+			    (complement-subtract  
+			     arg1 arg2 rwires
+			     tmps
+			     cin t1 t2 t3
+			     )
+			  (close-instr))))))))))))))
 
 (definstr subu ; subtract unsigned
   ;; note that this works just the same as signed, underflow will not generate a warning or error
