@@ -73,6 +73,7 @@
 	     bandi
 	     bcomu
 	     bcomi
+	     negi
              addu
              addi
              subu
@@ -80,7 +81,9 @@
              mulu
 	     muli
 	     divu
+	     divi
 	     modu
+	     modi
              argi
              argu
              read-instructions
@@ -205,6 +208,10 @@
 )
 
 (defclass bcomi (one-arg-instruction)
+  ()
+)
+
+(defclass negi (one-arg-instruction)
   ()
 )
 
@@ -400,7 +407,15 @@
   ()
 )
 
+(defclass divi (two-arg-instruction)
+  ()
+)
+
 (defclass modu (two-arg-instruction)
+  ()
+)
+
+(defclass modi (two-arg-instruction)
   ()
 )
 

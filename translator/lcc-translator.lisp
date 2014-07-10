@@ -74,7 +74,7 @@
   )
 
 (defun twos-complement (xs zs c-in tmp)
-; input in xs, output in zs, c-in and tmp are one-gate temporaries
+  ;; input in xs, output in zs, c-in and tmp are one-gate temporaries
   (append 
    (not-chain xs zs)
    (add-one zs zs c-in tmp)
@@ -188,20 +188,25 @@
    )
 )
 
+(defmacro sub-div ()
+  `(let ((ops (first st)) 
+	 (dividend (second st))
+	 (y (first yz))
+	 (z (second yz)))
+     (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
+       (list 
+	(append ops (subtract-and-check xs newdiv extras newdiv z tmp1 tmp2 tmp3 tmp4))
+	newdiv)))
+  )
+
 ;; shift-and subtract division:
 ;; extend ys with extras, then shift, compare, and subtract (and mux) along the way
 ;; we have to go backwards through the bits because the lsb is first
 (defun shift-and-subtract-diviser (xs ys zs padding extras tmp1 tmp2 tmp3 tmp4)
   (assert (= (length xs)(length ys)(length zs)(length padding)(length extras)))
   (labels ((subtract-divide (st yz)
-	     (let ((ops (first st)) 
-		   (dividend (second st))
-		   (y (first yz))
-		   (z (second yz)))
-	       (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
-		 (list 
-		  (append ops (subtract-and-check xs newdiv extras newdiv z tmp1 tmp2 tmp3 tmp4))
-		  newdiv)))))
+	     (sub-div)
+	     ))
       (first (reduce #'subtract-divide
 		     (mapcar (lambda(a b) (list a b)) (reverse ys) (reverse zs))
 		     :initial-value (list nil padding)
@@ -210,14 +215,8 @@
 (defun shift-subtract-divide-mod (xs ys zs padding extras tmp1 tmp2 tmp3 tmp4)
   (assert (= (length xs)(length ys)(length zs)(length padding)(length extras)))
   (labels ((subtract-divide (st yz)
-	     (let ((ops (first st)) 
-		   (dividend (second st))
-		   (y (first yz))
-		   (z (second yz)))
-	       (let ((newdiv (cons y (butlast dividend)))) ;; next msb of ys is the new lsb of dividend, cut off msb of dividend to make room
-		 (list 
-		  (append ops (subtract-and-check xs newdiv extras newdiv z tmp1 tmp2 tmp3 tmp4))
-		  newdiv)))))
+	     (sub-div)
+	     ))
     (append
      (first (reduce #'subtract-divide
 		   (mapcar (lambda(a b) (list a b)) (reverse ys) (reverse zs))
@@ -225,6 +224,24 @@
 		     ))
      (list (make-instance 'copy :dest (first zs) :op1 (first ys) :op2 (length zs)) ;; use the fact that the final remainder is simply stuck in ys
      ))))
+
+
+(defun signed-shift-and-subtract-diviser (xs ys zs padding extras tmpxs tmpys tmp1 tmp2 tmp3 tmp4 xsign ysign)
+  (append
+   (list
+    (make-instance 'copy :dest xsign :op1 (car (last xs)) :op2 1)
+    (make-instance 'copy :dest ysign :op1 (car (last ys)) :op2 1))
+   (twos-complement xs tmpxs tmp1 tmp2)
+   (twos-complement ys tmpys tmp1 tmp2)
+   (mux xs tmpxs tmpxs xsign tmp1 tmp2)
+   (mux ys tmpys tmpys ysign tmp1 tmp2)
+   (shift-and-subtract-diviser tmpxs tmpys zs padding extras tmp1 tmp2 tmp3 tmp4)
+   (list (make-xor tmp4 xsign ysign)) ;; tmp4 is our new cond bit
+   (twos-complement zs extras tmp1 tmp2)
+   (mux zs extras zs tmp4 tmp1 tmp2)
+   )
+)
+
 
 ;;;
 ;;; END ALU
@@ -1184,8 +1201,30 @@ number of arguments."
 				(shift-and-subtract-diviser arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
 			      (close-instr)))))))))))))))
 
-(definstr modu
+(definstr divi
   (with-slots (width) op
+    (let ((width (* *byte-width* width)))
+      (with-temp-wires rwires width
+	(with-temp-wires pad width
+	  (with-temp-wires extras width
+	    (with-temp-wires tmpxs width
+	      (with-temp-wires tmpys width
+		(with-temp-wires cin 1
+		  (with-temp-wires tmp2 1
+		    (with-temp-wires tmp3 1
+		      (with-temp-wires tmp4 1
+			(with-temp-wires xsign 1
+			  (with-temp-wires ysign 1
+			    (pop-arg stack arg1
+			      (pop-arg stack arg2
+				(push-stack stack width rwires
+				  (add-instrs 
+				      (signed-shift-and-subtract-diviser arg1 arg2 rwires pad extras tmpxs tmpys cin tmp2 tmp3 tmp4 xsign ysign)
+				    (close-instr)))))))))))))))))))
+
+;;; modulus operator is undefined (or not consistently defined) when at least one operand is negative, so we leave it undefined here. modi works the same as modu
+(defmacro modi-modu ()
+  `(with-slots (width) op
     (let ((width (* *byte-width* width)))
       (with-temp-wires rwires width
 	(with-temp-wires pad width
@@ -1199,7 +1238,16 @@ number of arguments."
 			(push-stack stack width rwires
 			  (add-instrs 
 			      (shift-subtract-divide-mod arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
-			    (close-instr)))))))))))))))
+			    (close-instr))))))))))))))
+  )
+
+(definstr modu
+  (modi-modu)
+  )
+
+(definstr modi
+  (modi-modu)
+)
 
 (defmacro subtract-by-complement ()
   "subtraction by the method of complements."
@@ -1409,6 +1457,17 @@ number of arguments."
   (bitwise-1-arg #'not-chain)
 )
 
+(definstr negi
+  (with-slots (width) op
+    (let ((width (* *byte-width* width)))
+      (with-temp-wires rwires width
+	(with-temp-wires tmp1 1
+	  (with-temp-wires tmp2 1
+	    (pop-arg stack arg
+	      (push-stack stack width rwires
+		(add-instrs
+		    (twos-complement arg rwires tmp1 tmp2)
+	      )))))))))
 
 (defstruct arg 
   (len)
@@ -1623,24 +1682,6 @@ number of arguments."
       )
     )
   )
-
-#|
-(defmacro indiri-indiru ()
-  ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
-  `(with-slots (width) op
-     (pop-arg stack ptr
-       (add-instrs (list (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 (* *byte-width* width)))
-	 (push-stack stack (* *byte-width* width) (loop for i from wires to (+ wires (* *byte-width* width) -1) collect i)
-	   (let ((wires (+ wires (* *byte-width* width)))
-		 )
-	     (close-instr)
-	     )
-	   )
-	 )
-       )
-     )
-  )
-|#
 
 (defmacro indiri-indiru ()
   ;; Pop a pointer off the stack, dereference the pointer and push its value back on the stack
@@ -2038,7 +2079,7 @@ number of arguments."
   (convert-type-instr
     (add-instrs
 	(loop for i in rwires collect
-	     (make-instance 'copy :dest i :op1 (last arg) :op2 1)) ; sign extend
+	     (make-instance 'copy :dest i :op1 (car (last arg)) :op2 1)) ; sign extend
       )))
 
 (definstr cvuu ; convert from unsigned integer (to unsigned integer)
