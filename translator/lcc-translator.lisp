@@ -922,7 +922,7 @@ number of arguments."
 		   (with-temp-wires t3 1 
 		     (add-instrs (append 
 				  ;; AND in the fall-through case
-				  (funcall ,fun ,arg1 ,arg2 tmpzs dst t1 t2 t3)
+				  (funcall ,fun ,arg2 ,arg1 tmpzs dst t1 t2 t3)
 				  )
 		       (branch-case targ
 				    (add-instrs
