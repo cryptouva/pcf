@@ -72,15 +72,14 @@
 	   (make-instance 'const :dest tmp  :op1 0) ); clear after use
      ))
   )
-#|
+
 (defun twos-complement (xs zs c-in tmp)
 ; input in xs, output in zs, c-in and tmp are one-gate temporaries
   (append 
-;   (not-chain xs zs)
-   (zero-group zs)	
-;   (add-one zs zs c-in tmp)
+   (not-chain xs zs)
+   (add-one zs zs c-in tmp)
    ))
-|#
+
 
 ;; Arithmetic operations (add, subtract, multiply, divide)
 ;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps),
@@ -101,74 +100,43 @@
   (assert (= (length xs) (length ys) (length zs)))
   (labels ((full-adder (x y z)
              (let* ((sum-ops (list (make-xor tmp1 x y)
-                                   (make-xor z tmp1 c-in)
-                                   )
-                      )
+                                   (make-xor z tmp1 c-in)))
                     (carry-ops (list (make-xor tmp1 x y)
                                      (make-xor tmp2 c-in x)
                                      (make-and tmp3 tmp1 tmp2)
-                                     (make-xor c-in x tmp3)
-                                     )
-                      )
-                    )
-               (append sum-ops carry-ops)
-               )
-             )
-           )
+                                     (make-xor c-in x tmp3))))
+               (append sum-ops carry-ops))))
     (append 
-     (list (zero-gate c-in)
-	   (zero-gate tmp1)
-	   (zero-gate tmp2)
-	   (zero-gate tmp3)
-	   )
      (mapcan #'full-adder xs ys zs)
-     )
-    )
-  )
+     )))
 
 (defun subtractor-chain (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a ripple-borrow subtractor chain."
   (assert (= (length xs) (length ys) (length zs)))
   (labels ((full-subtractor (x y z)
              (let* ((diff-ops (list (make-xor tmp1 x y)
-                                    (make-xor z tmp1 c-in)
-                                    )
-                      )
+                                    (make-xor z tmp1 c-in)))
                     (borrow-ops (list (make-xnor tmp1 x y)
                                       (make-and tmp2 c-in tmp1)
                                       (make-not tmp1 x)
                                       (make-and tmp3 tmp1 y)
-                                      (make-or c-in tmp3 tmp2))
-                      )
-                    )
-               (append diff-ops borrow-ops)
-               )
-             )
-           )
+                                      (make-or c-in tmp3 tmp2))))
+               (append diff-ops borrow-ops))))
     (append
      (mapcan #'full-subtractor xs ys zs)
      (list 
       (make-instance 'const :dest c-in :op1 0)
       (make-instance 'const :dest tmp1 :op1 0)
       (make-instance 'const :dest tmp2 :op1 0)
-      (make-instance 'const :dest tmp3 :op1 0)
-      )
-     )
-    )
-  )
+      (make-instance 'const :dest tmp3 :op1 0))
+     )))
 
 (defun complement-subtract (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a subtractor by the method of complements"
   (assert (= (length xs) (length ys) (length zs)))
   (append
-   (list
-    (zero-gate c-in)
-    (zero-gate tmp1)
-    (zero-gate tmp2)
-    (zero-gate tmp3))
-;   (twos-complement ys zs c-in tmp1)
-   (zero-group zs)
-   (adder-chain xs ys zs c-in tmp1 tmp2 tmp3) 
+   (twos-complement ys zs c-in tmp1)
+   (adder-chain xs zs zs c-in tmp1 tmp2 tmp3) 
    (list
     (zero-gate c-in)
     (zero-gate tmp1)
@@ -1229,9 +1197,9 @@ number of arguments."
 		    (pop-arg stack arg1
 		      (pop-arg stack arg2
 			(push-stack stack width rwires
-			    (add-instrs 
-				(shift-subtract-divide-mod arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
-			      (close-instr)))))))))))))))
+			  (add-instrs 
+			      (shift-subtract-divide-mod arg1 arg2 rwires pad extras cin tmp2 tmp3 tmp4)
+			    (close-instr)))))))))))))))
 
 (defmacro subtract-by-complement ()
   "subtraction by the method of complements."
@@ -1245,11 +1213,13 @@ number of arguments."
                 (pop-arg stack arg2
                   (pop-arg stack arg1
                     (push-stack stack width rwires
-                      (add-instrs (subtractor-chain ; (complement-subtract  
-                        arg1 arg2 rwires
-                        cin t1 t2 t3
-                        )
-                      (close-instr)))))))))))))
+                      (add-instrs 
+			  ;;(subtractor-chain 
+			  (complement-subtract  
+			   arg1 arg2 rwires
+			   cin t1 t2 t3
+			   )
+			(close-instr)))))))))))))
 
 (definstr subu ; subtract unsigned
   ;; note that this works just the same as signed, underflow will not generate a warning or error
