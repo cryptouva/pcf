@@ -1467,7 +1467,8 @@ number of arguments."
 	      (push-stack stack width rwires
 		(add-instrs
 		    (twos-complement arg rwires tmp1 tmp2)
-	      )))))))))
+		  (close-instr)
+		  )))))))))
 
 (defstruct arg 
   (len)
