@@ -10,7 +10,7 @@
                                :pcf2-interpreter 
                                :common-lisp
                                :skew-list
-                               :dataflow)
+                               :lcc-dataflow)
             (:export test-interp
                      pcf-compile
                      save-pcf-ops
