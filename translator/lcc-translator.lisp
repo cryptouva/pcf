@@ -30,7 +30,472 @@
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
-; (defparameter *byte-width* 8)
+;;;
+;;; LABELS
+;;;
+
+(defgeneric add-label (op idx labs bss base)
+  (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
+IDX is the index of a defined label - it will increment per instruction in order to provide the instruction's location within a program;LABS is the hash table that maps labels to their locations; in tandem, these two identify where in the list of opcodes each label is, and the index is how we find the label in the random access list.
+BSS is t/nil depending on if we're in the data section; BASE is the base pointer to the next spot in memory for allocating global variables"
+		  )
+  )
+
+
+(defmethod add-label ((op lcc-instruction) idx labs bss base)
+  (declare (ignore op idx))
+  (values labs bss base)
+  )
+
+;; *****
+;; first s-args will be a static variable describing either the code block or the global variable name
+(defmethod add-label ((op labelv) idx labs bss base)
+  (with-slots (s-args) op
+    (if bss
+        (setf (gethash (first s-args) labs) (cons 'glob base)) ;; cons 'GLOB with the base to indicate a global variable
+        (setf (gethash (first s-args) labs) (cons 'labl idx))  ;; cons 'LABL with the index to indicate a code block
+        )
+    (values labs bss base)
+    )
+  )
+
+;; sets "bss" to true so that we know we're now in the data section
+(defmethod add-label ((op bss) idx labs bss base)
+  (values labs t base)
+  )
+
+(defmethod add-label ((op code) idx labs bss base)
+  (values labs nil base)
+  )
+
+;; allocates space for a variable in the data section
+;; (skip always in data section)
+(defmethod add-label ((op skip) idx labs bss base)
+  (with-slots (s-args) op ; get static args
+    (values labs bss (+ base (* *byte-width* (parse-integer (first s-args))))) ; store #bits (not bytes) in base, for we will need a wire per bit
+    )
+  )
+
+(defun find-labels (instructions &optional (idx 0) (labs (make-hash-table :test 'equalp)) (bss nil) (base 1))
+  "Find the index of all labels in the list of instructions, returning a hash table"
+  (declare (type hash-table labs))
+  (if (null instructions)
+      labs
+      (let ((op (skew-first instructions))
+            )
+        (multiple-value-bind (labs bss base) (add-label op idx labs bss base)
+          (find-labels (skew-rest instructions) (1+ idx) labs bss base)
+          )
+        )
+    )
+  )
+
+;;;
+;;; END LABELS
+;;;
+
+;;;
+;;; EXEC INSTRUCTIONS
+;;; AND CONVENIENCE MACROS
+;;;
+
+(defun exec-instructions (ops) 
+  "Translate a list of LCC opcodes into PCF2 opcodes.  The opcodes should be formatted as a skew-binary list.
+
+As a first step, this function uses the constant propagation analysis
+framework.  This is necessary for certain instructions to handle
+conditional calls to functions, and can also improve code generation
+to some extent."
+  (declare (optimize (debug 3) (speed 0)))
+  (let ((lbls (find-labels ops))
+        (cnsts (const-dataflow-funs (list-skew ops)))
+        )
+    (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000)) ; last label arbitrarily set to 1mil
+    (let ((rvl 
+           (skew-reduce (lambda (st op) 
+                          (assert (not (null st)))
+                          (aif (apply #'exec-instruction (append (list op lbls) st))
+                               it
+                               (error "State is null -- this is a bug")
+                               )
+                                        ;stack wires instrs lbls targs argbase)
+                          )
+                        ops
+                        ;; baseinit starts at 1, so that the global mux condition is not overwritten
+                        (list 
+                         nil
+                         0 
+                         nil 
+                         (enqueue (cons 1000000
+                                        (make-branch-target :label "$$$END$$$"
+                                                            :cnd-wire 0
+                                                            :glob-cnd 0
+                                                            :mux-list (map-empty)
+                                                            )) (make-queue))
+                         nil 
+                         0 
+                         0 
+                         nil 
+                         1 
+                         nil
+                         0
+                         (cons cnsts nil))
+                        )
+            )
+          )
+      (assert (>= (ninth rvl) 1))
+      (format *error-output* "~&Initial base pointer: ~D~%" (ninth rvl))
+      (cons (cons (make-instance 'label :str "pcfentry") (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl)))) (rest rvl))
+      )
+    )
+  )
+
+#|
+exec-instruction, as its name implies, executes an instruction. Explanation of the variables:
+op: the next op code to execute
+labels: a hash table that maps labels to their locations 
+stack: holds the state of the program's execution, generally pushing and popping a constant and a group of wires - the constant describing the number of wires - that provide the inputs and outputs of our computations
+wires: an integer that contains a count of the number of wires in use. New wires are allocated for new variables, and are deallocated when variables go out of scope (with the with-tmp-wires macro). At this point, they are not completely re-allocated in a meaningful way that permits reuse -- this is a possibility for future optimization -- but some are.
+instrs: the list of PCF2 instructions (which are added in reverse)
+targets: a queue of branch targets, which consist of labels in the labels table 
+arglist: contains list of arguments to a function
+argsize: 
+icnt: instruction count
+bss: true if we are in the data section, false if not
+baseinit: 
+repeat: true if the instruction should be repeated
+iidx: instruction index (reset to 0 at each proc)
+cnsts: a map of constants
+|#
+
+;; We might want to make that last argument be a map containing all
+;; dataflow results, but for now just the one...
+(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
+  (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
+
+This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
+
+The \"argbase\" parameter represents the list of arguments for the next function call.  When a call instruction is emitted, these arguments will be copied to the base of the next stack frame.  \"argsize\" is the number of arguments for the current function, which we use for addrfp instructions and as an offset for addrlp instructions.")
+  )
+
+
+(defmacro close-instr ()
+  "This macro will finalize an instruction translator method.  It is a
+convenience macro that ensures the returned list has the right length."
+  `(progn
+     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str) 
+     ;;                                                (format str "~A~A" (class-name (class-of op)) icnt)
+     ;;                                                str
+     ;;                                                )))
+       (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit nil (1+ iidx) cnsts)
+;       )
+     )
+  )
+
+(defmacro repeat-instr ()
+  `(exec-instruction op labels stack wires instrs targets arglist argsize icnt bss baseinit t iidx cnsts)
+  )
+
+(defmacro definstr (type &body body)
+  "Instruction translator methods are defined with this macro.  It is
+a convenience macro that ensures that the method takes the right
+number of arguments."
+  `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
+     (declare (optimize (debug 3) (speed 0)))
+     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
+     ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
+     ;;                                                )
+     ;;                                  )
+     ;;                   )
+     (aif (locally ,@body)
+          it
+          (error "State is null -- this is a bug")
+          )
+;       )
+     )
+  )
+
+
+(defmacro push-stack (stack width val &body body)
+  "pushes two things onto the stack:
+  1) a value (val) which is a list of wires
+  2) the length of said list"
+  (let ((valsym (gensym)))
+    `(let ((,valsym ,val))
+       (declare (type list ,valsym))
+       (let ((,stack (append ,valsym ,stack))) ; append the list of wires to the front of the stack
+         (let ((,stack (cons ,width ,stack))) ; append a parameter describing the number of wires appended to the stack
+	   (assert (= (length ,valsym) ,width))
+           ,@body
+           )))))
+
+
+(defmacro pop-arg (stack argname &body body)
+  "pops off how many wires the argument will be, then pops the wires off the stack, assigning the list to argname"
+  (let ((wsym (gensym)))
+    `(let* ((,wsym (first ,stack)) ; the first argument is how many wires to pop off next
+            (,stack (rest ,stack)) ; discard first value
+            (,argname (subseq ,stack 0 ,wsym)) ; the list is the 0-,wsm spots on the stack
+            (,stack (nthcdr ,wsym ,stack)) ; nthcdr the stack to pop
+            )
+       ,@body
+       )))
+
+(defmacro add-instrs (inslst &body body)
+  (let ((inslstsym (gensym))
+        )
+    `(let* ((,inslstsym ,inslst)
+            (instrs (append (reverse ,inslstsym) instrs))
+            )
+       (mapc #'(lambda (x) (assert (typep x 'pcf2-bc:instruction))) ,inslstsym) ; verify everything we're adding is a valid PCF2 instruction
+       ,@body
+       )
+    )
+  )
+
+;; allocate wires programmatically
+(defmacro with-temp-wires (sym n &body body)
+  ;;(declare (indent defun))
+  `(let ((,sym 
+	  (if (eql 1 ,n)
+	      wires
+	      (loop for i from wires to (+ wires ,n -1) collect i)))
+         (wires (+ wires ,n)))
+     ,@body))
+
+;;;
+;;; END CONVENIENCE MACROS
+;;; 
+
+;;; 
+;;; START BRANCHING
+;;;
+
+(defstruct branch-target
+  (label "" :type string)
+  (cnd-wire)
+  (glob-cnd)
+  (mux-list)
+  (:documentation "Information needed for emitted muxes when a branch target is reached.")
+  )
+
+(defmacro add-target (target-label cnd-value glob-cnd &body body)
+  `(let ((t-idx (cdr (gethash ,target-label labels nil)))
+         )
+     (assert t-idx)
+     (let ((targets (enqueue (cons t-idx (make-branch-target
+                                          :label ,target-label
+                                          :cnd-wire ,cnd-value
+                                          :glob-cnd ,glob-cnd
+                                          :mux-list (map-empty))) targets))
+           )
+       ,@body
+       )
+     )
+  )
+
+(defmacro get-target (target-label cnd-name &body body)
+  (let ((next-targ (gensym))
+        )
+    `(let ((,next-targ (peek-queue targets))
+           )
+       (declare (type (or null branch-target) ,next-targ))
+       (let ((targets (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
+                          (dequeue targets) 
+                          targets) ;; is the only case where this happens when targets is empty?
+               )
+             (,cnd-name (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
+                            ,next-targ
+                            nil
+                            )
+               )
+             )
+         ,@body
+         )
+       )
+    )
+  )
+
+;;; target-label is where we're going
+;;; forward-body is ?
+;;; backward-body is ?
+(defmacro branch-case (target-label forward-body backward-body)
+  (let ((t-idx (gensym))
+        (cnd-sym (gensym)))
+    `(let ((,t-idx (cdr (gethash ,target-label labels nil))) ; default to nil in order to fail assertion on next line if label does not exist
+           )
+       (assert ,t-idx)
+       (if (>= ,t-idx icnt) ; if t-idx is greater than the current instruction count, we're jumping forward and this is easy
+           ,forward-body
+           (add-instrs (append
+                        (reverse
+                         (map-reduce
+                          (lambda (st k x)
+                            (declare (type mux-item x) (ignore k))
+                            (let* ((width (mux-item-width x))
+                                   (tmp1 (+ wires (* 2 width)))
+                                   (tmp2 (+ wires (* 2 width) 1))
+                                   (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
+                                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i)))
+                              (append (reverse
+                                       (append
+                                        (list (make-instance 'copy-indir
+                                                             :dest (car new-copy-wires)
+                                                             :op1 (mux-item-address x)
+                                                             :op2 width))
+                                        (mux 
+                                         (mux-item-old-copy x)
+                                         new-copy-wires;(mux-item-address x)
+                                         mux-dest
+                                         (mux-item-cnd-wire x)
+                                         tmp1
+                                         tmp2
+                                         )
+                                        (list (make-instance 'indir-copy 
+							     :dest (the integer (mux-item-address x))
+							     :op1 (car mux-dest)
+							     :op2 width))))
+				      st)))
+                          (let ((,cnd-sym (peek-queue targets)))
+                            (branch-target-mux-list ,cnd-sym))
+                          nil
+                          )))
+		       (let ((targets 
+			      (let ((,cnd-sym (peek-queue targets)))
+				(update-queue-min targets
+						  (make-branch-target
+						   :label (branch-target-label ,cnd-sym)
+						   :cnd-wire (branch-target-cnd-wire ,cnd-sym)
+						   :glob-cnd (branch-target-glob-cnd ,cnd-sym)
+						   :mux-list (map-empty)
+						   )))))
+			 ,backward-body
+			 ))))))
+
+;;;
+;;; END BRANCHING
+;;;
+
+;;;
+;;; START MUXES
+;;; 
+
+(defun mux (olds news res cnd tmp1 tmp2)
+  "Emit a chain of muxes for condition \"cnd\".  It should be safe for \"res\" to be equal to either \"olds\" or \"news\"."
+  (assert (= (length olds) (length news) (length res)))
+  (append
+  (mapcan (lambda (x y r)
+            (list
+             (make-xor tmp1 x y)
+             (make-and tmp2 tmp1 cnd)
+             (make-xor r tmp2 x)
+             )
+            )
+          olds news res))
+  )
+
+(defmacro asgn-mux (&body body)
+  ;; We need to *always* emit the muxes, so that conditional calls to
+  ;; functions will work.
+  (let ((cnstsym (gensym))
+        )
+    (format *error-output* 
+            "~&TODO: Need to implement the proper behavior for
+    assignments that occur outside of conditional branches, to
+    properly support conditional function calls.  Currently
+    this just does the assignment unconditionally, which
+    results in side effects that are incorrect.
+
+    We should able to use the constant propagation dataflow framework
+    for this, but for some reason that is not working....~%"
+          )
+
+    `(let ((,cnstsym (cadr (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
+           )
+       (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
+       (if (and (or (queue-emptyp targets)
+                    (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
+                ; TODO: Fix this
+                ;(integerp ,cnstsym)
+                )
+           ,(progn
+             `(progn
+                (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
+                ,@body)
+                )
+             )
+           (add-instrs
+               (list
+                (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+                (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
+                (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
+                )
+             (let* ((mtarget (peek-queue targets))
+                    (targets 
+                     (update-queue-min targets
+                                       (make-branch-target
+                                        :label (branch-target-label mtarget)
+                                        :cnd-wire (branch-target-cnd-wire mtarget)
+                                        :glob-cnd (branch-target-glob-cnd mtarget)
+                                        :mux-list (map-insert (first ptr)
+                                                              (make-mux-item :address (first ptr)
+                                                                             :width width
+                                                                             :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
+                                                                             :cnd-wire (+ wires width))
+                                                              (branch-target-mux-list mtarget)
+                                                              )
+                                        )
+                                       )
+                      )
+                    )
+               (let ((wires (+ wires width 1))
+                     )
+                 ,@body
+                 )
+               )
+             )
+           )
+         )
+    )
+  ;; (add-instrs 
+  ;;          (if (not (queue-emptyp targets))
+  ;;          (append 
+  ;;           (list 
+  ;;            (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
+  ;;            (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
+  ;;           (mux (loop for i from 0 to (1- width) collect (+ i wires))
+  ;;                val
+  ;;                (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
+  ;;                (+ wires (* 2 width) 2)
+  ;;                (+ wires (* 2 width))
+  ;;                (+ wires (* 2 width) 1)
+  ;;                )
+  ;;           (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
+  ;;           )
+  ;;          (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
+  ;;          )
+  ;;        (let ((wires (+ wires (* 2 width) 3))
+  ;;              )
+  ;;          ,@body
+  ;;          )
+  ;;        )
+  ;;)
+  )
+
+(defstruct mux-item
+  (address  0 :type integer)
+  (width    0 :type (integer 0))
+  (old-copy nil :type list)
+  (cnd-wire 0 :type integer)
+  (:documentation "\"address\" is the address the muxed value should
+  be placed in; \"old-copy\" is the address where the previous value
+  in that location was stored.  \"width\" is the number of locations
+  being copied.")
+  )
+
+;;;
+;;; END MUXES
+;;;
 
 ;;;
 ;;; BEGIN ALU
@@ -80,13 +545,6 @@
    (add-one zs zs c-in tmp)
    ))
 
-
-;; Arithmetic operations (add, subtract, multiply, divide)
-;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps),
-;; while it was the responsibility of the instruction macro to allocate them
-;; the optimizer's reaching def analysis should eliminate all of the unnecessary zero-ing gates,
-;; but we should keep to good practice in zero-ing wires before we use them to avoid unintended consequences of lingering values
-
 (defun zero-gate (gate)
   (make-instance 'const :dest gate :op1 0)
   )
@@ -94,6 +552,11 @@
 (defun zero-group (gates)
   (loop for i from (car gates) to (+ (car gates) (length gates) -1) collect (make-instance 'const :dest i :op1 0) )
   )
+
+;; Arithmetic operations (add, subtract, multiply, divide)
+;; It is the responsibility of the function to zero out the accessory wires (generally c-in and tmps) before use if they must be zerod,
+;; while it was the responsibility of the instruction macro to allocate them
+;; the optimizer's reaching def analysis should eliminate all of the unnecessary zero-ing gates,
 
 (defun adder-chain (xs ys zs c-in tmp1 tmp2 tmp3)
   "Create a ripple carry adder chain."
@@ -248,329 +711,10 @@
 ;;; 
 
 ;;;
-;;; LABELS
+;;; BEGIN INSTRUCTIONS
 ;;;
 
-(defgeneric add-label (op idx labs bss base)
-  (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
-IDX is the index of a defined label - it will increment per instruction in order to provide the instruction's location within a program;LABS is the hash table that maps labels to their locations; in tandem, these two identify where in the list of opcodes each label is, and the index is how we find the label in the random access list.
-BSS is t/nil depending on if we're in the data section; BASE is the base pointer to the next spot in memory for allocating global variables"
-		  )
-  )
-
-
-(defmethod add-label ((op lcc-instruction) idx labs bss base)
-  (declare (ignore op idx))
-  (values labs bss base)
-  )
-
-;; *****
-;; first s-args will be a static variable describing either the code block or the global variable name
-(defmethod add-label ((op labelv) idx labs bss base)
-  (with-slots (s-args) op
-    (if bss
-        (setf (gethash (first s-args) labs) (cons 'glob base)) ;; cons 'GLOB with the base to indicate a global variable
-        (setf (gethash (first s-args) labs) (cons 'labl idx))  ;; cons 'LABL with the index to indicate a code block
-        )
-    (values labs bss base)
-    )
-  )
-
-;; sets "bss" to true so that we know we're now in the data section
-(defmethod add-label ((op bss) idx labs bss base)
-  (values labs t base)
-  )
-
-(defmethod add-label ((op code) idx labs bss base)
-  (values labs nil base)
-  )
-
-;; allocates space for a variable in the data section
-;; (skip always in data section)
-(defmethod add-label ((op skip) idx labs bss base)
-  (with-slots (s-args) op ; get static args
-    (values labs bss (+ base (* *byte-width* (parse-integer (first s-args))))) ; store #bits (not bytes) in base, for we will need a wire per bit
-    )
-  )
-
-(defun find-labels (instructions &optional (idx 0) (labs (make-hash-table :test 'equalp)) (bss nil) (base 1))
-  "Find the index of all labels in the list of instructions, returning a hash table"
-  (declare (type hash-table labs))
-  (if (null instructions)
-      labs
-      (let ((op (skew-first instructions))
-            )
-        (multiple-value-bind (labs bss base) (add-label op idx labs bss base)
-          (find-labels (skew-rest instructions) (1+ idx) labs bss base)
-          )
-        )
-    )
-  )
-
-(defun exec-instructions (ops) 
-  "Translate a list of LCC opcodes into PCF2 opcodes.  The opcodes should be formatted as a skew-binary list.
-
-As a first step, this function uses the constant propagation analysis
-framework.  This is necessary for certain instructions to handle
-conditional calls to functions, and can also improve code generation
-to some extent."
-  (declare (optimize (debug 3) (speed 0)))
-  (let ((lbls (find-labels ops))
-        (cnsts (const-dataflow-funs (list-skew ops)))
-        )
-    (setf (gethash "$$$END$$$" lbls) (cons 'labl 1000000)) ; last label arbitrarily set to 1mil
-    (let ((rvl 
-           (skew-reduce (lambda (st op) 
-                          (assert (not (null st)))
-                          (aif (apply #'exec-instruction (append (list op lbls) st))
-                               it
-                               (error "State is null -- this is a bug")
-                               )
-                                        ;stack wires instrs lbls targs argbase)
-                          )
-                        ops
-                        ;; baseinit starts at 1, so that the global mux condition is not overwritten
-                        (list 
-                         nil
-                         0 
-                         nil 
-                         (enqueue (cons 1000000
-                                        (make-branch-target :label "$$$END$$$"
-                                                            :cnd-wire 0
-                                                            :glob-cnd 0
-                                                            :mux-list (map-empty)
-                                                            )) (make-queue))
-                         nil 
-                         0 
-                         0 
-                         nil 
-                         1 
-                         nil
-                         0
-                         (cons cnsts nil))
-                        )
-            )
-          )
-      (assert (>= (ninth rvl) 1))
-      (format *error-output* "~&Initial base pointer: ~D~%" (ninth rvl))
-      (cons (cons (make-instance 'label :str "pcfentry") (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl)))) (rest rvl))
-      )
-    )
-  )
-
-#|
-exec-instruction, as its name implies, executes an instruction. Explanation of the variables:
-op: the next op code to execute
-labels: a hash table that maps labels to their locations 
-stack: holds the state of the program's execution, generally pushing and popping a constant and a group of wires - the constant describing the number of wires - that provide the inputs and outputs of our computations
-wires: an integer that contains a count of the number of wires in use. New wires are allocated for new variables, and are deallocated when variables go out of scope (with the with-tmp-wires macro). At this point, they are not completely re-allocated in a meaningful way that permits reuse -- this is a possibility for future optimization -- but some are.
-instrs: the list of PCF2 instructions (which are added in reverse)
-targets: a queue of branch targets, which consist of labels in the labels table 
-arglist:
-argsize:
-icnt: instruction count
-bss: true if we are in the data section, false if not
-baseinit:
-repeat: true if the instruction should be repeated
-iids:
-cnsts:
-|#
-
-;; We might want to make that last argument be a map containing all
-;; dataflow results, but for now just the one...
-(defgeneric exec-instruction (op labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
-  (:documentation "This generic method translates an LCC opcode into PCF2 opcodes.  The \"stack\" argument represents the state of the LCC stack at this program point.  The \"wires\" argument represents the location of free wires in the program, which roughly corresponds to the state of the LCC stack.
-
-This method should return the updated stack, wires, and instructions.  Instructions should be given in reverse order, as this allows instructions to be appended to the instructions list efficiently.
-
-The \"argbase\" parameter represents the list of arguments for the next function call.  When a call instruction is emitted, these arguments will be copied to the base of the next stack frame.  \"argsize\" is the number of arguments for the current function, which we use for addrfp instructions and as an offset for addrlp instructions.")
-  )
-
-
-(defmacro close-instr ()
-  "This macro will finalize an instruction translator method.  It is a
-convenience macro that ensures the returned list has the right length."
-  `(progn
-     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str) 
-     ;;                                                (format str "~A~A" (class-name (class-of op)) icnt)
-     ;;                                                str
-     ;;                                                )))
-       (list stack wires instrs targets arglist argsize (1+ icnt) bss baseinit nil (1+ iidx) cnsts)
-;       )
-     )
-  )
-
-(defmacro repeat-instr ()
-  `(exec-instruction op labels stack wires instrs targets arglist argsize icnt bss baseinit t iidx cnsts)
-  )
-
-(defmacro definstr (type &body body)
-  "Instruction translator methods are defined with this macro.  It is
-a convenience macro that ensures that the method takes the right
-number of arguments."
-  `(defmethod exec-instruction ((op ,type) labels stack wires instrs targets arglist argsize icnt bss baseinit repeat iidx cnsts)
-     (declare (optimize (debug 3) (speed 0)))
-     ;; (add-instrs (list (make-instance 'label :str (with-output-to-string (str)
-     ;;                                                (format str "begin~A~A" (class-name (class-of op)) icnt)
-     ;;                                                )
-     ;;                                  )
-     ;;                   )
-     (aif (locally ,@body)
-          it
-          (error "State is null -- this is a bug")
-          )
-;       )
-     )
-  )
-
-
-(defmacro push-stack (stack width val &body body)
-  "pushes two things onto the stack:
-  1) a value (val) which is a list of wires
-  2) the length of said list"
-  (let ((valsym (gensym)))
-    `(let ((,valsym ,val))
-       (declare (type list ,valsym))
-       (let ((,stack (append ,valsym ,stack))) ; append the list of wires to the front of the stack
-         (let ((,stack (cons ,width ,stack))) ; append a parameter describing the number of wires appended to the stack
-	   (assert (= (length ,valsym) ,width))
-           ,@body
-           )))))
-
-
-(defmacro pop-arg (stack argname &body body)
-  "pops off how many wires the argument will be, then pops the wires off the stack, assigning the list to argname"
-  (let ((wsym (gensym)))
-    `(let* ((,wsym (first ,stack)) ; the first argument is how many wires to pop off next
-            (,stack (rest ,stack)) ; discard first value
-            (,argname (subseq ,stack 0 ,wsym)) ; the list is the 0-,wsm spots on the stack
-            (,stack (nthcdr ,wsym ,stack)) ; nthcdr the stack to pop
-            )
-       ,@body
-       )))
-
-(defmacro add-instrs (inslst &body body)
-  (let ((inslstsym (gensym))
-        )
-    `(let* ((,inslstsym ,inslst)
-            (instrs (append (reverse ,inslstsym) instrs))
-            )
-       (mapc #'(lambda (x) (assert (typep x 'pcf2-bc:instruction))) ,inslstsym) ; verify everything we're adding is a valid PCF2 instruction
-       ,@body
-       )
-    )
-  )
-
-;; allocate wires programmatically
-(defmacro with-temp-wires (sym n &body body)
-  ;;(declare (indent defun))
-  `(let ((,sym 
-	  (if (eql 1 ,n)
-	      wires
-	      (loop for i from wires to (+ wires ,n -1) collect i)))
-         (wires (+ wires ,n)))
-     ,@body))
-
-(defstruct branch-target
-  (label "" :type string)
-  (cnd-wire)
-  (glob-cnd)
-  (mux-list)
-  (:documentation "Information needed for emitted muxes when a branch target is reached.")
-  )
-
-(defmacro add-target (target-label cnd-value glob-cnd &body body)
-  `(let ((t-idx (cdr (gethash ,target-label labels nil)))
-         )
-     (assert t-idx)
-     (let ((targets (enqueue (cons t-idx (make-branch-target
-                                          :label ,target-label
-                                          :cnd-wire ,cnd-value
-                                          :glob-cnd ,glob-cnd
-                                          :mux-list (map-empty))) targets))
-           )
-       ,@body
-       )
-     )
-  )
-
-(defmacro get-target (target-label cnd-name &body body)
-  (let ((next-targ (gensym))
-        )
-    `(let ((,next-targ (peek-queue targets))
-           )
-       (declare (type (or null branch-target) ,next-targ))
-       (let ((targets (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
-                          (dequeue targets)
-                          targets)
-               )
-             (,cnd-name (if (and ,next-targ (string= ,target-label (branch-target-label ,next-targ)))
-                            ,next-targ
-                            nil
-                            )
-               )
-             )
-         ,@body
-         )
-       )
-    )
-  )
-
-;;; target-label is where we're going
-;;; forward-body is ?
-;;; backward-body is ?
-(defmacro branch-case (target-label forward-body backward-body)
-  (let ((t-idx (gensym))
-        (cnd-sym (gensym)))
-    `(let ((,t-idx (cdr (gethash ,target-label labels nil))) ; default to nil in order to fail assertion on next line if label does not exist
-           )
-       (assert ,t-idx)
-       (if (>= ,t-idx icnt) ; if t-idx is greater than the current instruction count, we're jumping forward and this is easy
-           ,forward-body
-           (add-instrs (append
-                        (reverse
-                         (map-reduce
-                          (lambda (st k x)
-                            (declare (type mux-item x) (ignore k))
-                            (let* ((width (mux-item-width x))
-                                   (tmp1 (+ wires (* 2 width)))
-                                   (tmp2 (+ wires (* 2 width) 1))
-                                   (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
-                                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i)))
-                              (append (reverse
-                                       (append
-                                        (list (make-instance 'copy-indir
-                                                             :dest (car new-copy-wires)
-                                                             :op1 (mux-item-address x)
-                                                             :op2 width))
-                                        (mux 
-                                         (mux-item-old-copy x)
-                                         new-copy-wires;(mux-item-address x)
-                                         mux-dest
-                                         (mux-item-cnd-wire x)
-                                         tmp1
-                                         tmp2
-                                         )
-                                        (list (make-instance 'indir-copy 
-							     :dest (the integer (mux-item-address x))
-							     :op1 (car mux-dest)
-							     :op2 width))))
-				      st)))
-                          (let ((,cnd-sym (peek-queue targets)))
-                            (branch-target-mux-list ,cnd-sym))
-                          nil
-                          )))
-		       (let ((targets 
-			      (let ((,cnd-sym (peek-queue targets)))
-				(update-queue-min targets
-						  (make-branch-target
-						   :label (branch-target-label ,cnd-sym)
-						   :cnd-wire (branch-target-cnd-wire ,cnd-sym)
-						   :glob-cnd (branch-target-glob-cnd ,cnd-sym)
-						   :mux-list (map-empty)
-						   )))))
-			 ,backward-body
-			 ))))))
+;;; COMPARISONS
 
 (defun eql-gates (arg1 arg2 dest tmp1 tmp2)
   ; implicitly, should dest start out as 0 or 1?
@@ -1028,6 +1172,11 @@ number of arguments."
 				      )))))))))))))
 |#
 
+
+;;; END COMPARISONS
+
+;;; CONSTS, POINTERS
+
 (defmacro intcnst ()
   `(with-slots (s-args) op
      (let ((width (* *byte-width* (parse-integer (first s-args))))
@@ -1118,7 +1267,7 @@ number of arguments."
   )
 
 ;;; arithmetic operations
-;;; add, subtract, multiply
+;;; add, subtract, multiply, divide
 ;;; these instructions are required to supply the input and output wires
 ;;; the functions called by these macros will allocated their own temporary wires as necessary
 ;;; the wires variable does have to keep global state
@@ -1470,6 +1619,8 @@ number of arguments."
 		  (close-instr)
 		  )))))))))
 
+;;; CALLING FUNCTIONS
+
 (defstruct arg 
   (len)
   (loc)
@@ -1717,122 +1868,6 @@ number of arguments."
     )
   )
 
-(defun mux (olds news res cnd tmp1 tmp2)
-  "Emit a chain of muxes for condition \"cnd\".  It should be safe for \"res\" to be equal to either \"olds\" or \"news\"."
-  (assert (= (length olds) (length news) (length res)))
-  (append
-  (mapcan (lambda (x y r)
-            (list
-             (make-xor tmp1 x y)
-             (make-and tmp2 tmp1 cnd)
-             (make-xor r tmp2 x)
-             )
-            )
-          olds news res)
-   (list
-    (make-instance 'const :dest tmp1 :op1 0)
-    (make-instance 'const :dest tmp2 :op1 0)))
-  )
-
-(defmacro asgn-mux (&body body)
-  ;; We need to *always* emit the muxes, so that conditional calls to
-  ;; functions will work.
-  (let ((cnstsym (gensym))
-        )
-    (format *error-output* 
-            "~&TODO: Need to implement the proper behavior for
-    assignments that occur outside of conditional branches, to
-    properly support conditional function calls.  Currently
-    this just does the assignment unconditionally, which
-    results in side effects that are incorrect.
-
-    We should able to use the constant propagation dataflow framework
-    for this, but for some reason that is not working....~%"
-          )
-
-    `(let ((,cnstsym (cadr (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts))))))
-           )
-       (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
-       (if (and (or (queue-emptyp targets)
-                    (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
-                ; TODO: Fix this
-                ;(integerp ,cnstsym)
-                )
-           ,(progn
-             `(progn
-                (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
-                ,@body)
-                )
-             )
-           (add-instrs
-               (list
-                (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-                (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
-                (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
-                )
-             (let* ((mtarget (peek-queue targets))
-                    (targets 
-                     (update-queue-min targets
-                                       (make-branch-target
-                                        :label (branch-target-label mtarget)
-                                        :cnd-wire (branch-target-cnd-wire mtarget)
-                                        :glob-cnd (branch-target-glob-cnd mtarget)
-                                        :mux-list (map-insert (first ptr)
-                                                              (make-mux-item :address (first ptr)
-                                                                             :width width
-                                                                             :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
-                                                                             :cnd-wire (+ wires width))
-                                                              (branch-target-mux-list mtarget)
-                                                              )
-                                        )
-                                       )
-                      )
-                    )
-               (let ((wires (+ wires width 1))
-                     )
-                 ,@body
-                 )
-               )
-             )
-           )
-         )
-    )
-  ;; (add-instrs 
-  ;;          (if (not (queue-emptyp targets))
-  ;;          (append 
-  ;;           (list 
-  ;;            (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
-  ;;            (make-instance 'copy-indir :dest (+ wires (* 2 width) 2) :op1 0 :op2 1))
-  ;;           (mux (loop for i from 0 to (1- width) collect (+ i wires))
-  ;;                val
-  ;;                (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i)
-  ;;                (+ wires (* 2 width) 2)
-  ;;                (+ wires (* 2 width))
-  ;;                (+ wires (* 2 width) 1)
-  ;;                )
-  ;;           (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (+ width wires) :op2 width))
-  ;;           )
-  ;;          (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (first val) :op2 width))
-  ;;          )
-  ;;        (let ((wires (+ wires (* 2 width) 3))
-  ;;              )
-  ;;          ,@body
-  ;;          )
-  ;;        )
-  ;;)
-  )
-
-(defstruct mux-item
-  (address  0 :type integer)
-  (width    0 :type (integer 0))
-  (old-copy nil :type list)
-  (cnd-wire 0 :type integer)
-  (:documentation "\"address\" is the address the muxed value should
-  be placed in; \"old-copy\" is the address where the previous value
-  in that location was stored.  \"width\" is the number of locations
-  being copied.")
-  )
-
 (definstr asgnu ; assigned unsigned int
   (with-slots (width) op
     (let* ((width (* *byte-width* width))
@@ -1959,38 +1994,28 @@ number of arguments."
                    (tmp1 (+ wires (* 2 width)))
                    (tmp2 (+ wires (* 2 width) 1))
                    (mux-dest (loop for i from (+ width wires) to (+ wires (* 2 width) -1) collect i))
-                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i))
-                   )
+                   (new-copy-wires (loop for i from wires to (+ width wires -1) collect i)))
               (append (reverse
                        (append
                         (list (make-instance 'copy-indir
                                              :dest (car new-copy-wires)
                                              :op1 (mux-item-address x)
-                                             :op2 width)
-                              )
+                                             :op2 width))
                         (mux 
-                         (mux-item-old-copy x)
-                         new-copy-wires;(mux-item-address x)
-                         mux-dest
-                         (mux-item-cnd-wire x)
-                         tmp1
-                         tmp2
-                         )
+                         (mux-item-old-copy x) ; olds 
+                         new-copy-wires;(mux-item-address x) ;news
+                         mux-dest ; res
+                         (mux-item-cnd-wire x) ;cnd
+                         tmp1 ;t1
+                         tmp2) ;t2
                         (list
                          (make-instance 'indir-copy 
                                         :dest (the integer (mux-item-address x))
                                         :op1 (car mux-dest)
-                                        :op2 width)
-                         )
-                        )
-                       )
-                      st)
-              )
-            )
+                                        :op2 width))))
+                      st)))
           (branch-target-mux-list cnd)
-          nil
-          )
-         )
+          nil))
       (add-instrs (list (make-instance 'ret :value wires))
         (let* ((wires 0)
                (mtarget (peek-queue targets))
@@ -2123,8 +2148,7 @@ number of arguments."
                                                    (list (make-instance 'copy-indir
                                                                         :dest (car new-copy-wires)
                                                                         :op1 (mux-item-address x)
-                                                                        :op2 width)
-                                                         )
+                                                                        :op2 width))
                                                    (mux 
                                                     (mux-item-old-copy x)
                                                     new-copy-wires;(mux-item-address x)
@@ -2137,34 +2161,18 @@ number of arguments."
                                                     (make-instance 'indir-copy 
                                                                    :dest (the integer (mux-item-address x))
                                                                    :op1 (car mux-dest)
-                                                                   :op2 width)
-                                                    )
-                                                   )
-                                                  )
-                                                 st)
-                                         )
-                                       )
+                                                                   :op2 width) )))
+                                                 st)))
                                      (branch-target-mux-list cnd)
-                                     nil
-                                     )
-                                    )
-                                   )
-                           )
-                       )
-            (let ((wires (+ wires (if cnd ;not-empty 
-                                      3
-                                      0)))
-                  )
-              (if (and (not (queue-emptyp targets)) (equalp (first s-args) (branch-target-label (peek-queue targets))))
-                  ;; There are no other conditional assignments for this target
-                  (repeat-instr)
-                  (close-instr)
+                                     nil)))))
+		      (let ((wires (+ wires (if cnd ;not-empty 
+						3
+						0))))
+			(if (and (not (queue-emptyp targets)) (equalp (first s-args) (branch-target-label (peek-queue targets))))
+			    ;; There are no other conditional assignments for this target
+			    (repeat-instr)
+			    (close-instr)
                                         ;(assert nil)
-                  )
-              )
-            )
-          )
-        (close-instr)
-        )
-    )
-  )
+			    ))))
+        (close-instr) ;; bss do nothing
+        )))
