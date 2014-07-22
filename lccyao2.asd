@@ -26,7 +26,7 @@
 				     (:file "lcc-const" :depends-on ("lcc-bc" "lcc-dataflow"))
 				    ; (:file "lcc-pointer-analysis" :depends-on ("lcc-bc" "lcc-dataflow" )) not in use
 				     (:file "lcc-dataflow" :depends-on ("lcc-bc"))
-				     (:file "dataflow")
+				    ; (:file "dataflow")
 				    ; (:file "pointer-analysis" :depends-on ("dataflow" utilities)) not in use
 				    ; (:file "reachingdefs" :depends-on ("datafloww" utilities)) not in use
 				    ; (:file "deadcode" :depends-on ("dataflow" utilities)) not in use
@@ -39,6 +39,12 @@
 				     (:file "pcf2-interpreter")
 				     )
 			:depends-on (utilities unit)
+			)
+	       (:module postprocessor
+			:components (
+				     (:file "pcf2-dataflow")
+				     )
+			:depends-on (utilities)
 			)
 	       )
   )
