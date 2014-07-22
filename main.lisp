@@ -10,13 +10,15 @@
                                :pcf2-interpreter 
                                :common-lisp
                                :skew-list
-                               :lcc-dataflow)
+                               :lcc-dataflow
+			       :pcf2-dataflow)
             (:export test-interp
                      pcf-compile
                      save-pcf-ops
                      load-pcf-ops
                      pcf-simulate
-                     test-get-ops-from-cfg)
+                     test-get-ops-from-cfg
+		     load-ops-pcfdf)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -47,6 +49,9 @@
     (read-bytecode inpt)
     )
   )
+
+(defun load-ops-pcfdf (fname)
+  (load-ops fname))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""

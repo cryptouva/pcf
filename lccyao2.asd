@@ -2,7 +2,7 @@
   :description "LCCyao compiler system version 2"
   :author "Benjamin Kreuter, Benjamin Terner"
   :components (
-	       (:file "main" :depends-on (utilities translator interpreter))
+	       (:file "main" :depends-on (utilities translator interpreter postprocessor))
 	       (:module unit 
 			:components ((:file "unit")
                                      )
@@ -39,6 +39,12 @@
 				     (:file "pcf2-interpreter")
 				     )
 			:depends-on (utilities unit)
+			)
+	       (:module postprocessor
+			:components (
+				     (:file "pcf2-dataflow")
+				     )
+			:depends-on (utilities)
 			)
 	       )
   )
