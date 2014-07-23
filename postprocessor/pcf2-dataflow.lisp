@@ -3,7 +3,15 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export wire
-	   load-ops)
+	   get-wire-by-idx
+	   get-wire-by-lbl
+	   get-idx-by-lbl
+	   add-succ
+	   add-pred
+	   live-wire
+	   new-wire
+	   create-wire
+	   )
 ;  (:import-from :pcf2-bc :read-bytecode)
 )
 (in-package :pcf2-dataflow)
@@ -59,7 +67,7 @@
 	     (:print-function 
 	      (lambda (struct stream depth)
 		(declare (ignore depth))
-		(format stream "~&Wire: ~A~%" (wire-lbl struct))
+		(format stream "~&Label: ~A~%" (wire-lbl struct))
 		(format stream "Index: ~A~%" (wire-idx struct))
 		(format stream "Preds: ~A~%" (wire-preds struct))
 		(format stream "Succs: ~A~%" (wire-succs struct))
@@ -72,6 +80,10 @@
   (live nil :type boolean) ; tells whether the wire is live or can be optimized away
   (:documentation "This represents a wire, with pointers to its input and output wires. We must pay attention to each occurrence of the wire and not just each wire id, since wire ids may be reused over the course of a circuit.")
   )
+
+(defun create-wire (&key label index)
+  (make-wire :lbl label
+	     :idx index))
 
 ;; rules for creating a new wire with unique index rather than re-using the previous:
 ;; whenever a wire appears in the destination: create a new index for it
@@ -133,10 +145,10 @@
 		 :preds (wire-preds ,wire)
 		 :succs (wire-succs, wire)
 		 :live t)))
-
+     ;;,wire)
      ,@body)
 )
-
+#| under construction
 (defmacro new-wire (lbl wiremap wiretable idx &body body)
   `(let* ((newwire (make-wire 
 		    :lbl ,lbl
@@ -146,19 +158,24 @@
 		     (map-insert ,idx newwire (map-remove ,lbl ,wiremap))))
 	(,idx (1+ ,idx)))
     ,@body))
+|#
+
+(defmacro map-update-wire (wire map &body body)
+  `(let ((,map (map-insert (wire-idx ,wire) ,map)))
+    ,@body))
 
 (defmacro close-update ()
   `(list wiremap wiretable idx)
 )
 
 (defun get-wire-by-idx (idx wiremap)
-  (map-find idx wiremap)
+  (cdr (map-find idx wiremap))
 )
 
 (defun get-wire-by-lbl (lbl wiremap wiretable)
   "gets the wire from wiremap with label described by lbl. requires 2 map lookups"
   ;; this will throw an error if either is null - not to be used for checking if a wire location exists
-  (get-wire-by-idx (map-find lbl wiretable) wiremap)
+  (get-wire-by-idx (cdr (map-find lbl wiretable)) wiremap)
 )
 
 (defun get-idx-by-lbl (lbl wiremap wiretable)
@@ -171,7 +188,7 @@
 )
 
 (defmethod update-cfg ((op bits) wiremap wiretable idx)
-  (with-slots (dest) locs
+  (with-slots (dest) op
     ;; should create a new wire for every member in locs with no preds and no succs, adding them to the map 
     (close-update)
 ))
@@ -195,12 +212,12 @@
 	  :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
 					;wiremap             rwiremap               idx
 
-
+#|
 (defun load-ops (fname) 
   (with-open-file (inpt fname :direction :input)
     (read-btyecode inpt)))
 ;      (break))))
-
+|#
 #|
 (defun get-bytecode ()
   (let bc (((read-bytecode)))

@@ -17,8 +17,7 @@
                      save-pcf-ops
                      load-pcf-ops
                      pcf-simulate
-                     test-get-ops-from-cfg
-		     load-ops-pcfdf)
+                     test-get-ops-from-cfg)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -49,9 +48,6 @@
     (read-bytecode inpt)
     )
   )
-
-(defun load-ops-pcfdf (fname)
-  (load-ops fname))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
