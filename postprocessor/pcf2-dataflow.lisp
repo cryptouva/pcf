@@ -2,7 +2,8 @@
 
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
-  (:export load-ops)
+  (:export wire
+	   load-ops)
 ;  (:import-from :pcf2-bc :read-bytecode)
 )
 (in-package :pcf2-dataflow)
@@ -20,6 +21,21 @@
 ;;; copy --> must find the input and output gates and update them accordingly
 ;;;    we can probably use a simple map for all of this
 
+;;; DATASTRUCTURES:
+;;; wire:
+;;;  - labal (this is the number identified in the gate)
+;;;  - idx (this is the unique wire identifier, which is a running count of all unique wires)
+;;;  - preds (this is a list of idxs of predecessor wires)
+;;;  - succs (this is a list of idxs of successor wires)
+
+;;; wiremap:
+;;; this is a map of idxs to wires
+
+;;; wiretable:
+;;;  this is a map of wire ids to current assigned idx
+
+;;; ops:
+;;;  this is a list of all the PCF2 ops for a given circuit
 
 
 #|
@@ -43,15 +59,17 @@
 	     (:print-function 
 	      (lambda (struct stream depth)
 		(declare (ignore depth))
-		(format stream "~&Wire: ~A~%" (wire-id struct))
+		(format stream "~&Wire: ~A~%" (wire-lbl struct))
 		(format stream "Index: ~A~%" (wire-idx struct))
-		(format stream "Preds: ~AA%" (wire-preds struct))
-		(format stream "Succs: ~AA%" (wire-succs struct))
+		(format stream "Preds: ~A~%" (wire-preds struct))
+		(format stream "Succs: ~A~%" (wire-succs struct))
+		(format stream "Live: ~A~%" (wire-live struct))
 	     )))
-  (id) ; the number that comes associated with the wire; analagous to a location in memory because it holds a value but might be reused over the course of a program
+  (lbl) ; the number that comes associated with the wire; analagous to a location in memory because it holds a value but might be reused over the course of a program
   (idx) ; the index of the wire among all wires seen. (Some wires may appear more than once; this is a unique identifier, analagous to a label that idenitifies a piece of memory's value in time.)
   (preds nil :type list) ; a list of indexes
   (succs nil :type list) ; a list of indexes
+  (live nil :type boolean) ; tells whether the wire is live or can be optimized away
   (:documentation "This represents a wire, with pointers to its input and output wires. We must pay attention to each occurrence of the wire and not just each wire id, since wire ids may be reused over the course of a circuit.")
   )
 
@@ -87,49 +105,78 @@
 ;; (BITS :DEST (453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484) :OP1 453 )
 ;; I think everything in DEST needs a new wire
 
-(defmacro add-succ (succ wir &body body)
-  `(let ((,wir (make-wire
-		:id (wire-id ,wir)
-		:idx (wire-idx ,wir)
-		:preds (wire-preds ,wir)
-		:succs (cons ,succ (wire-succs ,wir))
+(defmacro add-succ (succ wire &body body)
+  `(let ((,wire (make-wire
+		:lbl (wire-lbl ,wire)
+		:idx (wire-idx ,wire)
+		:preds (wire-preds ,wire)
+		:succs (cons ,succ (wire-succs ,wire))
+		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
 		)))
      ,@body))
 
-(defmacro add-pred (prd wir &body body)
-  `(let ((,wir (make-wire
-		:id (wire-id ,wir)
-		:idx (wire-idx ,wir)
-		:preds (cons ,prd (wire-preds ,wir))
-		:succs (wire-succs ,wir)
+(defmacro add-pred (prd wire &body body)
+  `(let ((,wire (make-wire
+		:lbl (wire-lbl ,wire)
+		:idx (wire-idx ,wire)
+		:preds (cons ,prd (wire-preds ,wire))
+		:succs (wire-succs ,wire)
+		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
 		)))
      ,@body))
 
-(defmacro new-wire (wireid idx wiremap &body body)
+;; should this be a macro or a function?
+(defmacro live-wire (wire &body body)
+  `(let ((,wire (make-wire
+		 :lbl (wire-lbl ,wire)
+		 :idx (wire-idx ,wire)
+		 :preds (wire-preds ,wire)
+		 :succs (wire-succs, wire)
+		 :live t)))
+
+     ,@body)
+)
+
+(defmacro new-wire (lbl wiremap wiretable idx &body body)
   `(let* ((newwire (make-wire 
-		    :id ,wireid
+		    :lbl ,lbl
 		    :idx ,idx))
-	  (,wiremap (if (null (map-find ,wireid ,wiremap t))
-		     (map-insert ,wireid newwire ,wiremap)
-		     (map-insert ,wireid newwire (map-remove ,wireid ,wiremap))))
+	  (,wiremap (if (null (map-find ,lbl ,wiremap t))
+		     (map-insert ,idx newwire ,wiremap)
+		     (map-insert ,idx newwire (map-remove ,lbl ,wiremap))))
 	(,idx (1+ ,idx)))
     ,@body))
 
 (defmacro close-update ()
-  `(list wiremap idx)
+  `(list wiremap wiretable idx)
 )
 
-(defgeneric update-cfg (op wiremap idx)
+(defun get-wire-by-idx (idx wiremap)
+  (map-find idx wiremap)
+)
+
+(defun get-wire-by-lbl (lbl wiremap wiretable)
+  "gets the wire from wiremap with label described by lbl. requires 2 map lookups"
+  ;; this will throw an error if either is null - not to be used for checking if a wire location exists
+  (get-wire-by-idx (map-find lbl wiretable) wiremap)
+)
+
+(defun get-idx-by-lbl (lbl wiremap wiretable)
+  (wire-idx (get-wire-by-lbl lbl wiremap wiretable))
+)
+
+
+(defgeneric update-cfg (op wiremap wiretable idx)
   (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
 )
 
-(defmethod update-cfg ((op bits) wiremap idx)
+(defmethod update-cfg ((op bits) wiremap wiretable idx)
   (with-slots (dest) locs
     ;; should create a new wire for every member in locs with no preds and no succs, adding them to the map 
     (close-update)
 ))
-
-(defmethod update-cfg ((op gate) wiremap idx)
+#|
+(defmethod update-cfg ((op gate) wiremap wiretable idx)
   (with-slots ((dst dest) (o1 op1) (o2 op2)) op
       (new-wire dst idx wiremap
 		(add-succ dst o1
@@ -138,12 +185,13 @@
 				 (add-pred o2 dst
 				     (close-update)
 		)))))))
-
+|#
 (defun make-cfg (ops)
   (reduce #'(lambda(x y) 
 	      (apply #'update-cfg (cons y x)))
 	  ops
-	  :initial-value (list (map-empty :comp string<)  0)))
+	  :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
+					;wiremap             rwiremap               idx
 
 
 (defun load-ops (fname) 
