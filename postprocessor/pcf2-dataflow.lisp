@@ -11,6 +11,7 @@
 	   live-wire
 	   new-wire
 	   create-wire
+	   map-update-wire
 	   )
 ;  (:import-from :pcf2-bc :read-bytecode)
 )
@@ -117,12 +118,40 @@
 ;; (BITS :DEST (453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484) :OP1 453 )
 ;; I think everything in DEST needs a new wire
 
+(defun map-upsert (x val map)
+  (if (null (map-find x map t))
+      (map-insert x val map)
+      (map-insert x val (map-remove x map))))
+
+(defun map-update-wire (wire map)
+  (map-upsert (wire-idx wire) wire map))
+
+(defmacro close-update ()
+  `(list wiremap wiretable idx)
+)
+
+(defun get-wire-by-idx (idx wiremap)
+  (cdr (map-find idx wiremap))
+)
+
+(defun get-wire-by-lbl (lbl wiremap wiretable)
+  "gets the wire from wiremap with label described by lbl. requires 2 map lookups"
+  ;; this will throw an error if either is null - not to be used for checking if a wire location exists
+  (get-wire-by-idx (cdr (map-find lbl wiretable)) wiremap)
+)
+
+(defun get-idx-by-lbl (lbl wiremap wiretable)
+  (wire-idx (get-wire-by-lbl lbl wiremap wiretable))
+)
+
+
+
 (defmacro add-succ (succ wire &body body)
   `(let ((,wire (make-wire
 		:lbl (wire-lbl ,wire)
 		:idx (wire-idx ,wire)
 		:preds (wire-preds ,wire)
-		:succs (cons ,succ (wire-succs ,wire))
+		:succs (cons (get-wire-by-lbl ,succ) (wire-succs ,wire))
 		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
 		)))
      ,@body))
@@ -148,39 +177,16 @@
      ;;,wire)
      ,@body)
 )
-#| under construction
+
 (defmacro new-wire (lbl wiremap wiretable idx &body body)
-  `(let* ((newwire (make-wire 
-		    :lbl ,lbl
-		    :idx ,idx))
-	  (,wiremap (if (null (map-find ,lbl ,wiremap t))
-		     (map-insert ,idx newwire ,wiremap)
-		     (map-insert ,idx newwire (map-remove ,lbl ,wiremap))))
-	(,idx (1+ ,idx)))
-    ,@body))
-|#
-
-(defmacro map-update-wire (wire map &body body)
-  `(let ((,map (map-insert (wire-idx ,wire) ,map)))
-    ,@body))
-
-(defmacro close-update ()
-  `(list wiremap wiretable idx)
-)
-
-(defun get-wire-by-idx (idx wiremap)
-  (cdr (map-find idx wiremap))
-)
-
-(defun get-wire-by-lbl (lbl wiremap wiretable)
-  "gets the wire from wiremap with label described by lbl. requires 2 map lookups"
-  ;; this will throw an error if either is null - not to be used for checking if a wire location exists
-  (get-wire-by-idx (cdr (map-find lbl wiretable)) wiremap)
-)
-
-(defun get-idx-by-lbl (lbl wiremap wiretable)
-  (wire-idx (get-wire-by-lbl lbl wiremap wiretable))
-)
+  ;; new entry in wire table
+  ;; new wire entered into wiremap
+  (let ((newwire (gensym)))
+  `(let* ((,newwire (create-wire :label ,lbl :index ,idx))
+	  (,wiretable (map-upsert ,lbl ,idx ,wiretable))
+	  (,wiremap (map-update-wire ,newwire ,wiremap))
+	  (,idx (1+ ,idx)))
+     ,@body)))
 
 
 (defgeneric update-cfg (op wiremap wiretable idx)
@@ -188,22 +194,28 @@
 )
 
 (defmethod update-cfg ((op bits) wiremap wiretable idx)
-  (with-slots (dest) op
-    ;; should create a new wire for every member in locs with no preds and no succs, adding them to the map 
+  (with-slots (dest) op ; dest should be a list of destination wires
+    ;; should create a new wire for every member in dest with no preds and no succs, adding them to the map 
     (close-update)
 ))
 
-#|
+
 (defmethod update-cfg ((op gate) wiremap wiretable idx)
+  ;; bear in mind that wires may be inputs to themselves
   (with-slots ((dst dest) (o1 op1) (o2 op2)) op
-      (new-wire dst idx wiremap
-		(add-succ dst o1
-		    (add-succ dst o2
-			     (add-pred o1 dst
-				 (add-pred o2 dst
-				     (close-update)
-		)))))))
-|#
+    (let ((op1-wire (get-wire-by-lbl o1))
+	  (op2-wire (get-wire-by-lbl o2))
+	  (op1-idx (get-idx-by-lbl o1))
+	  (op2-idx (get-idx-by-lbl o2)))
+      (new-wire dst idx wiremap wiretable
+	(let ((dstwire (get-wire-by-lbl dst)))
+	  (add-succ dst op1-wire 
+	      (add-succ dst op2-wire
+		  (add-pred op1-idx dstwire
+		      (add-pred op2-idx dstwire
+			  (close-update)
+			)))))))))
+
 
 (defun make-cfg (ops)
   (reduce #'(lambda(x y) 

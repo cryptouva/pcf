@@ -142,7 +142,7 @@
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
   "Insert a new value into an AVL if the value is not already present"
-  (declare (optimize (debug 0) (speed 3))
+  (declare (optimize (debug 3) (speed 0))
            (type function comp))
   (if (null lst)
       (avl-cons x nil nil)

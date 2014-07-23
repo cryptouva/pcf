@@ -14,6 +14,7 @@
                      set-from-list
                      set-equalp
                      set-reduce
+		     set-subset
                      map-insert
                      map-remove
                      map-find
