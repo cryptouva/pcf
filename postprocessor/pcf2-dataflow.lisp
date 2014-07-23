@@ -3,7 +3,7 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export load-ops)
-  (:import-from :pcf2-bc :read-bytecode)
+;  (:import-from :pcf2-bc :read-bytecode)
 )
 (in-package :pcf2-dataflow)
 
@@ -92,7 +92,7 @@
 		:id (wire-id ,wir)
 		:idx (wire-idx ,wir)
 		:preds (wire-preds ,wir)
-		:succs (cons succ (wire-succs ,wir))
+		:succs (cons ,succ (wire-succs ,wir))
 		)))
      ,@body))
 
@@ -100,27 +100,26 @@
   `(let ((,wir (make-wire
 		:id (wire-id ,wir)
 		:idx (wire-idx ,wir)
-		:preds (cons prd (wire-preds ,wir))
+		:preds (cons ,prd (wire-preds ,wir))
 		:succs (wire-succs ,wir)
 		)))
      ,@body))
 
-
 (defmacro new-wire (wireid idx wiremap &body body)
   `(let* ((newwire (make-wire 
-		    :id wireid
-		    :idx idx))
-	  (,wiremap (if (null (map-find wireid ,wiremap t))
-		     (map-insert wireid newwire ,wiremap)
-		     (map-insert wireid newwire (map-remove dst ,wiremap))))
-	(idx (1+ idx)))
+		    :id ,wireid
+		    :idx ,idx))
+	  (,wiremap (if (null (map-find ,wireid ,wiremap t))
+		     (map-insert ,wireid newwire ,wiremap)
+		     (map-insert ,wireid newwire (map-remove ,wireid ,wiremap))))
+	(,idx (1+ ,idx)))
     ,@body))
 
 (defmacro close-update ()
-  (list wiremap idx)
+  `(list wiremap idx)
 )
 
-(defgeneric update-cfg (op wiremap)
+(defgeneric update-cfg (op wiremap idx)
   (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
 )
 
@@ -131,19 +130,21 @@
 ))
 
 (defmethod update-cfg ((op gate) wiremap idx)
-  (with-slots ((dst dest) (o1 op1) (o2 op2))
+  (with-slots ((dst dest) (o1 op1) (o2 op2)) op
       (new-wire dst idx wiremap
 		(add-succ dst o1
-		    (add-suc dst o2
+		    (add-succ dst o2
 			     (add-pred o1 dst
 				 (add-pred o2 dst
 				     (close-update)
 		)))))))
-#|
+
 (defun make-cfg (ops)
-  (reduce update-cgf ops 
-)
-|#
+  (reduce #'(lambda(x y) 
+	      (apply #'update-cfg (cons y x)))
+	  ops
+	  :initial-value (list (map-empty :comp string<)  0)))
+
 
 (defun load-ops (fname) 
   (with-open-file (inpt fname :direction :input)
