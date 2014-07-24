@@ -212,12 +212,12 @@
 (defmethod update-cfg ((op gate) wiremap wiretable idx)
   ;; bear in mind that wires may be inputs to themselves
   (with-slots ((dst dest) (o1 op1) (o2 op2)) op
-    (let ((op1-wire (get-wire-by-lbl o1))
-	  (op2-wire (get-wire-by-lbl o2))
-	  (op1-idx (get-idx-by-lbl o1))
-	  (op2-idx (get-idx-by-lbl o2)))
+    (let ((op1-wire (get-wire-by-lbl o1 wiremap wiretable))
+	  (op2-wire (get-wire-by-lbl o2 wiremap wiretable))
+	  (op1-idx (get-idx-by-lbl o1 wiremap wiretable))
+	  (op2-idx (get-idx-by-lbl o2 wiremap wiretable)))
       (new-wire dst idx wiremap wiretable
-	(let ((dstwire (get-wire-by-lbl dst)))
+	(let ((dstwire (get-wire-by-lbl dst wiremap wiretable)))
 	  (add-succ dst op1-wire 
 	      (add-succ dst op2-wire
 		  (add-pred op1-idx dstwire
