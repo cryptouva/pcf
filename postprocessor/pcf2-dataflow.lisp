@@ -12,6 +12,7 @@
 	   new-wire
 	   create-wire
 	   map-update-wire
+	   map-upsert
 	   )
 ;  (:import-from :pcf2-bc :read-bytecode)
 )
@@ -126,10 +127,6 @@
 (defun map-update-wire (wire map)
   (map-upsert (wire-idx wire) wire map))
 
-(defmacro close-update ()
-  `(list wiremap wiretable idx)
-)
-
 (defun get-wire-by-idx (idx wiremap)
   (cdr (map-find idx wiremap))
 )
@@ -144,14 +141,16 @@
   (wire-idx (get-wire-by-lbl lbl wiremap wiretable))
 )
 
-
+(defmacro close-update ()
+  `(list wiremap wiretable idx)
+)
 
 (defmacro add-succ (succ wire &body body)
   `(let ((,wire (make-wire
 		:lbl (wire-lbl ,wire)
 		:idx (wire-idx ,wire)
 		:preds (wire-preds ,wire)
-		:succs (cons (get-wire-by-lbl ,succ) (wire-succs ,wire))
+		:succs (cons ,succ (wire-succs ,wire))
 		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
 		)))
      ,@body))
@@ -196,9 +195,19 @@
 (defmethod update-cfg ((op bits) wiremap wiretable idx)
   (with-slots (dest) op ; dest should be a list of destination wires
     ;; should create a new wire for every member in dest with no preds and no succs, adding them to the map 
-    (close-update)
-))
+    (reduce (lambda (x y)
+	      (let ((wmap (first x))
+		    (wtable (second x))
+		    (ix (third x)))
+		(new-wire y wmap wtable ix
+		  (list wmap wtable ix))))
+	    dest
+	    :initial-value (list wiremap wiretable idx))))
 
+(defmethod update-cfg ((op const) wiremap wiretable idx)
+  (with-slots (dest) op
+    (new-wire dest wiremap wiretable idx
+      (close-update))))
 
 (defmethod update-cfg ((op gate) wiremap wiretable idx)
   ;; bear in mind that wires may be inputs to themselves
@@ -216,13 +225,49 @@
 			  (close-update)
 			)))))))))
 
+(defmethod update-cfg ((op mkptr) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+(defmethod update-cfg ((op copy) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+(defmethod update-cfg ((op copy-indir) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+(defmethod update-cfg ((op indir-copy) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+(defmethod update-cfg ((op call) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+(defmethod update-cfg ((op ret) wiremap wiretable idx)
+  ;; TODO: fill in
+)
+
+;; the next few don't need to do anything
+(defmethod update-cfg ((op label) wiremap wiretable idx)
+  (close-update)
+  )
+
+(defmethod update-cfg ((op initbase) wiremap wiretable idx)
+  (close-update)
+)
+
+(defmethod update-cfg ((op clear) wiremap wiiretable idx)
+  (close-update)
+)
 
 (defun make-cfg (ops)
   (reduce #'(lambda(x y) 
 	      (apply #'update-cfg (cons y x)))
 	  ops
 	  :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
-					;wiremap             rwiremap               idx
+					;wiremap             wiretable               idx
 
 #|
 (defun load-ops (fname) 
