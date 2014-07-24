@@ -571,6 +571,11 @@ number of arguments."
                                      (make-xor c-in x tmp3))))
                (append sum-ops carry-ops))))
     (append 
+     (list
+      (make-instance 'const :dest c-in :op1 0)
+      (make-instance 'const :dest tmp1 :op1 0)
+      (make-instance 'const :dest tmp2 :op1 0)
+      (make-instance 'const :dest tmp3 :op1 0))
      (mapcan #'full-adder xs ys zs)
      )))
 
@@ -579,7 +584,7 @@ number of arguments."
   (assert (= (length xs) (length ys) (length zs)))
   (labels ((full-subtractor (x y z)
              (let* ((diff-ops (list (make-xor tmp1 x y)
-                                    (make-xor z tmp1 c-in)))
+                                     (make-xor z tmp1 c-in)))
                     (borrow-ops (list (make-xnor tmp1 x y)
                                       (make-and tmp2 c-in tmp1)
                                       (make-not tmp1 x)
@@ -587,12 +592,12 @@ number of arguments."
                                       (make-or c-in tmp3 tmp2))))
                (append diff-ops borrow-ops))))
     (append
-     (mapcan #'full-subtractor xs ys zs)
      (list 
       (make-instance 'const :dest c-in :op1 0)
       (make-instance 'const :dest tmp1 :op1 0)
       (make-instance 'const :dest tmp2 :op1 0)
       (make-instance 'const :dest tmp3 :op1 0))
+     (mapcan #'full-subtractor xs ys zs)
      )))
 
 (defun complement-subtract (xs ys zs tmps c-in tmp1 tmp2 tmp3)
@@ -1081,7 +1086,7 @@ number of arguments."
 	     (with-temp-wires dst 1 
 	       (with-temp-wires t1 1 
 		 (with-temp-wires t2 1 
-		   (with-temp-wires t3 1 
+		   (with-temp-wires t3 1
 		     (add-instrs (append 
 				  ;; AND in the fall-through case
 				  (funcall ,fun ,arg2 ,arg1 tmpzs dst t1 t2 t3)
@@ -1095,7 +1100,7 @@ number of arguments."
 					 )
 				      (add-target targ dst t1
 					(close-instr)))
-				    (add-instrs (list 
+				    (add-instrs (list
 						 (make-not t1 dst)
 						 (make-instance 'branch :cnd t1 :targ targ))
 				      (close-instr))))))))))))))
