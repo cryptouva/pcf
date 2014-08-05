@@ -2101,10 +2101,10 @@ number of arguments."
                   (add-instrs 
                       (append 
                        (list
-                        (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 targwidth)
+                        (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 targwidth))
                         (loop for i in (subseq rwires targwidth) collect ; sign extend
                              (make-instance 'copy :dest i :op1 (last arg) :op2 1))))
-                    (close-instr))))))))))
+                    (close-instr)))))))))
 
 (definstr cvui ; convert from unsigned integer (to signed integer)
   (convert-type-instr) ;;    (close-instr)
