@@ -2079,48 +2079,43 @@ number of arguments."
   (close-instr)
   )
 
-(defmacro convert-type-instr () ;;(&body body)
+(defmacro convert-type-instr (&body body)
   ;; if first arg = second arg (same lengths), do nothing
   ;; if first arg < second arg, cut off appropriate amount of second arg
   ;; if first arg > second arg, extend
   `(with-slots (s-args) op
      (let ((targwidth  (* *byte-width* (parse-integer (first s-args))))
 	   (curwidth (* *byte-width* (parse-integer (second s-args)))))
-       (with-temp-wires rwires targwidth
-         (pop-arg stack arg
+       (pop-arg stack arg
            (cond
              ((= targwidth curwidth)
               (push-stack stack targwidth arg
                 (close-instr)))
              ((< targwidth curwidth)
-              (push-stack stack targwidth rwires; (subseq arg 0 targwidth)
-                (add-instrs (list (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 targwidth))
-                  (close-instr))))
+              (push-stack stack targwidth (subseq arg 0 targwidth)
+;                (add-instrs (list (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 targwidth))
+                  (close-instr)));)
              ((> targwidth curwidth)
-                (push-stack stack targwidth rwires
-                  (add-instrs 
-                      (append 
-                       (list
-                        (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 targwidth))
-                        (loop for i in (subseq rwires targwidth) collect ; sign extend
-                             (make-instance 'copy :dest i :op1 (last arg) :op2 1))))
-                    (close-instr)))))))))
+	      (with-temp-wires rwires targwidth
+	       (push-stack stack targwidth rwires
+		(add-instrs 
+		 (append 
+		  (list (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 curwidth))
+		  ,@body)
+		(close-instr))))))))))
 
 (definstr cvui ; convert from unsigned integer (to signed integer)
-  (convert-type-instr) ;;    (close-instr)
-    )
+  (convert-type-instr))
 
 (definstr cviu ; convert from signed integer (to unsigned integer)
-  (convert-type-instr)  ;;  (close-instr)
-)
+  (convert-type-instr))
 
 (definstr cvii ; convert from signed integer (to signed integer)
-  (convert-type-instr))
- #|
-    (add-instrs
-	(loop for i in rwires collect
-	     (make-instance 'copy :dest i :op1 (car (last arg)) :op2 1));sign extend
-      (close-instr))|# 
+  (convert-type-instr
+   (add-instrs
+    (loop for i in (subseq rwires curwidth) collect
+	  (make-instance 'copy :dest i :op1 (car (last arg)) :op2 1));sign extend
+    )))
 
 (definstr cvuu ; convert from unsigned integer (to unsigned integer)
   (convert-type-instr))
