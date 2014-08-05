@@ -2,271 +2,170 @@
 
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
-  (:export wire
-	   get-wire-by-idx
-	   get-wire-by-lbl
-	   get-idx-by-lbl
-	   add-succ
-	   add-pred
-	   live-wire
-	   new-wire
-	   create-wire
-	   map-update-wire
-	   map-upsert
-	   )
-;  (:import-from :pcf2-bc :read-bytecode)
-)
+                                        ; (:export ;wire
+                                        ;get-wire-by-idx
+                                        ;get-wire-by-lbl
+                                        ;get-idx-by-lbl
+                                        ;add-succ
+                                        ;add-pred
+                                        ;live-wire
+                                        ;new-wire
+                                        ;create-wire
+                                        ;map-update-wire
+                                        ;map-upsert
+                                        ;	   )
+                                        ;  (:import-from :pcf2-bc :read-bytecode)
+  )
 (in-package :pcf2-dataflow)
 
 ;;; need:
+
 ;;; basic blocks (from pcf2 opcodes)
-;;;  predecessors and successors work in the following manner:
-;;; inputs to a gate are predecessors
-;;; outputs from a gate are successors
-;;; simple enough!
-
-;;; the pred/succ map (or cfg) is pretty simple here
-;;; will need a function to interpret pcf2 instructions that are not simply GATE
-;;; gate --> inputs and outputs are straightforward
-;;; copy --> must find the input and output gates and update them accordingly
-;;;    we can probably use a simple map for all of this
-
-;;; DATASTRUCTURES:
-;;; wire:
-;;;  - labal (this is the number identified in the gate)
-;;;  - idx (this is the unique wire identifier, which is a running count of all unique wires)
-;;;  - preds (this is a list of idxs of predecessor wires)
-;;;  - succs (this is a list of idxs of successor wires)
-
-;;; wiremap:
-;;; this is a map of idxs to wires
-
-;;; wiretable:
-;;;  this is a map of wire ids to current assigned idx
+;;; the pred/succ map (or cfg) is explained:
+;;;   must figure out which gates are connected using simple methods (and probably some way of tracking indirection)
+;;;   we can accomplish this by tracking the inputs and outputs to gates
+;;;   the idea is that given a control flow graph of pcf opcodes, we can generate a more granular graph that idenitifies wires and gates
+;;;   we can accomplish some amount of analysis implicitly in this framework by, e.g. observing gen/kill rules during construction. for example: "const" creates a new wire that need not be linked back to its predecessors. Additionally, we will want to propagate constants in the dataflow program using partial gate information (AND w/0 is like loading a 0 const; OR with 1 is like loading a 1 const; NOTs are easy to propagate; XOR is not possible)
+;;; right now, we will only deal with constructing the cfg. next we can do gate analysis in a number of ways
 
 ;;; ops:
 ;;;  this is a list of all the PCF2 ops for a given circuit
 
-
-#|
 (defstruct (basic-block
-	     (:print-function
-	      (lambda  (struct stream depth)
-		(declare (ignore depth))
-		(format stream "~&PCF2 basic block: ~A~%" (basic-block-id struct))
-		(format stream "Gates: ~A~%" (basic-block-gates struct))
-		(format stream "Preds: ~AA%" (basic-block-preds struct))
-		(format stream "Succs: ~AA%" (block-block-succs struct)) 
-	     )))
+             (:print-function
+              (lambda  (struct stream depth)
+                (declare (ignore depth))
+                (format stream "~&PCF2 basic block: ~A~%" (basic-block-id struct))
+                ;; (format stream "Gates: ~A~%" (basic-block-gates struct))
+                (format stream "Preds: ~AA%" (basic-block-preds struct))
+                (format stream "Succs: ~AA%" (block-block-succs struct)) 
+                )))
   (id)
-  (gates nil :type list)
+  ;; (gates nil :type list) ;; placeholder for later
   (preds nil :type list)
   (succs nil :type list)
-)
-|#
-
-(defstruct (wire
-	     (:print-function 
-	      (lambda (struct stream depth)
-		(declare (ignore depth))
-		(format stream "~&Label: ~A~%" (wire-lbl struct))
-		(format stream "Index: ~A~%" (wire-idx struct))
-		(format stream "Preds: ~A~%" (wire-preds struct))
-		(format stream "Succs: ~A~%" (wire-succs struct))
-		(format stream "Live: ~A~%" (wire-live struct))
-	     )))
-  (lbl) ; the number that comes associated with the wire; analagous to a location in memory because it holds a value but might be reused over the course of a program
-  (idx) ; the index of the wire among all wires seen. (Some wires may appear more than once; this is a unique identifier, analagous to a label that idenitifies a piece of memory's value in time.)
-  (preds nil :type list) ; a list of indexes
-  (succs nil :type list) ; a list of indexes
-  (live nil :type boolean) ; tells whether the wire is live or can be optimized away
-  (:documentation "This represents a wire, with pointers to its input and output wires. We must pay attention to each occurrence of the wire and not just each wire id, since wire ids may be reused over the course of a circuit.")
   )
-
-(defun create-wire (&key label index)
-  (make-wire :lbl label
-	     :idx index))
-
-;; rules for creating a new wire with unique index rather than re-using the previous:
-;; whenever a wire appears in the destination: create a new index for it
-;; whenever a wire appears in the ops: do not create a new index, loop it up in the wire map
-;; when the same id appears in both the ops and the dest, be sure to get the op's index first!
-
-;; (GATE :DEST 1078 :OP1 947 :OP2 949 :TRUTH-TABLE #*1001 )
-;; the wires associated with this gate are all we need to know about it
-;;   947 --
-;;         \
-;;          -- 1078
-;;         /
-;;   949 --
-;; therefore, 947 and 949 are preds of 1078, and 1078 is a succ of each of them
-
-;; (CONST :DEST 1277 :OP1 0 )
-;; create a new wire at dst, the value does not matter
-
-;; (COPY :DEST 618 :OP1 585 :OP2 32 )
-;; new wire for evertyhing in 618 -> 618 + 32, with links from each wire in 585 + i to 618 + i
-
-;; (MKPTR :DEST 485 )
-;; still don't understand this one
-
-;; (INDIR-COPY :DEST 485 :OP1 518 :OP2 32 )
-;; figure this one out
-
-;; (COPY-INDIR :DEST 553 :OP1 552 :OP2 32 )
-;; see indir-copy
-
-;; (BITS :DEST (453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484) :OP1 453 )
-;; I think everything in DEST needs a new wire
-
-(defun map-upsert (x val map)
-  (if (null (map-find x map t))
-      (map-insert x val map)
-      (map-insert x val (map-remove x map))))
-
-(defun map-update-wire (wire map)
-  (map-upsert (wire-idx wire) wire map))
-
-(defun get-wire-by-idx (idx wiremap)
-  (cdr (map-find idx wiremap))
-)
-
-(defun get-wire-by-lbl (lbl wiremap wiretable)
-  "gets the wire from wiremap with label described by lbl. requires 2 map lookups"
-  ;; this will throw an error if either is null - not to be used for checking if a wire location exists
-  (get-wire-by-idx (cdr (map-find lbl wiretable)) wiremap)
-)
-
-(defun get-idx-by-lbl (lbl wiremap wiretable)
-  (wire-idx (get-wire-by-lbl lbl wiremap wiretable))
-)
-
-(defmacro close-update ()
-  `(list wiremap wiretable idx)
-)
-
-(defmacro add-succ (succ wire &body body)
-  `(let ((,wire (make-wire
-		:lbl (wire-lbl ,wire)
-		:idx (wire-idx ,wire)
-		:preds (wire-preds ,wire)
-		:succs (cons ,succ (wire-succs ,wire))
-		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
-		)))
-     ,@body))
-
-(defmacro add-pred (prd wire &body body)
-  `(let ((,wire (make-wire
-		:lbl (wire-lbl ,wire)
-		:idx (wire-idx ,wire)
-		:preds (cons ,prd (wire-preds ,wire))
-		:succs (wire-succs ,wire)
-		:live (wire-live ,wire) ; shouldn't really need this assignment, keep it for good measure
-		)))
-     ,@body))
-
-;; should this be a macro or a function?
-(defmacro live-wire (wire &body body)
-  `(let ((,wire (make-wire
-		 :lbl (wire-lbl ,wire)
-		 :idx (wire-idx ,wire)
-		 :preds (wire-preds ,wire)
-		 :succs (wire-succs, wire)
-		 :live t)))
-     ;;,wire)
-     ,@body)
-)
-
-(defmacro new-wire (lbl wiremap wiretable idx &body body)
-  ;; new entry in wire table
-  ;; new wire entered into wiremap
-  (let ((newwire (gensym)))
-  `(let* ((,newwire (create-wire :label ,lbl :index ,idx))
-	  (,wiretable (map-upsert ,lbl ,idx ,wiretable))
-	  (,wiremap (map-update-wire ,newwire ,wiremap))
-	  (,idx (1+ ,idx)))
-     ,@body)))
 
 
 (defgeneric update-cfg (op wiremap wiretable idx)
   (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
-)
+  )
 
-(defmethod update-cfg ((op bits) wiremap wiretable idx)
-  (with-slots (dest) op ; dest should be a list of destination wires
-    ;; should create a new wire for every member in dest with no preds and no succs, adding them to the map 
-    (reduce (lambda (x y)
-	      (let ((wmap (first x))
-		    (wtable (second x))
-		    (ix (third x)))
-		(new-wire y wmap wtable ix
-		  (list wmap wtable ix))))
-	    dest
-	    :initial-value (list wiremap wiretable idx))))
+(defmacro definstr (type &body body)
+  "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
+  `(defmethod update-cfg ((op ,type) wiremap wiretable idx)
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (error "State is null")
+          )))
 
-(defmethod update-cfg ((op const) wiremap wiretable idx)
-  (with-slots (dest) op
-    (new-wire dest wiremap wiretable idx
-      (close-update))))
 
-(defmethod update-cfg ((op gate) wiremap wiretable idx)
-  ;; bear in mind that wires may be inputs to themselves
-  (with-slots ((dst dest) (o1 op1) (o2 op2)) op
-    (let ((op1-wire (get-wire-by-lbl o1 wiremap wiretable))
-	  (op2-wire (get-wire-by-lbl o2 wiremap wiretable))
-	  (op1-idx (get-idx-by-lbl o1 wiremap wiretable))
-	  (op2-idx (get-idx-by-lbl o2 wiremap wiretable)))
-      (new-wire dst idx wiremap wiretable
-	(let ((dstwire (get-wire-by-lbl dst wiremap wiretable)))
-	  (add-succ dst op1-wire 
-	      (add-succ dst op2-wire
-		  (add-pred op1-idx dstwire
-		      (add-pred op2-idx dstwire
-			  (close-update)
-			)))))))))
 
-(defmethod update-cfg ((op mkptr) wiremap wiretable idx)
+(definstr bits
+  ;; TODO: fill in
+  ;; no predecessors
+  )
+
+(definstr const
+  ;; TODO: fill in
+  ;; no predecessors
+  )
+
+(definstr gate
+  ;; TODO: fill in
+  ;; predecessors are whichever were the last to use the input gates
+  )
+
+;;(defmethod update-cfg ((op mkptr) wiremap wiretable idx)
+(definstr mkptr
+  ;; TODO: fill in
+  ;; predecessor given by argument, successor to come; successor might actually remove this block or move through it, adding its predecessor as well as it
+  )
+                                        ;(defmethod update-cfg ((op copy) wiremap wiretable idx)
+(definstr copy
+  ;; TODO: fill in
+  ;; predecessors given by op1 (location) and op2 (length)
+  )
+
+#|
+Let's talk about the following instructions
+
+    1. (CONST :DEST 227 :OP1 1 )
+    2. (MKPTR :DEST 227 )
+    3. (CONST :DEST 228 :OP1 65 )
+    4. (MKPTR :DEST 228 )
+    5. (COPY-INDIR :DEST 229 :OP1 228 :OP2 32 )
+    6. (INDIR-COPY :DEST 227 :OP1 229 :OP2 32 )
+
+1. load const 1 into 227
+2. turn address 227 into a pointer; it now references address 1
+3. load const 65 into 228
+4. turn 228 into a pointer; it now addresses 1
+5. 229 - 260 will now contain copy of 65-96
+6. the location that 227 points to will contain a copy of 229-260 which was just loaded there.
+So over the course of these 6 instructions, we've copied 65-96 into locations 1-32.
+|#
+
+;;(defmethod update-cfg ((op copy-indir) wiremap wiretable idx)
+(definstr copy-indir
   ;; TODO: fill in
 )
 
-(defmethod update-cfg ((op copy) wiremap wiretable idx)
+(definstr indir-copy
   ;; TODO: fill in
 )
 
-(defmethod update-cfg ((op copy-indir) wiremap wiretable idx)
+(definstr call
   ;; TODO: fill in
 )
 
-(defmethod update-cfg ((op indir-copy) wiremap wiretable idx)
+(definstr ret
   ;; TODO: fill in
 )
 
-(defmethod update-cfg ((op call) wiremap wiretable idx)
+(definstr branch
   ;; TODO: fill in
 )
 
-(defmethod update-cfg ((op ret) wiremap wiretable idx)
+(definstr join
   ;; TODO: fill in
 )
+
+#| are these obsolete?
+(definstr add
+  ;; TODO: fill in
+)
+
+(definstr sub
+  ;; TODO: fill in
+)
+
+(definstr mul
+  ;; TODO: fill in
+)
+|#
 
 ;; the next few don't need to do anything
-(defmethod update-cfg ((op label) wiremap wiretable idx)
+(definstr label
   (close-update)
   )
 
-(defmethod update-cfg ((op initbase) wiremap wiretable idx)
+;;(defmethod update-cfg ((op initbase) wiremap wiretable idx)
+(definstr initbase
   (close-update)
 )
 
-(defmethod update-cfg ((op clear) wiremap wiiretable idx)
+;;(defmethod update-cfg ((op clear) wiremap wiiretable idx)
+(definstr clear
   (close-update)
 )
 
 (defun make-cfg (ops)
   (reduce #'(lambda(x y) 
-	      (apply #'update-cfg (cons y x)))
-	  ops
-	  :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
+              (apply #'update-cfg (cons y x)))
+          ops
+          :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
 					;wiremap             wiretable               idx
 
 #|
