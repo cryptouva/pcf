@@ -13,6 +13,7 @@
                                :lcc-dataflow
 			       :pcf2-dataflow)
             (:export test-interp
+                     pcf-cfg
                      pcf-compile
                      save-pcf-ops
                      load-pcf-ops
@@ -48,6 +49,10 @@
     (read-bytecode inpt)
     )
   )
+ 
+(defun pcf-cfg (ops)
+  (make-pcf-cfg ops)
+)
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""

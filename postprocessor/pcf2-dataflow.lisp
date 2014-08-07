@@ -1,8 +1,9 @@
-;; Dataflow analysis frameworks for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
+;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
-                                        ; (:export ;wire
+  (:export make-pcf-cfg
+           get-label-map)
                                         ;get-wire-by-idx
                                         ;get-wire-by-lbl
                                         ;get-idx-by-lbl
@@ -31,142 +32,183 @@
 ;;; ops:
 ;;;  this is a list of all the PCF2 ops for a given circuit
 
+
 (defstruct (basic-block
              (:print-function
-              (lambda  (struct stream depth)
+              (lambda (struct stream depth)
                 (declare (ignore depth))
-                (format stream "~&PCF2 basic block: ~A~%" (basic-block-id struct))
-                ;; (format stream "Gates: ~A~%" (basic-block-gates struct))
-                (format stream "Preds: ~AA%" (basic-block-preds struct))
-                (format stream "Succs: ~AA%" (block-block-succs struct)) 
-                )))
+                (format stream "~&PCF2 basic block ~A:~%" (basic-block-id struct))
+                (format stream "Ops: ~A~%" (basic-block-ops struct))
+                (format stream "Preds: ~A~%" (basic-block-preds struct))
+                (format stream "Succs: ~A~%" (basic-block-succs struct))
+                )
+              )
+             )
   (id)
-  ;; (gates nil :type list) ;; placeholder for later
+  (ops nil :type list)
   (preds nil :type list)
   (succs nil :type list)
+  (:documentation "This represents a basic block in the control flow graph.")
   )
 
+(defmacro new-block (&key id op)
+  `(make-basic-block
+   :id (write-to-string ,id)
+   :ops (list ,op)))
 
-(defgeneric update-cfg (op wiremap wiretable idx)
+;; op is an opcode, bb is the block itself
+(defmacro add-op (op bb &body body)
+  `(let ((,bb (make-basic-block
+               :id (basic-block-id ,bb)
+               :ops (cons ,op (basic-block-ops ,bb))
+               :preds (basic-block-preds ,bb)
+               :succs (basic-block-succs ,bb)
+               )))
+     ,@body))
+
+;; prd is an index, bb is the block itself
+(defmacro add-pred (prd bb &body body)
+  `(let ((,bb (make-basic-block
+               :id (basic-block-id ,bb)
+               :ops (basic-block-ops ,bb)
+               :preds (cons ,prd (basic-block-preds ,bb))
+               :succs (basic-block-succs ,bb))))
+     ,@body))
+
+;; succ is an index, bb is the block itself
+(defmacro add-succ (succ bb &body body)
+  `(let ((,bb (make-basic-block
+               :id (basic-block-id ,bb)
+               :ops (basic-block-ops ,bb)
+               :preds (basic-block-preds ,bb)
+               :succs (cons ,succ (basic-block-succs ,bb)))))
+     ,@body))
+
+(defgeneric find-basic-block (op curblock blocks lbls idx)
   (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
+  ;; blocks is a map of all idx to basic blocks
+  ;; lbls is a map of all of the label names to idxs
+  ;; idx is the index of current op
   )
 
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod update-cfg ((op ,type) wiremap wiretable idx)
+  `(defmethod find-basic-block ((op ,type) curblock blocks lbls idx)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
-          (error "State is null")
+          (add-standard-block)
           )))
-
-
-
-(definstr bits
-  ;; TODO: fill in
-  ;; no predecessors
-  )
-
-(definstr const
-  ;; TODO: fill in
-  ;; no predecessors
-  )
-
-(definstr gate
-  ;; TODO: fill in
-  ;; predecessors are whichever were the last to use the input gates
-  )
-
-;;(defmethod update-cfg ((op mkptr) wiremap wiretable idx)
-(definstr mkptr
-  ;; TODO: fill in
-  ;; predecessor given by argument, successor to come; successor might actually remove this block or move through it, adding its predecessor as well as it
-  )
-                                        ;(defmethod update-cfg ((op copy) wiremap wiretable idx)
-(definstr copy
-  ;; TODO: fill in
-  ;; predecessors given by op1 (location) and op2 (length)
-  )
-
 #|
-Let's talk about the following instructions
-
-    1. (CONST :DEST 227 :OP1 1 )
-    2. (MKPTR :DEST 227 )
-    3. (CONST :DEST 228 :OP1 65 )
-    4. (MKPTR :DEST 228 )
-    5. (COPY-INDIR :DEST 229 :OP1 228 :OP2 32 )
-    6. (INDIR-COPY :DEST 227 :OP1 229 :OP2 32 )
-
-1. load const 1 into 227
-2. turn address 227 into a pointer; it now references address 1
-3. load const 65 into 228
-4. turn 228 into a pointer; it now addresses 1
-5. 229 - 260 will now contain copy of 65-96
-6. the location that 227 points to will contain a copy of 229-260 which was just loaded there.
-So over the course of these 6 instructions, we've copied 65-96 into locations 1-32.
+(defmacro close-update ()
+  (list block blocks lbls idx)
+)
 |#
+
+(defmacro add-standard-block ()
+  `(let ((newblock 
+          (new-block :id idx :op op))
+          ;(make-basic-block :ops (list (write-to-string op)) :id idx)) ; our new block
+        ) ; id of last block
+    (add-succ idx curblock
+        (list newblock ; new last block
+              (map-insert (basic-block-id curblock) curblock blocks) ; blocks
+              lbls ; lbls
+              (1+ idx) ; idx
+              ))))
+
+;;; the following instructions need no special treatment
+(definstr bits)
+
+(definstr const)
+
+(definstr gate)
+
+(definstr mkptr)
+
+(definstr copy)
+
+(definstr add)
+
+(definstr sub)
+
+(definstr mul)
+
+(definstr initbase)
+
+(definstr clear)
+
 
 ;;(defmethod update-cfg ((op copy-indir) wiremap wiretable idx)
 (definstr copy-indir
-  ;; TODO: fill in
-)
+  (add-standard-block))
 
 (definstr indir-copy
-  ;; TODO: fill in
-)
+  (add-standard-block))
 
 (definstr call
-  ;; TODO: fill in
-)
+  (add-standard-block))
 
 (definstr ret
-  ;; TODO: fill in
-)
+  (add-standard-block))
 
 (definstr branch
-  ;; TODO: fill in
+  ;; this one gets two successors
+  ;; note that unconditional jumps are accomplished with a branch instruction and a constant condition wire. it will be necessary later to remove the second successor.
+  (with-slots (targ) op 
+    (let ((newblock 
+           (new-block :id idx  :op op))
+          ;;            (make-basic-block :ops op :id idx)) ; our new block
+          ) ; id of last block
+      (add-succ idx curblock
+          (add-succ (map-find targ lbls) newblock ; the other succ will be added at the next instruction
+              (list newblock ; new last block
+                    (map-insert (basic-block-id curblock) curblock blocks) ; blocks
+                    lbls ; lbls
+                    (1+ idx) ; idx
+                    ))))))
+
+(definstr label
+  ;; adding a label has been taken care of already by get-label-map
 )
 
 (definstr join
-  ;; TODO: fill in
 )
 
-#| are these obsolete?
-(definstr add
-  ;; TODO: fill in
-)
-
-(definstr sub
-  ;; TODO: fill in
-)
-
-(definstr mul
-  ;; TODO: fill in
+(defun get-label-map (ops)
+  ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
+  (reduce #'(lambda(y op)
+              (declare (optimize (debug 3) (speed 0)))
+              (let ((lbls (first y))
+                    (idx (second y)))
+                (typecase op
+                  (label (with-slots (str) op
+                           (list 
+                            (map-insert str idx lbls)
+                            (+ 1 idx))))
+                  (t (list lbls (+ 1 idx))))))
+          ops
+          :initial-value (list (map-empty :comp string<) 0)))
+#|
+(defun find-preds (blocks)
+  (declare (optimize (debug 3) (speed 0)))
+  ;; for every item in blocks, get its successors and update those to identify a predecessor
+  ;; must do this one backwards; can't get it on the first pass through because of branching jumps
 )
 |#
 
-;; the next few don't need to do anything
-(definstr label
-  (close-update)
-  )
-
-;;(defmethod update-cfg ((op initbase) wiremap wiretable idx)
-(definstr initbase
-  (close-update)
-)
-
-;;(defmethod update-cfg ((op clear) wiremap wiiretable idx)
-(definstr clear
-  (close-update)
-)
-
-(defun make-cfg (ops)
-  (reduce #'(lambda(x y) 
-              (apply #'update-cfg (cons y x)))
-          ops
-          :initial-value (list (map-empty :comp string<) (map-empty :comp string<)  0)))
-					;wiremap             wiretable               idx
+(defun make-pcf-cfg (ops)
+  (declare (optimize (debug 3) (speed 0)))
+  (let ((forward-cfg
+         (reduce #'(lambda(x y) 
+                     ;;(break)
+                     (apply #'find-basic-block (cons y x)))
+                 ops
+                 :initial-value (list (make-basic-block :id "$START" :ops nil) (map-empty :comp string<) (first (get-label-map ops))  1))
+          ))
+    (print forward-cfg)
+    ))
+                                        ;curblock             blocks             lbls                   idx 
 
 #|
 (defun load-ops (fname) 
