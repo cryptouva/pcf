@@ -117,6 +117,10 @@
               (1+ idx) ; idx
               ))))
 
+(defmacro get-idx-by-label (targ lbls)
+  `(cdr (map-find targ lbls))
+  )
+
 ;;; the following instructions need no special treatment
 (definstr bits)
 
@@ -161,7 +165,7 @@
           ;;            (make-basic-block :ops op :id idx)) ; our new block
           ) ; id of last block
       (add-succ idx curblock
-          (add-succ (map-find targ lbls) newblock ; the other succ will be added at the next instruction
+          (add-succ (get-idx-by-label targ lbls) newblock ; the other succ will be added at the next instruction
               (list newblock ; new last block
                     (map-insert (basic-block-id curblock) curblock blocks) ; blocks
                     lbls ; lbls
