@@ -84,7 +84,7 @@
                :succs (cons ,succ (basic-block-succs ,bb)))))
      ,@body))
 
-(defgeneric find-basic-block (op curblock blocks lbls idx)
+(defgeneric cfg-basic-block (op curblock blocks lbls idx)
   (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
   ;; blocks is a map of all idx to basic blocks
   ;; lbls is a map of all of the label names to idxs
@@ -93,7 +93,7 @@
 
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod find-basic-block ((op ,type) curblock blocks lbls idx)
+  `(defmethod cfg-basic-block ((op ,type) curblock blocks lbls idx)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -105,6 +105,7 @@
 )
 |#
 
+;; arguments are op curblock blocks lbls idx; 
 (defmacro add-standard-block ()
   `(let ((newblock 
           (new-block :id idx :op op))
@@ -118,8 +119,7 @@
               ))))
 
 (defmacro get-idx-by-label (targ lbls)
-  `(cdr (map-find targ lbls))
-  )
+  `(cdr (map-find ,targ ,lbls)))
 
 ;;; the following instructions need no special treatment
 (definstr bits)
@@ -142,19 +142,17 @@
 
 (definstr clear)
 
+(definstr copy-indir)
 
-;;(defmethod update-cfg ((op copy-indir) wiremap wiretable idx)
-(definstr copy-indir
-  (add-standard-block))
-
-(definstr indir-copy
-  (add-standard-block))
+(definstr indir-copy)
 
 (definstr call
-  (add-standard-block))
+;; this must find its successor in lbls and push its following index to the callstack
+)
 
 (definstr ret
-  (add-standard-block))
+;; this must use the callstack to find its immediate successor
+)
 
 (definstr branch
   ;; this one gets two successors
@@ -181,38 +179,49 @@
 
 (defun get-label-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
-  (reduce #'(lambda(y op)
-              (declare (optimize (debug 3) (speed 0)))
-              (let ((lbls (first y))
-                    (idx (second y)))
-                (typecase op
-                  (label (with-slots (str) op
-                           (list 
-                            (map-insert str idx lbls)
-                            (+ 1 idx))))
-                  (t (list lbls (+ 1 idx))))))
-          ops
-          :initial-value (list (map-empty :comp string<) 0)))
+  (first (reduce #'(lambda(y op)
+                     (declare (optimize (debug 3) (speed 0)))
+                     (let ((lbls (first y))
+                           (idx (second y)))
+                       (typecase op
+                         (label (with-slots (str) op
+                                  (list 
+                                   (map-insert str idx lbls)
+                                   (+ 1 idx))))
+                         (t (list lbls (+ 1 idx))))))
+                 ops
+                 :initial-value (list (map-empty :comp string<) 0))))
+
 #|
-(defun find-preds (blocks)
+(defun find-preds (cfg)
   (declare (optimize (debug 3) (speed 0)))
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   ;; must do this one backwards; can't get it on the first pass through because of branching jumps
+  (reduce #'(lambda(x y) 
+              ())
+              cfg
+              :initial-value ( )
+              )
 )
 |#
 
+#|
+for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
+|#
 (defun make-pcf-cfg (ops)
   (declare (optimize (debug 3) (speed 0)))
-  (let ((forward-cfg
-         (reduce #'(lambda(x y) 
-                     ;;(break)
-                     (apply #'find-basic-block (cons y x)))
-                 ops
-                 :initial-value (list (make-basic-block :id "$START" :ops nil) (map-empty :comp string<) (first (get-label-map ops))  1))
-          ))
-    (print forward-cfg)
-    ))
-                                        ;curblock             blocks             lbls                   idx 
+  (let ((op1 (first ops))
+        (restops (rest ops)))
+    (let* ((reduce-forward
+            (reduce #'(lambda(x y)
+                        ;; (break)
+                        (apply #'cfg-basic-block (cons y x)))
+                    restops
+                    :initial-value (list (new-block :id 0 :op op1) (map-empty :comp string<) (get-label-map ops)  1)))
+           (forward-cfg (map-insert (write-to-string (1- (fourth reduce-forward))) (first reduce-forward) (second reduce-forward)))) ;; insert the last block
+      (print (second reduce-forward))
+      (print forward-cfg)
+      )))
 
 #|
 (defun load-ops (fname) 
