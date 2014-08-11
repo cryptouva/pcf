@@ -2102,7 +2102,7 @@ number of arguments."
 		 (append 
 		  (list (make-instance 'copy :dest (first rwires) :op1 (first arg) :op2 curwidth))
 		  ,@body)
-		(close-instr))))))))))
+		  (close-instr))))))))))
 
 (definstr cvui ; convert from unsigned integer (to signed integer)
   (convert-type-instr))

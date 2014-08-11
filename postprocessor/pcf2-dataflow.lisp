@@ -84,16 +84,17 @@
                :succs (cons ,succ (basic-block-succs ,bb)))))
      ,@body))
 
-(defgeneric cfg-basic-block (op curblock blocks lbls idx)
-  (:documentation "update the entities in the wiremap and the cfg for each op that we encounter from ops")
+(defgeneric cfg-basic-block (op curblock blocks lbls fns idx)
+  (:documentation "update the entities in the cfg for each op that we encounter from ops")
   ;; blocks is a map of all idx to basic blocks
   ;; lbls is a map of all of the label names to idxs
+  ;; fns is the set of function names
   ;; idx is the index of current op
   )
 
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod cfg-basic-block ((op ,type) curblock blocks lbls idx)
+  `(defmethod cfg-basic-block ((op ,type) curblock blocks lbls fns idx)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -101,7 +102,7 @@
           )))
 #|
 (defmacro close-update ()
-  (list block blocks lbls idx)
+  (list block blocks lbls fns idx)
 )
 |#
 
@@ -115,6 +116,7 @@
         (list newblock ; new last block
               (map-insert (basic-block-id curblock) curblock blocks) ; blocks
               lbls ; lbls
+	      fns ; fns
               (1+ idx) ; idx
               ))))
 
@@ -167,6 +169,7 @@
               (list newblock ; new last block
                     (map-insert (basic-block-id curblock) curblock blocks) ; blocks
                     lbls ; lbls
+		    fns ; fns
                     (1+ idx) ; idx
                     ))))))
 
@@ -177,20 +180,28 @@
 (definstr join
 )
 
-(defun get-label-map (ops)
+(defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
-  (first (reduce #'(lambda(y op)
+  ;; also get the names of all of the functions (other than main) that are called
+  (reduce #'(lambda(y op)
                      (declare (optimize (debug 3) (speed 0)))
                      (let ((lbls (first y))
-                           (idx (second y)))
+			   (fns (second y))
+                           (idx (third y)))
                        (typecase op
                          (label (with-slots (str) op
                                   (list 
                                    (map-insert str idx lbls)
-                                   (+ 1 idx))))
-                         (t (list lbls (+ 1 idx))))))
+                                   fns
+				   (+ 1 idx))))
+			 (call (with-slots (fname) op
+				 (list
+				  lbls
+				  (set-insert fns fname)
+				  (+ 1 idx))))
+                         (t (list lbls fns (+ 1 idx))))))
                  ops
-                 :initial-value (list (map-empty :comp string<) 0))))
+                 :initial-value (list (map-empty :comp string<) (empty-set :comp string<) 0)))
 
 #|
 (defun find-preds (cfg)
@@ -211,28 +222,18 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 (defun make-pcf-cfg (ops)
   (declare (optimize (debug 3) (speed 0)))
   (let ((op1 (first ops))
-        (restops (rest ops)))
+        (restops (rest ops))
+	(lbl-fn-map (get-label-and-fn-map ops)))
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         ;; (break)
                         (apply #'cfg-basic-block (cons y x)))
                     restops
-                    :initial-value (list (new-block :id 0 :op op1) (map-empty :comp string<) (get-label-map ops)  1)))
-           (forward-cfg (map-insert (write-to-string (1- (fourth reduce-forward))) (first reduce-forward) (second reduce-forward)))) ;; insert the last block
-      (print (second reduce-forward))
-      (print forward-cfg)
+                    :initial-value (list (new-block :id 0 :op op1) (map-empty :comp string<) (first lbl-fn-map) (second lbl-fn-map) 1)))
+           (forward-cfg (map-insert (write-to-string (1- (fifth reduce-forward))) (first reduce-forward) (second reduce-forward)))) ;; insert the last block
+      (print (second lbl-fn-map))
+      ; (print (third reduce-forward))
+      ;; (print forward-cfg)
+      forward-cfg
       )))
 
-#|
-(defun load-ops (fname) 
-  (with-open-file (inpt fname :direction :input)
-    (read-btyecode inpt)))
-;      (break))))
-|#
-#|
-(defun get-bytecode ()
-  (let bc (((read-bytecode)))
-       (break)
-       )
-)
-|#
