@@ -3,7 +3,9 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export make-pcf-cfg
-           get-label-map)
+           get-label-map
+           get-block-preds
+           get-block-succs)
                                         ;get-wire-by-idx
                                         ;get-wire-by-lbl
                                         ;get-idx-by-lbl
@@ -50,6 +52,12 @@
   (succs nil :type list)
   (:documentation "This represents a basic block in the control flow graph.")
   )
+
+(defmacro get-block-preds (block)
+  `(basic-block-preds block))
+
+(defmacro get-block-succs (block)
+  `(basic-block-succs bluck))
 
 (defmacro new-block (&key id op)
   `(make-basic-block
@@ -203,7 +211,7 @@
                  ops
                  :initial-value (list (map-empty :comp string<) (empty-set :comp string<) 0)))
 
-#|
+
 (defun find-preds (cfg)
   (declare (optimize (debug 3) (speed 0)))
   ;; for every item in blocks, get its successors and update those to identify a predecessor
@@ -214,7 +222,6 @@
               :initial-value ( )
               )
 )
-|#
 
 #|
 for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
