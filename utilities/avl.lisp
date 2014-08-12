@@ -2,6 +2,8 @@
 ;;
 ;; An implementation of an AVL tree, because Common Lisp does not come
 ;; with a balanced binary tree.
+;;
+;; this implementation has a known bug with avl-tree-remove, and it does not perfectly balance trees because it cannot efficiently update heights as it performs rotations and removals 
 
 (defpackage :tree (:use :common-lisp :unit)
             (:export avl-tree-insert
@@ -19,7 +21,6 @@
 ;;       [  height  ]  [  data  |       ]
 ;;                                     \
 ;;                           [ avl-left  |  avl-right  ]
-
 
 (defmacro avl-height (tr)
   `(the fixnum
@@ -50,7 +51,8 @@
     `(let ((,_right ,right)
            (,_left ,left)
            (,_data ,data))
-       (cons (locally (declare (optimize (safety 0))) (the fixnum (1+ (max (avl-height ,_left) (avl-height ,_right)))))
+       (cons (locally (declare (optimize (safety 0)))
+               (the fixnum (1+ (max (avl-height ,_left) (avl-height ,_right)))))
              (cons ,_data
                    (cons ,_left ,_right)))
        )
@@ -60,7 +62,7 @@
 (defun left-rotate (tr)
   "Perform a left rotation"
   (assert tr)
-  (if (or (= 1 (car tr)) (null (avl-right tr)))
+  (if (or (= 1 (avl-height tr)) (null (avl-right tr)))
       tr
       (avl-cons (avl-data (avl-right tr))
                 (avl-cons (avl-data tr)
@@ -75,7 +77,7 @@
 (defun right-rotate (tr)
   "Perform a right rotation"
   (assert tr)
-  (if (or (= 1 (car tr)) (null (avl-left tr)))
+  (if (or (= 1 (avl-height tr)) (null (avl-left tr)))
       tr
       (avl-cons (avl-data (avl-left tr))
                 (avl-left (avl-left tr))
@@ -89,7 +91,7 @@
 
 (defun avl-balance (tr)
   (cond
-    ((> -1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
+    ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
      (left-rotate (if (< (avl-height (avl-right (avl-right tr)))
                          (avl-height (avl-left (avl-right tr))))
@@ -100,7 +102,7 @@
                       tr)
                   )
      )
-    ((< 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
+    ((< -1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
      (right-rotate (if (< (avl-height (avl-left (avl-left tr)))  
                           (avl-height (avl-right (avl-left tr))))
                         ; Need a left rotation
@@ -141,7 +143,7 @@
   )
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
-  "Insert a new value into an AVL if the value is not already present"
+  "Insert a new value into an AVL if the value is not already present, otherwise update the value"
   (declare (optimize (debug 3) (speed 0))
            (type function comp))
   (if (null lst)
@@ -189,13 +191,18 @@
       (error 'value-not-in-tree)
       (cond
         ((funcall comp x (avl-data lst))
-         (avl-balance (avl-tree-remove x (avl-left lst) :comp comp)))
+         (avl-balance (avl-cons
+                       (avl-data lst)
+                       (avl-tree-remove x (avl-left lst) :comp comp)
+                       (avl-right lst))))
         ((funcall comp (avl-data lst) x)
-         (avl-balance (avl-tree-remove x (avl-right lst) :comp comp)))
+         (avl-balance (avl-cons
+                       (avl-data lst)
+                       (avl-left lst)
+                       (avl-tree-remove x (avl-right lst) :comp comp))))
         (t 
          (if (avl-right lst)
              (multiple-value-bind (rgsm rglst) (avl-tree-remove-min (avl-right lst))
-               (break)
 	       (avl-balance (avl-cons rgsm
                                       (avl-left lst)
                                       rglst)

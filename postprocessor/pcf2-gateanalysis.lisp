@@ -30,19 +30,18 @@
   (:documentation "This represents a basic block in the gate graph.")
   )
 
-(defgeneric circuit-update (cfg gatemap)
+(defgeneric circuit-update (cfg gatemap consts)
   (:documentation "update the circuit with information from a cfg block")
   )
 
 (defmacro definstr (type &body body)
-  `(defmethod circuit-update ((op ,type) cfg gatemap)
+  `(defmethod circuit-update ((op ,type) cfg gatemap consts)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (basic-update))))
 
-(definstr gate
-  )
+(definstr gate)
 
 (definstr const
   ;; this is basically a kill on whatever value was in the gate and a new gen for that address.

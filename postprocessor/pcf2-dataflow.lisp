@@ -229,25 +229,14 @@
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
-			    (break)
+			    ; (break)
 			    (let ((updateblock (get-block-by-id succ cfg*))
 				  (blockid (parse-integer blockid)))
-			      (print updateblock)
-			      (print succ)
-			      (print blockid)
-			      (print (get-block-id updateblock))
 			      (add-pred blockid updateblock
-				  (let ((tstmap 
-					 (map-remove
-					  (write-to-string (get-block-id updateblock))
-					  cfg*)
-					 ;(map-upsert
-					  ;(write-to-string (get-block-id updateblock))
-					  ;updateblock
-					  ;cfg*); and let that be the new cfg
-					  ))
-				    (break)
-				    tstmap)
+				  (map-insert
+                                   (write-to-string (get-block-id updateblock))
+                                   updateblock
+                                   cfg*)
 				)))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
