@@ -2,8 +2,6 @@
 ;;
 ;; An implementation of an AVL tree, because Common Lisp does not come
 ;; with a balanced binary tree.
-;;
-;; this implementation has a known bug with avl-tree-remove, and it does not perfectly balance trees because it cannot efficiently update heights as it performs rotations and removals 
 
 (defpackage :tree (:use :common-lisp :unit)
             (:export avl-tree-insert

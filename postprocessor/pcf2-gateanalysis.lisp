@@ -34,12 +34,20 @@
   (:documentation "update the circuit with information from a cfg block")
   )
 
+;; AND Gate: #*0001
+;; OR Gate: #*0111
+;; NOT Gate: #*0011
+
 (defmacro definstr (type &body body)
   `(defmethod circuit-update ((op ,type) cfg gatemap consts)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (basic-update))))
+
+(defmacro basic-update ()
+  (list cfg gatemap consts)
+)
 
 (definstr gate)
 

@@ -266,7 +266,5 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 				    (first reduce-forward)
 				    (second reduce-forward)))) ;; insert the last block
       (print (second lbl-fn-map))
-      ; (print (third reduce-forward))
-      ;; (print forward-cfg)
       (find-preds forward-cfg)
       )))
