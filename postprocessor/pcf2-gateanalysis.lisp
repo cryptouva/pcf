@@ -30,12 +30,12 @@
   (:documentation "This represents a basic block in the gate graph.")
   )
 
-(defgeneric circuit-update (cfg circuit)
+(defgeneric circuit-update (cfg gatemap)
   (:documentation "update the circuit with information from a cfg block")
   )
 
 (defmacro definstr (type &body body)
-  `(defmethod circuit-update ((op ,type) gate cfg)
+  `(defmethod circuit-update ((op ,type) cfg gatemap)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -49,6 +49,6 @@
   ;; we model this by creating a new entry in the map with a value field
 )
 
-(defun make-gate-graph (cfg)
-  (map-
+(defun make-gate-graph (cfg labels)
+  
 )

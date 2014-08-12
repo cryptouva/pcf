@@ -53,11 +53,26 @@
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
-(defmacro get-block-preds (block)
-  `(basic-block-preds block))
+(defmacro get-block-id (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+      (parse-integer (basic-block-id ,blocksym)))))
 
-(defmacro get-block-succs (block)
-  `(basic-block-succs bluck))
+(defmacro get-block-preds (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+      (basic-block-preds ,blocksym))))
+
+(defmacro get-block-succs (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+       (basic-block-succs ,blocksym))))
+
+(defmacro get-idx-by-label (targ lbls)
+  `(cdr (map-find ,targ ,lbls)))
+
+(defmacro get-block-by-id (id blocks)
+  `(cdr (map-find (write-to-string ,id) ,blocks)))
 
 (defmacro new-block (&key id op)
   `(make-basic-block
@@ -127,9 +142,6 @@
 	      fns ; fns
               (1+ idx) ; idx
               ))))
-
-(defmacro get-idx-by-label (targ lbls)
-  `(cdr (map-find ,targ ,lbls)))
 
 ;;; the following instructions need no special treatment
 (definstr bits)
@@ -212,16 +224,36 @@
                  :initial-value (list (map-empty :comp string<) (empty-set :comp string<) 0)))
 
 
-(defun find-preds (cfg)
+(defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
   ;; for every item in blocks, get its successors and update those to identify a predecessor
-  ;; must do this one backwards; can't get it on the first pass through because of branching jumps
-  (reduce #'(lambda(x y) 
-              ())
-              cfg
-              :initial-value ( )
-              )
-)
+  (map-reduce #'(lambda(cfg blockid blck) 
+		  (reduce (lambda (cfg* succ)
+			    (break)
+			    (let ((updateblock (get-block-by-id succ cfg*))
+				  (blockid (parse-integer blockid)))
+			      (print updateblock)
+			      (print succ)
+			      (print blockid)
+			      (print (get-block-id updateblock))
+			      (add-pred blockid updateblock
+				  (let ((tstmap 
+					 (map-remove
+					  (write-to-string (get-block-id updateblock))
+					  cfg*)
+					 ;(map-upsert
+					  ;(write-to-string (get-block-id updateblock))
+					  ;updateblock
+					  ;cfg*); and let that be the new cfg
+					  ))
+				    (break)
+				    tstmap)
+				)))
+			  (get-block-succs blck) ; for each successor, add the pred
+		 	  :initial-value cfg))
+	      f-cfg ;map
+	      f-cfg ;state
+	      ))
 
 #|
 for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
@@ -236,11 +268,16 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                         ;; (break)
                         (apply #'cfg-basic-block (cons y x)))
                     restops
-                    :initial-value (list (new-block :id 0 :op op1) (map-empty :comp string<) (first lbl-fn-map) (second lbl-fn-map) 1)))
-           (forward-cfg (map-insert (write-to-string (1- (fifth reduce-forward))) (first reduce-forward) (second reduce-forward)))) ;; insert the last block
+                    :initial-value (list (new-block :id 0 :op op1)
+					 (map-empty :comp string<) 
+					 (first lbl-fn-map)
+					 (second lbl-fn-map)
+					 1)))
+           (forward-cfg (map-insert (write-to-string (1- (fifth reduce-forward)))
+				    (first reduce-forward)
+				    (second reduce-forward)))) ;; insert the last block
       (print (second lbl-fn-map))
       ; (print (third reduce-forward))
       ;; (print forward-cfg)
-      forward-cfg
+      (find-preds forward-cfg)
       )))
-

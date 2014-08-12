@@ -16,6 +16,7 @@
                      set-reduce
 		     set-subset
                      map-insert
+		     map-upsert
                      map-remove
                      map-find
                      map-map
@@ -208,6 +209,21 @@
     (make-avl-set :tree
                   (avl-tree-insert-unique (cons x y) (avl-set-tree mp) :comp comp)
                   :comp comp)
+    )
+  )
+
+(defun map-upsert (x y mp)
+  "Insert x->y into the map if it does not exist, otherwise update the value of x in mp with new y"
+  (declare (optimize (debug 3)(speed 0))
+	   (type avl-set mp))
+  (let ((comp (avl-set-comp mp)))
+    (if (map-find x mp t)
+	(let ((map (map-remove x mp)))
+	  (map-insert x y map))
+	(make-avl-set :tree
+		      (avl-tree-insert-unique (cons x y) (avl-set-tree mp) :comp comp)
+		      :comp comp)
+	)
     )
   )
 

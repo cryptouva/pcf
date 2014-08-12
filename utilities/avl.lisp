@@ -184,6 +184,7 @@
 
 (defun avl-tree-remove (x lst &key (comp #'<))
   "Remove a value from an AVL tree"
+  (declare (optimize (debug 3)(speed 0)))
   (if (null lst)
       (error 'value-not-in-tree)
       (cond
@@ -194,7 +195,8 @@
         (t 
          (if (avl-right lst)
              (multiple-value-bind (rgsm rglst) (avl-tree-remove-min (avl-right lst))
-               (avl-balance (avl-cons rgsm
+               (break)
+	       (avl-balance (avl-cons rgsm
                                       (avl-left lst)
                                       rglst)
                             )
