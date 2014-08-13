@@ -119,7 +119,7 @@
      ,@body))
 
 (defmacro insert-block (id val blocks &body body)
-  `(let ((,blocks (map-insert ,id ,val ,blocks)))
+  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
      ,@body))
 
 (defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack)
@@ -157,23 +157,27 @@
 (defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
   (with-slots (str) next-op
     (cond
-      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere) and functions will get their successors from the call instruction 
+      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere, and main isn't even in "fns" anyway) and functions will get their successors from the call instruction 
        (let ((newblock (new-block :id idx :op cur-op)))
           (close-add-block))) 
       (t 
        (typecase cur-op
          ;; not every instruction can be followed by "label," so here we identify them
          (branch (branch-instr))
+         (initbase (initbase-instr))
          (t (add-standard-block)))))))
 
 (defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
   (add-standard-block))
 
-(definstr initbase
-  (let ((newblock (new-block :id idx :op cur-op)))
+(defmacro initbase-instr ()
+  `(let ((newblock (new-block :id idx :op cur-op)))
     ;; this one's successor is ALWAYS main
     (add-succ (get-idx-by-label "main" lbls) newblock
         (close-add-block))))
+
+(definstr initbase
+  (initbase-instr))
 
 (definstr call
 ;; this must find it successor in lbls and somehow communicate its location to the ret that follows.
@@ -259,7 +263,7 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 					 (map-empty :comp #'string<) 
 					 (first lbl-fn-map)
 					 (second lbl-fn-map)
-					 1
+					 0
                                          nil)))
            (forward-cfg (map-insert (write-to-string (fifth reduce-forward))
                                     (first reduce-forward)
