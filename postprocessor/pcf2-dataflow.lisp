@@ -221,7 +221,7 @@
 				  (+ 1 idx))))
                          (t (list lbls fns (+ 1 idx))))))
                  ops
-                 :initial-value (list (map-empty :comp string<) (empty-set :comp string<) 0)))
+                 :initial-value (list (map-empty :comp #'string<) (empty-set :comp #'string<) 0)))
 
 
 (defun find-preds (f-cfg)
@@ -258,7 +258,7 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                         (apply #'cfg-basic-block (cons y x)))
                     restops
                     :initial-value (list (new-block :id 0 :op op1)
-					 (map-empty :comp string<) 
+					 (map-empty :comp #'string<) 
 					 (first lbl-fn-map)
 					 (second lbl-fn-map)
 					 1)))

@@ -12,9 +12,13 @@
                      set-inter
                      set-map
                      set-from-list
+                     list-from-set
                      set-equalp
                      set-reduce
 		     set-subset
+                     set-filter
+                     map-keys
+                     map-vals
                      map-insert
 		     map-upsert
                      map-remove
@@ -25,9 +29,7 @@
                      empty-set
                      avl-set
                      alist->map
-                     alist->map*
-                     set-filter
-                     list-from-set)
+                     alist->map*)
             )
 (in-package :setmap)
 
@@ -47,7 +49,7 @@
   )
 
 (defmacro empty-set (&key (comp '<))
-  `(make-avl-set :tree nil :comp #',comp)
+  `(make-avl-set :tree nil :comp ,comp)
   )
 
 (defun set-member (x st)
@@ -195,10 +197,26 @@
 
 (defmacro map-empty (&key comp)
   (if comp
-      `(make-avl-set :tree nil :comp (carcomp #',comp))
+      `(make-avl-set :tree nil :comp (carcomp ,comp))
       `(make-avl-set :tree nil :comp #'default-comp)
       )
   )
+
+(defun map-keys (mp &key (cmp #'<))
+  (declare (type avl-set mp) (type function cmp))
+  (map-reduce (lambda (state key val)
+                (declare (ignore val))
+                  (set-insert state key))
+              mp
+              (empty-set :comp cmp)))
+
+(defun map-vals (mp &key (cmp #'<))
+  (declare (type avl-set mp) (type function cmp))
+  (map-reduce (lambda (state key val)
+                (declare (ignore key))
+                (set-insert state val))
+              mp
+              (empty-set :comp cmp)))
 
 (defun map-insert (x y mp)
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
