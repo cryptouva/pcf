@@ -107,7 +107,22 @@
                :succs (cons ,succ (basic-block-succs ,bb)))))
      ,@body))
 
-(defgeneric cfg-basic-block (op curblock blocks lbls fns idx)
+
+
+(defmacro push-stack (val stack &body body)
+  `(let ((,stack (cons ,val stack)))
+     ,@body))
+
+(defmacro pop-stack (val stack &body body)
+  `(let ((,val (car ,stack))
+         (,stack (cdr ,stack)))
+     ,@body))
+
+(defmacro insert-block (id val blocks &body body)
+  `(let ((,blocks (map-insert ,id ,val ,blocks)))
+     ,@body))
+
+(defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack)
   (:documentation "update the entities in the cfg for each op that we encounter from ops")
   ;; blocks is a map of all idx to basic blocks
   ;; lbls is a map of all of the label names to idxs
@@ -117,88 +132,70 @@
 
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod cfg-basic-block ((op ,type) curblock blocks lbls fns idx)
+  `(defmethod cfg-basic-block (next-op (cur-op ,type) blocks lbls fns idx callstack)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (add-standard-block)
           )))
-#|
-(defmacro close-update ()
-  (list block blocks lbls fns idx)
-)
-|#
 
-;; arguments are op curblock blocks lbls idx; 
-(defmacro add-standard-block ()
-  `(let ((newblock 
-          (new-block :id idx :op op))
-          ;(make-basic-block :ops (list (write-to-string op)) :id idx)) ; our new block
-        ) ; id of last block
-    (add-succ idx curblock
-        (list newblock ; new last block
-              (map-insert (basic-block-id curblock) curblock blocks) ; blocks
-              lbls ; lbls
-	      fns ; fns
-              (1+ idx) ; idx
-              ))))
+(defmacro close-add-block ()
+  `(insert-block idx newblock blocks
+                 (list next-op
+                       blocks
+                       lbls
+                       fns
+                       (1+ idx)
+                       callstack)))
 
-;;; the following instructions need no special treatment
-(definstr bits)
 
-(definstr const)
+(defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
+  `(let ((newblock (new-block :id idx :op cur-op)))
+     (add-succ (1+ idx) newblock
+         (close-add-block))))
 
-(definstr gate)
+(defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
+  (with-slots (str) next-op
+    (cond
+      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere) and functions will get their successors from the call instruction 
+       (let ((newblock (new-block :id idx :op cur-op)))
+          (close-add-block))) 
+      (t 
+       (typecase cur-op
+         ;; not every instruction can be followed by "label," so here we identify them
+         (branch (branch-instr))
+         (t (add-standard-block)))))))
 
-(definstr mkptr)
+(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
+  (add-standard-block))
 
-(definstr copy)
-
-(definstr add)
-
-(definstr sub)
-
-(definstr mul)
-
-(definstr initbase)
-
-(definstr clear)
-
-(definstr copy-indir)
-
-(definstr indir-copy)
+(definstr initbase
+  (let ((newblock (new-block :id idx :op cur-op)))
+    ;; this one's successor is ALWAYS main
+    (add-succ (get-idx-by-label "main" lbls) newblock
+        (close-add-block))))
 
 (definstr call
-;; this must find its successor in lbls and push its following index to the callstack
+;; this must find it successor in lbls and somehow communicate its location to the ret that follows.
+;; this about recursive procedures
 )
 
-(definstr ret
+(definstr ret ;; doesn't get an immediate successor
+  (let ((newblock (new-block :id idx :op cur-op)))
+    (close-add-block)))
 ;; this must use the callstack to find its immediate successor
-)
+
+(defmacro branch-instr ()
+  `(with-slots (targ) cur-op
+    (let ((newblock (new-block :id idx :op cur-op)))
+      (add-succ (1+ idx) newblock
+          (add-succ (get-idx-by-label targ lbls) newblock
+              (close-add-block))))))
 
 (definstr branch
-  ;; this one gets two successors
+  (branch-instr))
+;; this one gets two successors
   ;; note that unconditional jumps are accomplished with a branch instruction and a constant condition wire. it will be necessary later to remove the second successor.
-  (with-slots (targ) op 
-    (let ((newblock 
-           (new-block :id idx  :op op))
-          ;;            (make-basic-block :ops op :id idx)) ; our new block
-          ) ; id of last block
-      (add-succ idx curblock
-          (add-succ (get-idx-by-label targ lbls) newblock ; the other succ will be added at the next instruction
-              (list newblock ; new last block
-                    (map-insert (basic-block-id curblock) curblock blocks) ; blocks
-                    lbls ; lbls
-		    fns ; fns
-                    (1+ idx) ; idx
-                    ))))))
-
-(definstr label
-  ;; adding a label has been taken care of already by get-label-map
-)
-
-(definstr join
-)
 
 (defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
@@ -252,19 +249,21 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
   (let ((op1 (first ops))
         (restops (rest ops))
 	(lbl-fn-map (get-label-and-fn-map ops)))
+    (print lbl-fn-map)
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         ;; (break)
                         (apply #'cfg-basic-block (cons y x)))
                     restops
-                    :initial-value (list (new-block :id 0 :op op1)
+                    :initial-value (list op1
 					 (map-empty :comp #'string<) 
 					 (first lbl-fn-map)
 					 (second lbl-fn-map)
-					 1)))
-           (forward-cfg (map-insert (write-to-string (1- (fifth reduce-forward)))
-				    (first reduce-forward)
-				    (second reduce-forward)))) ;; insert the last block
-      (print (second lbl-fn-map))
-      (find-preds forward-cfg)
+					 1
+                                         nil)))
+           (forward-cfg (map-insert (write-to-string (fifth reduce-forward))
+                                    (first reduce-forward)
+                                    (second reduce-forward)))) ;; insert the last block
+;      (find-preds forward-cfg)
+      forward-cfg
       )))
