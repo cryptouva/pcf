@@ -154,35 +154,17 @@
      (add-succ (1+ idx) newblock
          (close-add-block))))
 
-(defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
-  (with-slots (str) next-op
-    (cond
-      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere, and main isn't even in "fns" anyway) and functions will get their successors from the call instruction 
-       (let ((newblock (new-block :id idx :op cur-op)))
-          (close-add-block))) 
-      (t 
-       (typecase cur-op
-         ;; not every instruction can be followed by "label," so here we identify them
-         (branch (branch-instr))
-         (initbase (initbase-instr))
-         (t (add-standard-block)))))))
-
 (defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
   (add-standard-block))
 
 (defmacro initbase-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
-    ;; this one's successor is ALWAYS main
-    (add-succ (get-idx-by-label "main" lbls) newblock
-        (close-add-block))))
+     ;; this one's successor is ALWAYS main
+     (add-succ (get-idx-by-label "main" lbls) newblock
+         (close-add-block))))
 
 (definstr initbase
   (initbase-instr))
-
-(definstr call
-;; this must find it successor in lbls and somehow communicate its location to the ret that follows.
-;; this about recursive procedures
-)
 
 (definstr ret ;; doesn't get an immediate successor
   (let ((newblock (new-block :id idx :op cur-op)))
@@ -198,8 +180,30 @@
 
 (definstr branch
   (branch-instr))
-;; this one gets two successors
-  ;; note that unconditional jumps are accomplished with a branch instruction and a constant condition wire. it will be necessary later to remove the second successor.
+
+(defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
+  (with-slots (str) next-op
+    (cond
+      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere, and main isn't even in "fns" anyway) and functions will get their successors from the call instruction 
+       (let ((newblock (new-block :id idx :op cur-op)))
+         (format t "~A~%" newblock)
+         (format t "~A~%" next-op)
+         (close-add-block))) 
+      (t 
+       (typecase cur-op
+         ;; not every instruction can be followed by "label," so here we identify them
+         (branch (branch-instr))
+         (initbase (initbase-instr))
+         (t (add-standard-block)))))))
+
+ 
+(defmethod cfg-basic-block ((next-op label) (cur-op initbase) blocks lbls fns idx callstack)
+  (initbase-instr))
+
+(definstr call
+;; this must find it successor in lbls and somehow communicate its location to the ret that follows.
+;; this about recursive procedures
+)
 
 (defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
