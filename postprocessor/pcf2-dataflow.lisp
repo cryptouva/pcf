@@ -21,6 +21,8 @@
   )
 (in-package :pcf2-dataflow)
 
+(defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
+
 ;;; need:
 
 ;;; basic blocks (from pcf2 opcodes)
@@ -130,14 +132,23 @@
   ;; idx is the index of current op
   )
 
+;; this one catches all the stuff i don't define. it performs a standard operation.
+(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
+  (add-standard-block))
+
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod cfg-basic-block (next-op (cur-op ,type) blocks lbls fns idx callstack)
+  `(defmethod cfg-basic-block ((next-op instruction) (cur-op ,type) blocks lbls fns idx callstack)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (add-standard-block)
           )))
+
+(defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
+  `(let ((newblock (new-block :id idx :op cur-op)))
+     (add-succ (1+ idx) newblock
+         (close-add-block))))
 
 (defmacro close-add-block ()
   `(insert-block idx newblock blocks
@@ -148,15 +159,6 @@
                        (1+ idx)
                        callstack)))
 
-
-(defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
-  `(let ((newblock (new-block :id idx :op cur-op)))
-     (add-succ (1+ idx) newblock
-         (close-add-block))))
-
-(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
-  (add-standard-block))
-
 (defmacro initbase-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
      ;; this one's successor is ALWAYS main
@@ -166,10 +168,28 @@
 (definstr initbase
   (initbase-instr))
 
-(definstr ret ;; doesn't get an immediate successor
-  (let ((newblock (new-block :id idx :op cur-op)))
+;; the following defmethod shouldn't really be necessary because it's covered by two other defmethods, but this is here for clarity
+(defmethod cfg-basic-block (next-op (cur-op initbase) blocks lbls fns idx callstack)
+  (initbase-instr))
+
+(defmacro ret-instr ()
+  `(let ((newblock (new-block :id idx :op cur-op)))
     (close-add-block)))
-;; this must use the callstack to find its immediate successor
+;; successors are added after the initial cfg is built using the call/ret maps
+
+(definstr ret
+  (ret-instr))
+
+(definstr call
+  (with-slots (fname) cur-op
+    (cond
+      ((set-member fname *specialfunctions*)
+       (add-standard-block))
+      (t (let ((newblock (new-block :id idx :op cur-op)))
+            (add-succ (1+ idx) newblock
+                (add-succ (get-idx-by-label fname lbls) newblock
+                    (close-add-block))))))))
+
 
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
@@ -191,42 +211,66 @@
          (close-add-block))) 
       (t 
        (typecase cur-op
-         ;; not every instruction can be followed by "label," so here we identify them
+         ;; not every instruction can be followed by "label," so here we identify the important things that some might have to do
          (branch (branch-instr))
          (initbase (initbase-instr))
+         (ret (ret-instr))
          (t (add-standard-block)))))))
-
- 
-(defmethod cfg-basic-block ((next-op label) (cur-op initbase) blocks lbls fns idx callstack)
-  (initbase-instr))
-
-(definstr call
-;; this must find it successor in lbls and somehow communicate its location to the ret that follows.
-;; this about recursive procedures
-)
 
 (defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
   ;; also get the names of all of the functions (other than main) that are called
+  ;; ret-addrs will contain the return addresses of all of the functions {(fname)->(return-address)}
+  ;; call-addrs will contain addresses where each function is called { (addr)->(fname)}
   (reduce #'(lambda(y op)
                      (declare (optimize (debug 3) (speed 0)))
                      (let ((lbls (first y))
 			   (fns (second y))
-                           (idx (third y)))
+                           (idx (third y))
+                           (ret-addrs (fourth y))
+                           (callstack (fifth y))
+                           (call-addrs (sixth y)))
                        (typecase op
-                         (label (with-slots (str) op
-                                  (list 
-                                   (map-insert str idx lbls)
-                                   fns
-				   (+ 1 idx))))
+                         (label 
+                          (with-slots (str) op
+                            (if (or (equalp (subseq str 0 1) "$")
+                                    (equalp str "pcfentry")) ;; main can be included here because it returns; 
+                                (list 
+                                 (map-insert str idx lbls)
+                                 fns
+                                 (+ 1 idx)
+                                 ret-addrs
+                                 callstack
+                                 call-addrs) ;; we have a regular label
+                                (list
+                                 (map-insert str idx lbls)
+                                 fns
+                                 (+ 1 idx)
+                                 ret-addrs ;; some function whose ret address should be known
+                                 (cons str callstack)
+                                 call-addrs
+                                ))))
 			 (call (with-slots (fname) op
-				 (list
-				  lbls
-				  (set-insert fns fname)
-				  (+ 1 idx))))
-                         (t (list lbls fns (+ 1 idx))))))
-                 ops
-                 :initial-value (list (map-empty :comp #'string<) (empty-set :comp #'string<) 0)))
+				 (list lbls
+                                       (set-insert fns fname)
+                                       (+ 1 idx)
+                                       ret-addrs
+                                       callstack
+                                       (map-insert (write-to-string idx) fname call-addrs))))
+                         (ret (list lbls
+                                    fns
+                                    (+ 1 idx)
+                                    (map-insert (car callstack) idx ret-addrs)
+                                    (cdr callstack)
+                                    call-addrs))
+                         (t (list lbls fns (+ 1 idx) ret-addrs callstack call-addrs)))))
+          ops
+          :initial-value (list (map-empty :comp #'string<)
+                               (empty-set :comp #'string<)
+                               0
+                               (map-empty :comp #'string<)
+                               nil
+                               (map-empty :comp #'string<))))
 
 
 (defun find-preds (f-cfg)
@@ -238,20 +282,34 @@
 			    (let ((updateblock (get-block-by-id succ cfg*))
 				  (blockid (parse-integer blockid)))
 			      (add-pred blockid updateblock
-				  (map-insert
-                                   (write-to-string (get-block-id updateblock))
-                                   updateblock
-                                   cfg*)
-				)))
+				  (insert-block (get-block-id updateblock) updateblock cfg*
+                                      cfg*))))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
 	      f-cfg ;map
 	      f-cfg ;state
 	      ))
 
+(defun update-ret-succs (f-cfg call-addrs ret-addrs)
+  ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
+  (first (map-reduce #'(lambda (state address fname)
+                  (let ((cfg (first state))
+                        (call-addrs (second state))
+                        (ret-addrs (third state)))
+                    (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
+                      (add-succ (1+ address) retblock
+                          (insert-block (get-block-id retblock) retblock cfg
+                            (list
+                             cfg
+                             call-addrs
+                             ret-addrs))))))
+              call-addrs
+              (list f-cfg call-addrs ret-addrs))))
+
 #|
 for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
 |#
+
 (defun make-pcf-cfg (ops)
   (declare (optimize (debug 3) (speed 0)))
   (let ((op1 (first ops))
@@ -269,9 +327,23 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 					 (second lbl-fn-map)
 					 0
                                          nil)))
-           (forward-cfg (map-insert (write-to-string (fifth reduce-forward))
-                                    (first reduce-forward)
-                                    (second reduce-forward)))) ;; insert the last block
+           (blocks (second reduce-forward))
+           (forward-cfg
+            (insert-block
+                (fifth reduce-forward) ;id
+                (new-block :id (fifth reduce-forward) :op (first reduce-forward))
+                blocks
+              blocks)));      forward-cfg
+      (print *specialfunctions*)
+      ;;forward-cfg
 ;      (find-preds forward-cfg)
-      forward-cfg
-      )))
+;     (find-preds
+      (update-ret-succs forward-cfg
+                        (map-filter #'(lambda (key val)
+                                        (declare (ignore key)
+                                                 (optimize (debug 3) (speed 0)))
+                                        (not (set-member val *specialfunctions*))
+                                        )
+                                    (sixth lbl-fn-map))
+                        (fourth lbl-fn-map)) ;)
+)))

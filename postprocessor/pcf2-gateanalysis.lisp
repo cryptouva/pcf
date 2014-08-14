@@ -2,7 +2,7 @@
 
 (defpackage :pcf2-gateanalysis
   (:use :cl :pcf2-bc :pcf2-dataflow :utils)
-  (:export make-gate-graph)
+  (:export make-circuit-graph)
   )
 
 (in-package :pcf2-gateanalysis)
@@ -56,6 +56,6 @@
   ;; we model this by creating a new entry in the map with a value field
 )
 
-(defun make-gate-graph (cfg labels)
+(defun make-circuit-graph (cfg labels)
   
 )

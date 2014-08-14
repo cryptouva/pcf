@@ -26,6 +26,7 @@
                      map-map
                      map-reduce
                      map-empty
+                     map-filter
                      empty-set
                      avl-set
                      alist->map
@@ -286,6 +287,16 @@
                    (avl-set-tree mp)
                    st)
   )
+
+(defun map-filter (fn mp)
+  "Filter \"mp\" to produce the submap of all elements for which \"fn\" is true"
+  (declare (optimize (debug 3) (speed 0)))
+  (map-reduce (lambda (m x y) ;; functions should be of form (key valye)
+                (if (funcall fn x y)
+                    (map-insert x y m)
+                    m))
+              mp 
+              (map-empty :comp (avl-set-comp mp))))
 
 (defun alist->map (alist &key (comp (carcomp #'eql)))
   "Convert an associative list to a map.  Note that the default
