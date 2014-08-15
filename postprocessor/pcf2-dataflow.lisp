@@ -33,9 +33,6 @@
 ;;;   we can accomplish some amount of analysis implicitly in this framework by, e.g. observing gen/kill rules during construction. for example: "const" creates a new wire that need not be linked back to its predecessors. Additionally, we will want to propagate constants in the dataflow program using partial gate information (AND w/0 is like loading a 0 const; OR with 1 is like loading a 1 const; NOTs are easy to propagate; XOR is not possible)
 ;;; right now, we will only deal with constructing the cfg. next we can do gate analysis in a number of ways
 
-;;; ops:
-;;;  this is a list of all the PCF2 ops for a given circuit
-
 
 (defstruct (basic-block
              (:print-function
@@ -108,8 +105,6 @@
                :preds (basic-block-preds ,bb)
                :succs (cons ,succ (basic-block-succs ,bb)))))
      ,@body))
-
-
 
 (defmacro push-stack (val stack &body body)
   `(let ((,stack (cons ,val stack)))
@@ -234,7 +229,7 @@
                          (label 
                           (with-slots (str) op
                             (if (or (equalp (subseq str 0 1) "$")
-                                    (equalp str "pcfentry")) ;; main can be included here because it returns; 
+                                    (equalp str "pcfentry")) ;; main can be included here because it returns;
                                 (list 
                                  (map-insert str idx lbls)
                                  fns
@@ -248,15 +243,16 @@
                                  (+ 1 idx)
                                  ret-addrs ;; some function whose ret address should be known
                                  (cons str callstack)
-                                 call-addrs
-                                ))))
+                                 call-addrs ))))
 			 (call (with-slots (fname) op
 				 (list lbls
                                        (set-insert fns fname)
                                        (+ 1 idx)
                                        ret-addrs
                                        callstack
-                                       (map-insert (write-to-string idx) fname call-addrs))))
+                                       (if (set-member fname *specialfunctions*)
+                                           call-addrs
+                                           (map-insert (write-to-string idx) fname call-addrs)))))
                          (ret (list lbls
                                     fns
                                     (+ 1 idx)
@@ -292,19 +288,20 @@
 
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
+  (declare (optimize (debug 3)(speed 0)))
   (first (map-reduce #'(lambda (state address fname)
                   (let ((cfg (first state))
                         (call-addrs (second state))
                         (ret-addrs (third state)))
                     (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
-                      (add-succ (1+ address) retblock
+                      (add-succ (1+ (parse-integer address)) retblock
                           (insert-block (get-block-id retblock) retblock cfg
                             (list
                              cfg
                              call-addrs
                              ret-addrs))))))
-              call-addrs
-              (list f-cfg call-addrs ret-addrs))))
+                     call-addrs
+                     (list f-cfg call-addrs ret-addrs))))
 
 #|
 for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
@@ -335,15 +332,6 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                 blocks
               blocks)));      forward-cfg
       (print *specialfunctions*)
-      ;;forward-cfg
-;      (find-preds forward-cfg)
-;     (find-preds
-      (update-ret-succs forward-cfg
-                        (map-filter #'(lambda (key val)
-                                        (declare (ignore key)
-                                                 (optimize (debug 3) (speed 0)))
-                                        (not (set-member val *specialfunctions*))
-                                        )
-                                    (sixth lbl-fn-map))
-                        (fourth lbl-fn-map)) ;)
-)))
+      (find-preds (update-ret-succs forward-cfg
+                        (sixth lbl-fn-map)
+                        (fourth lbl-fn-map))))))

@@ -34,12 +34,14 @@
   )
 
 (defmacro avl-left (tr)
-  `(caddr ,tr)
-  )
+  `(if (null (cdr ,tr))
+       nil
+       (caddr ,tr)))
 
 (defmacro avl-right (tr)
-  `(cdddr ,tr)
-  )
+  `(if (null (cdr ,tr))
+       nil
+       (cdddr ,tr)))
 
 (defmacro avl-cons (data left right)
   (let ((_right (gensym))

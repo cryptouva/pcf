@@ -291,8 +291,8 @@
 (defun map-filter (fn mp)
   "Filter \"mp\" to produce the submap of all elements for which \"fn\" is true"
   (declare (optimize (debug 3) (speed 0)))
-  (map-reduce (lambda (m x y) ;; functions should be of form (key valye)
-                (if (funcall fn x y)
+  (map-reduce (lambda (m x y)
+                (if (funcall fn x y) ;; functions should be of form (key val)
                     (map-insert x y m)
                     m))
               mp 
