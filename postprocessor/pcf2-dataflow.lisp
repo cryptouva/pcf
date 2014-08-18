@@ -3,9 +3,13 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export make-pcf-cfg
+           get-cfg-top
            get-label-map
-           get-block-preds
-           get-block-succs)
+           ;;get-block-preds
+           ;;get-block-succs
+           get-cfg-top
+           get-next-blocks
+           get-prev-blocks)
                                         ;get-wire-by-idx
                                         ;get-wire-by-lbl
                                         ;get-idx-by-lbl
@@ -21,17 +25,10 @@
   )
 (in-package :pcf2-dataflow)
 
+;; these special functions are included by the PCF interpreters and therefore will not have lookups in the .PCF2 file
+;; alice and bob return unsigned integers
+;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-
-;;; need:
-
-;;; basic blocks (from pcf2 opcodes)
-;;; the pred/succ map (or cfg) is explained:
-;;;   must figure out which gates are connected using simple methods (and probably some way of tracking indirection)
-;;;   we can accomplish this by tracking the inputs and outputs to gates
-;;;   the idea is that given a control flow graph of pcf opcodes, we can generate a more granular graph that idenitifies wires and gates
-;;;   we can accomplish some amount of analysis implicitly in this framework by, e.g. observing gen/kill rules during construction. for example: "const" creates a new wire that need not be linked back to its predecessors. Additionally, we will want to propagate constants in the dataflow program using partial gate information (AND w/0 is like loading a 0 const; OR with 1 is like loading a 1 const; NOTs are easy to propagate; XOR is not possible)
-;;; right now, we will only deal with constructing the cfg. next we can do gate analysis in a number of ways
 
 
 (defstruct (basic-block
@@ -128,17 +125,6 @@
   )
 
 ;; this one catches all the stuff i don't define. it performs a standard operation.
-(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
-  (add-standard-block))
-
-(defmacro definstr (type &body body)
-  "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod cfg-basic-block ((next-op instruction) (cur-op ,type) blocks lbls fns idx callstack)
-     (declare (optimize (debug 3) (speed 0)))
-     (aif (locally ,@body)
-          it
-          (add-standard-block)
-          )))
 
 (defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
   `(let ((newblock (new-block :id idx :op cur-op)))
@@ -153,6 +139,18 @@
                        fns
                        (1+ idx)
                        callstack)))
+
+(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
+  (add-standard-block))
+
+(defmacro definstr (type &body body)
+  "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
+  `(defmethod cfg-basic-block ((next-op instruction) (cur-op ,type) blocks lbls fns idx callstack)
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (add-standard-block)
+          )))
 
 (defmacro initbase-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
@@ -335,3 +333,16 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
       (find-preds (update-ret-succs forward-cfg
                         (sixth lbl-fn-map)
                         (fourth lbl-fn-map))))))
+
+(defun get-cfg-top (cfg)
+  (get-block-by-id (get-idx-by-label "pcfentry" cfg) cfg))
+
+(defun get-prev-blocks (block cfg)
+  (mapc
+   (lambda (b) (get-block-by-id b cfg))
+   (get-block-preds block)))
+
+(defun get-next-blocks (block cfg)
+  (mapc
+   (lambda (b) (get-block-by-id b cfg))
+   (get-block-succs block)))
