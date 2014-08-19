@@ -1,8 +1,8 @@
 ;;; This file analyzes the flow of information through gates in a PCF2 program and builds its own flow graph
 
 (defpackage :pcf2-gateanalysis
-  (:use :cl :pcf2-bc :pcf2-dataflow :utils :setmapo)
-  (:export make-circuit-graph)
+  (:use :cl :pcf2-bc :pcf2-dataflow :utils :setmap)
+  ;(:export make-circuit-graph)
   )
 
 (in-package :pcf2-gateanalysis)
@@ -70,9 +70,11 @@
 ;;; make a dependency graph for all of the wires in the cfg
 ;;; beginning with the first wire (found via pcfentry)
 ;;; 
-(defun make-circuit-graph (cfg labels)
-  (do ((node (get-cfg-top cfg)
-             (null node)
-             (get-next-node cfg node)))
-      
-        )
+#|
+(defun make-circuit-graph (cfg)
+  (let ((dep-map (map-empty)))
+    (do ((node (get-cfg-top cfg) (get-next-blocks node cfg))) 
+        ((null node) dep-map)
+      (print (get-next-blocks node cfg))                  
+      (map-insert (get-block-id node) (get-next-blocks node) dep-map))))
+|#

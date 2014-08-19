@@ -43,7 +43,9 @@
 	       (:module postprocessor
 			:components (
 				     (:file "pcf2-dataflow")
-				     )
+				     ;(:file "pcf2-gateanalysis")
+                                     (:file "pcf2-deadgate")
+                                     )
 			:depends-on (utilities)
 			)
 	       )

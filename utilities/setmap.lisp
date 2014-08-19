@@ -247,6 +247,7 @@
 
 (defun map-find (x mp &optional (allow-no-result nil))
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
+  (declare (optimize (speed 0)(debug 3)))
   (let ((comp (avl-set-comp mp))
         )
     (multiple-value-bind (found value) (avl-tree-search (cons x nil)

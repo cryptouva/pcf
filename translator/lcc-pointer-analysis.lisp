@@ -41,9 +41,9 @@
                       (multiple-value-bind (ptrs stack) (lcc-dataflow:flow-forwards #'ptr-join-fn 
                                                                                     #'ptr-flow-fn
                                                                                     (lcc-dataflow:make-cfg-single-ops v)
-                                                                                    (setmap:map-empty :comp string<) 
-                                                                                    (setmap:map-empty :comp string<) 
-                                                                                    (setmap:map-empty :comp string<) 
+                                                                                    (setmap:map-empty :comp #'string<) 
+                                                                                    (setmap:map-empty :comp #'string<) 
+                                                                                    (setmap:map-empty :comp #'string<) 
                                                                                     (cons 
                                                                                      (empty-set :comp ptrcomp)
                                                                                      (empty-set :comp ptrcomp)

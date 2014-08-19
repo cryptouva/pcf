@@ -67,7 +67,7 @@
            )
   )
 
-(defparameter empty-s (map-empty :comp constcmp))
+(defparameter empty-s (map-empty :comp #'constcmp))
 
 (defun const-dataflow-funs (ops)
   "Compute the locations that store constants in this stream of
@@ -81,9 +81,9 @@ as its value."
                       (multiple-value-bind (in-set in-stack valmap) 
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
                                                       (lcc-dataflow:make-cfg-single-ops v)
-                                                      (setmap:map-empty :comp string<) 
-                                                      (setmap:map-empty :comp string<) 
-                                                      (setmap:map-empty :comp string<) 
+                                                      (setmap:map-empty :comp #'string<) 
+                                                      (setmap:map-empty :comp #'string<) 
+                                                      (setmap:map-empty :comp #'string<) 
                                         ;(setmap:set-from-list (loop for i from 0 to 8 collect 
                                         ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
                                                       (reduce (lambda (x y)

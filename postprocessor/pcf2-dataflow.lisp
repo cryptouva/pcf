@@ -5,23 +5,9 @@
   (:export make-pcf-cfg
            get-cfg-top
            get-label-map
-           ;;get-block-preds
-           ;;get-block-succs
            get-cfg-top
            get-next-blocks
            get-prev-blocks)
-                                        ;get-wire-by-idx
-                                        ;get-wire-by-lbl
-                                        ;get-idx-by-lbl
-                                        ;add-succ
-                                        ;add-pred
-                                        ;live-wire
-                                        ;new-wire
-                                        ;create-wire
-                                        ;map-update-wire
-                                        ;map-upsert
-                                        ;	   )
-                                        ;  (:import-from :pcf2-bc :read-bytecode)
   )
 (in-package :pcf2-dataflow)
 

@@ -11,9 +11,11 @@
                                :common-lisp
                                :skew-list
                                :lcc-dataflow
-			       :pcf2-dataflow)
+			       :pcf2-dataflow
+                               :pcf2-deadgate)
             (:export test-interp
                      pcf-cfg
+                     pcf-deadgates
                      pcf-compile
                      save-pcf-ops
                      load-pcf-ops
@@ -22,6 +24,7 @@
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
+
 
 (defun pcf-compile (fname)
   "Compile the bytecode in \"fname\" and return a list of PCF2 instructions"
@@ -51,8 +54,10 @@
   )
  
 (defun pcf-cfg (ops)
-  (make-pcf-cfg ops)
-)
+  (make-pcf-cfg ops))
+
+(defun pcf-deadgates (ops)
+  (make-def-use-map ops))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
