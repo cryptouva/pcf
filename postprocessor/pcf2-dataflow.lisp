@@ -26,6 +26,7 @@
                 (format stream "Ops: ~A~%" (pcf-basic-block-ops struct))
                 (format stream "Preds: ~A~%" (pcf-basic-block-preds struct))
                 (format stream "Succs: ~A~%" (pcf-basic-block-succs struct))
+                (format stream "Out-Set: ~A~%" (pcf-basic-block-out-set struct))
                 )
               )
              )
@@ -56,6 +57,11 @@
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-ops ,blocksym))))
+
+(defmacro get-block-out-set (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+       (pcf-basic-block-out-set ,blocksym))))
 
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
@@ -94,6 +100,29 @@
                :ops (get-block-ops ,bb)
                :preds (get-block-preds ,bb)
                :succs (cons ,succ (get-block-succs ,bb)))))
+     ,@body))
+
+;; not sure which of the two following I will use
+;; new-set is the new out-set
+(defmacro set-out-set (new-set bb &body body)
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds (get-block-preds ,bb)
+               :succs (get-block-succs ,bb)
+               :out-set ,newset
+               )))
+     ,@body))
+
+;; new-set is the new out-set
+(defmacro update-out-set (new-set join-fn bb &body body)
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds (get-block-preds ,bb)
+               :succs (get-block-succs ,bb)
+               :out-set (funcall ,join-fn ,newset (get-block-out-set ,bb))
+               )))
      ,@body))
 
 (defmacro push-stack (val stack &body body)
@@ -360,7 +389,12 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 ;; make sure that every node is touched by the worklist at least once
 ;; (perhaps reduce on every node in the cfg -- or some method that follows all of the successors/predecessors (whichever method we're using) once -- DFS should work for this for postorder/reverse postorder)
 ;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
+
 #|
+(defun flow (cfg join-fn flow-fn)
+  ;; step 1: flow through the cfg; all nodes will already be empty
+)
+
 (defun flow-forwards (cfg join-fn flow-fn)
   (labels ((do-flow-forwards (worklist insets)
              (declare (optimize (debug 3)(speed 0)))
