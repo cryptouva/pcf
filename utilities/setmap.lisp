@@ -49,9 +49,13 @@
   (:documentation "A key/value map based on an AVL tree.")
   )
 
-(defmacro empty-set (&key (comp '<))
-  `(make-avl-set :tree nil :comp ,comp)
+(defmacro empty-set (&key comp)
+  (if comp
+      `(make-avl-set :tree nil :comp ,comp)
+      `(make-avl-set :tree nil :comp #'<)
+      )
   )
+
 
 (defun set-member (x st)
   "Check if \"x\" is contained in \"set\""

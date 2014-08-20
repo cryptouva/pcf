@@ -33,6 +33,7 @@
   (ops nil :type list)
   (preds nil :type list)
   (succs nil :type list)
+  (out-set (empty-set) :type avl-set)
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -347,3 +348,33 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
   (mapc
    (lambda (b) (get-block-by-id b cfg))
    (get-block-succs block)))
+
+
+;; when flowing,
+;; each node carries info about its own out-set
+;; and updates its information using predecessors' inputs
+;; then, if changed, it adds its successors to the worklist
+;; flow functions should be parameterizable by method used to get successors
+
+;; need:
+;; make sure that every node is touched by the worklist at least once
+;; (perhaps reduce on every node in the cfg -- or some method that follows all of the successors/predecessors (whichever method we're using) once -- DFS should work for this for postorder/reverse postorder)
+;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
+#|
+(defun flow-forwards (cfg join-fn flow-fn)
+  (labels ((do-flow-forwards (worklist insets)
+             (declare (optimize (debug 3)(speed 0)))
+             (if (null worklist)
+                 cfg;done
+                 (let ((curnode (car worklist))
+                       (worklist (cdr worklist))
+                       )
+                   (apply flow-fn curnode cfg)
+             ))))
+    (do-flow-forwards (list (get-cfg-top cfg)) (map-empty))
+))
+
+(defun flow-backwards (cfg join-fn flow-fn)
+  
+)
+|#
