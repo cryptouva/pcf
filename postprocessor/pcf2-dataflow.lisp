@@ -3,6 +3,7 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export make-pcf-cfg
+           basic-block
            get-cfg-top
            get-label-map
            get-cfg-top
