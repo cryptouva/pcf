@@ -3,7 +3,7 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :utils)
   (:export make-pcf-cfg
-           basic-block
+           pcf-basic-block
            get-cfg-top
            get-label-map
            get-cfg-top
@@ -18,14 +18,14 @@
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
 
 
-(defstruct (basic-block
+(defstruct (pcf-basic-block
              (:print-function
               (lambda (struct stream depth)
                 (declare (ignore depth))
-                (format stream "~&PCF2 basic block ~A:~%" (basic-block-id struct))
-                (format stream "Ops: ~A~%" (basic-block-ops struct))
-                (format stream "Preds: ~A~%" (basic-block-preds struct))
-                (format stream "Succs: ~A~%" (basic-block-succs struct))
+                (format stream "~&PCF2 basic block ~A:~%" (pcf-basic-block-id struct))
+                (format stream "Ops: ~A~%" (pcf-basic-block-ops struct))
+                (format stream "Preds: ~A~%" (pcf-basic-block-preds struct))
+                (format stream "Succs: ~A~%" (pcf-basic-block-succs struct))
                 )
               )
              )
@@ -39,17 +39,22 @@
 (defmacro get-block-id (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
-      (parse-integer (basic-block-id ,blocksym)))))
+       (pcf-basic-block-id ,blocksym))))
 
 (defmacro get-block-preds (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
-      (basic-block-preds ,blocksym))))
+      (pcf-basic-block-preds ,blocksym))))
 
 (defmacro get-block-succs (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
-       (basic-block-succs ,blocksym))))
+       (pcf-basic-block-succs ,blocksym))))
+
+(defmacro get-block-ops (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+       (pcf-basic-block-ops ,blocksym))))
 
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
@@ -58,36 +63,36 @@
   `(cdr (map-find (write-to-string ,id) ,blocks)))
 
 (defmacro new-block (&key id op)
-  `(make-basic-block
+  `(make-pcf-basic-block
    :id (write-to-string ,id)
    :ops (list ,op)))
 
 ;; op is an opcode, bb is the block itself
 (defmacro add-op (op bb &body body)
-  `(let ((,bb (make-basic-block
-               :id (basic-block-id ,bb)
-               :ops (cons ,op (basic-block-ops ,bb))
-               :preds (basic-block-preds ,bb)
-               :succs (basic-block-succs ,bb)
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (cons ,op (get-block-ops ,bb))
+               :preds (get-block-preds ,bb)
+               :succs (get-block-succs ,bb)
                )))
      ,@body))
 
 ;; prd is an index, bb is the block itself
 (defmacro add-pred (prd bb &body body)
-  `(let ((,bb (make-basic-block
-               :id (basic-block-id ,bb)
-               :ops (basic-block-ops ,bb)
-               :preds (cons ,prd (basic-block-preds ,bb))
-               :succs (basic-block-succs ,bb))))
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds (cons ,prd (get-block-preds ,bb))
+               :succs (get-block-succs ,bb))))
      ,@body))
 
 ;; succ is an index, bb is the block itself
 (defmacro add-succ (succ bb &body body)
-  `(let ((,bb (make-basic-block
-               :id (basic-block-id ,bb)
-               :ops (basic-block-ops ,bb)
-               :preds (basic-block-preds ,bb)
-               :succs (cons ,succ (basic-block-succs ,bb)))))
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds (get-block-preds ,bb)
+               :succs (cons ,succ (get-block-succs ,bb)))))
      ,@body))
 
 (defmacro push-stack (val stack &body body)
@@ -99,6 +104,10 @@
          (,stack (cdr ,stack)))
      ,@body))
 
+
+;; id should be an integer
+;; val should be a block
+;; blocks should be the map of blocks
 (defmacro insert-block (id val blocks &body body)
   `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
      ,@body))
@@ -173,10 +182,11 @@
 
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
-    (let ((newblock (new-block :id idx :op cur-op)))
-      (add-succ (1+ idx) newblock
-          (add-succ (get-idx-by-label targ lbls) newblock
-              (close-add-block))))))
+     (print "branch instruction")
+     (let ((newblock (new-block :id idx :op cur-op)))
+       (add-succ (1+ idx) newblock
+           (add-succ (get-idx-by-label targ lbls) newblock
+               (close-add-block))))))
 
 (definstr branch
   (branch-instr))
@@ -256,15 +266,17 @@
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
+  (print "find preds:")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
-			    ; (break)
-			    (let ((updateblock (get-block-by-id succ cfg*))
-				  (blockid (parse-integer blockid)))
+			    (declare (optimize (debug 3)(speed 0)))
+                            (let ((updateblock (get-block-by-id succ cfg*))
+				  (blockid (parse-integer blockid))
+                                  )
 			      (add-pred blockid updateblock
-				  (insert-block (get-block-id updateblock) updateblock cfg*
-                                      cfg*))))
+                                  (insert-block (parse-integer (get-block-id updateblock)) updateblock cfg*
+                                    cfg*))))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
 	      f-cfg ;map
@@ -274,17 +286,18 @@
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
   (declare (optimize (debug 3)(speed 0)))
+  (print call-addrs)
   (first (map-reduce #'(lambda (state address fname)
-                  (let ((cfg (first state))
-                        (call-addrs (second state))
-                        (ret-addrs (third state)))
-                    (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
-                      (add-succ (1+ (parse-integer address)) retblock
-                          (insert-block (get-block-id retblock) retblock cfg
-                            (list
-                             cfg
-                             call-addrs
-                             ret-addrs))))))
+                         (let ((cfg (first state))
+                               (call-addrs (second state))
+                               (ret-addrs (third state)))
+                           (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
+                             (add-succ (1+ (parse-integer address)) retblock
+                                 (insert-block (parse-integer (get-block-id retblock)) retblock cfg
+                                   (list
+                                    cfg
+                                    call-addrs
+                                    ret-addrs))))))
                      call-addrs
                      (list f-cfg call-addrs ret-addrs))))
 
@@ -301,6 +314,7 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         ;; (break)
+                        (declare (optimize (debug 3)(speed 0)))
                         (apply #'cfg-basic-block (cons y x)))
                     restops
                     :initial-value (list op1
