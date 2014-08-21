@@ -110,7 +110,7 @@
                :ops (get-block-ops ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
-               :out-set ,newset
+               :out-set ,new-set
                )))
      ,@body))
 
@@ -121,7 +121,7 @@
                :ops (get-block-ops ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
-               :out-set (funcall ,join-fn ,newset (get-block-out-set ,bb))
+               :out-set (funcall ,join-fn ,new-set (get-block-out-set ,bb))
                )))
      ,@body))
 
@@ -395,8 +395,13 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
   ;; step 1: flow through the cfg; all nodes will already be empty
 )
 
+(defun flow-backwards (cfg join-fn flow-fn)
+  
+)
+|#
+
 (defun flow-forwards (cfg join-fn flow-fn)
-  (labels ((do-flow-forwards (worklist insets)
+  (labels ((do-flow-forwards (curnode cfg worklist)
              (declare (optimize (debug 3)(speed 0)))
              (if (null worklist)
                  cfg;done
@@ -404,11 +409,18 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                        (worklist (cdr worklist))
                        )
                    (apply flow-fn curnode cfg)
-             ))))
-    (do-flow-forwards (list (get-cfg-top cfg)) (map-empty))
-))
-
-(defun flow-backwards (cfg join-fn flow-fn)
-  
-)
-|#
+                   ))))
+    (let* ((init-cfg ;; this first map-reduce will give us a worklist we can work with and an initialized set of blocks
+           (map-reduce (lambda (state blockid blck)
+                         (let ((cfg (first state))
+                               (worklist (second state)))
+                           (list cfg worklist)
+                           ))
+                       cfg ;; reduce over cfg
+                       (list cfg nil) ;; init-state
+                       ))
+           (worklist (second init-cfg))
+           (cfg* (first init-cfg))
+           )
+      (do-flow-forwards (list (get-cfg-top cfg) cfg worklist))
+)))
