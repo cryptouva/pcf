@@ -414,13 +414,14 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
            (map-reduce (lambda (state blockid blck)
                          (let ((cfg (first state))
                                (worklist (second state)))
-                           (list cfg worklist)
-                           ))
+                           (set-out-set (empty-set) blck
+                             (let ((cfg (map-insert blockid blck cfg)))
+                               (list cfg worklist)))))
                        cfg ;; reduce over cfg
                        (list cfg nil) ;; init-state
                        ))
-           (worklist (second init-cfg))
            (cfg* (first init-cfg))
+           (worklist (second init-cfg))
            )
-      (do-flow-forwards (list (get-cfg-top cfg) cfg worklist))
+      (do-flow-forwards (get-cfg-top cfg) cfg worklist)
 )))
