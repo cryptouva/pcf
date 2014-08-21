@@ -12,7 +12,8 @@
                                :skew-list
                                :lcc-dataflow
 			       :pcf2-dataflow
-                               :pcf2-deadgate)
+                               ;:pcf2-deadgate
+                               )
             (:export test-interp
                      pcf-cfg
                      pcf-deadgates
@@ -56,8 +57,10 @@
 (defun pcf-cfg (ops)
   (make-pcf-cfg ops))
 
+#|
 (defun pcf-deadgates (ops)
   (make-def-use-map ops))
+|#
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""

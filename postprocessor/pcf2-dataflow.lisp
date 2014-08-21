@@ -6,7 +6,6 @@
            pcf-basic-block
            get-cfg-top
            get-label-map
-           get-cfg-top
            get-next-blocks
            get-prev-blocks)
   )
@@ -17,6 +16,11 @@
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
 
+
+;;;
+;;; the pcf-basic-block struct 
+;;; and supporting macros
+;;;
 
 (defstruct (pcf-basic-block
              (:print-function
@@ -96,6 +100,16 @@
                )))
      ,@body))
 
+(defmacro set-block-preds (prds bb &body body)
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds ,prds
+               :succs (get-block-succs ,bb)
+               :out-set (get-block-out-set ,bb)
+               )))
+     ,@body))
+
 ;; succ is an index, bb is the block itself
 (defmacro add-succ (succ bb &body body)
   `(let ((,bb (make-pcf-basic-block
@@ -146,6 +160,13 @@
 (defmacro insert-block (id val blocks &body body)
   `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
      ,@body))
+
+;;;
+;;;
+;;; cfg-basic-block functions that instruct how to behave when building the cfg and encountering all of the possible ops
+;;;
+;;;
+
 
 (defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack)
   (:documentation "update the entities in the cfg for each op that we encounter from ops")
@@ -242,6 +263,25 @@
          (ret (ret-instr))
          (t (add-standard-block)))))))
 
+;;;
+;;; constructing and operating on the cfg
+;;;
+
+
+(defun get-cfg-top (cfg)
+  (get-idx-by-label "pcfentry" cfg) cfg)
+
+(defun get-prev-blocks (block cfg)
+  (mapc
+   (lambda (b) (get-block-by-id b cfg))
+   (get-block-preds block)))
+
+(defun get-next-blocks (block cfg)
+  (mapc
+   (lambda (b) (get-block-by-id b cfg))
+   (get-block-succs block)))
+
+
 (defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
   ;; also get the names of all of the functions (other than main) that are called
@@ -336,9 +376,6 @@
                      call-addrs
                      (list f-cfg call-addrs ret-addrs))))
 
-#|
-for now, we use a map of strings -> blocks in the "blocks" position, which s the second argument to the reduce.
-|#
 
 (defun make-pcf-cfg (ops)
   (declare (optimize (debug 3) (speed 0)))
@@ -370,18 +407,25 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                         (sixth lbl-fn-map)
                         (fourth lbl-fn-map))))))
 
-(defun get-cfg-top (cfg)
-  (get-block-by-id (get-idx-by-label "pcfentry" cfg) cfg))
 
-(defun get-prev-blocks (block cfg)
-  (mapc
-   (lambda (b) (get-block-by-id b cfg))
-   (get-block-preds block)))
+;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
 
-(defun get-next-blocks (block cfg)
-  (mapc
-   (lambda (b) (get-block-by-id b cfg))
-   (get-block-succs block)))
+(defun circuit-topo-sort (cfg)
+  (labels ((visit (node-id cfg sorted-list)
+             (if (null node-id)
+                 sorted-list ; done
+                 (let ((node (get-block-by-id node-id cfg)))
+                   (reduce (lambda (dfs-list neighbor-id)
+                             (let ((neighbor (get-block-by-id neighbor-id cfg)))
+                               (set-block-preds (remove node-id (get-block-preds neighbor)) neighbor
+                                 (insert-block node-id neighbor cfg 
+                                   (if (null (get-block-preds neighbor))
+                                       (cons neighbor-id (visit neighbor-id cfg dfs-list))
+                                       dfs-list)))))
+                           (get-block-succs node)
+                           :initial-value sorted-list 
+                           )))))
+    (visit (get-cfg-top cfg) cfg nil))) 
 
 
 ;; when flowing,
@@ -395,15 +439,6 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 ;; (perhaps reduce on every node in the cfg -- or some method that follows all of the successors/predecessors (whichever method we're using) once -- DFS should work for this for postorder/reverse postorder)
 ;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
 
-#|
-(defun flow (cfg join-fn flow-fn)
-  ;; step 1: flow through the cfg; all nodes will already be empty
-)
-
-(defun flow-backwards (cfg join-fn flow-fn)
-  
-)
-|#
 
 (defmacro set-weaker (set1 set2 &key comp)
   (if comp
@@ -414,7 +449,7 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 (defun do-flow (cfg worklist join-fn flow-fn)
   (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
-      cfg ;done
+      cfg ; done
       (let* ((cur-node-id (car worklist))
              (worklist (cdr worklist))
              (cur-node (get-block-by-id cur-node-id cfg))
@@ -424,14 +459,14 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
                                         (neighbor (get-block-by-id neighbor-id cfg)))
                                     ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
                                     (let ((new-out (funcall join-fn
-                                                            (empty-set)
+                                                            (flow-fn (get-block-out-set cur-node))
                                                             (get-block-out-set neighbor))))
                                       (if (set-weaker new-out 
-                                                      (get-block-out-set cur-node))
+                                                      (get-block-out-set neighbor))
                                           (list (cons neighbor-id worklist)
                                                 (map-insert neighbor-id 
                                                             (set-out-set new-out neighbor
-                                                                neighbor)
+                                                              neighbor)
                                                             cfg))
                                           (list worklist cfg)))))
                                 (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
