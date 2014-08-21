@@ -81,6 +81,7 @@
                :ops (cons ,op (get-block-ops ,bb))
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
+               :out-set (get-block-out-set ,bb)
                )))
      ,@body))
 
@@ -90,7 +91,9 @@
                :id (get-block-id ,bb)
                :ops (get-block-ops ,bb)
                :preds (cons ,prd (get-block-preds ,bb))
-               :succs (get-block-succs ,bb))))
+               :succs (get-block-succs ,bb)
+               :out-set (get-block-out-set ,bb)
+               )))
      ,@body))
 
 ;; succ is an index, bb is the block itself
@@ -99,7 +102,9 @@
                :id (get-block-id ,bb)
                :ops (get-block-ops ,bb)
                :preds (get-block-preds ,bb)
-               :succs (cons ,succ (get-block-succs ,bb)))))
+               :succs (cons ,succ (get-block-succs ,bb))
+               :out-set (get-block-out-set ,bb)
+               )))
      ,@body))
 
 ;; not sure which of the two following I will use
@@ -400,28 +405,51 @@ for now, we use a map of strings -> blocks in the "blocks" position, which s the
 )
 |#
 
+(defmacro set-weaker (set1 set2 &key comp)
+  (if comp
+      `(,comp ,set1 ,set2)
+      `(and (not (set-subset ,set2 ,set1))
+            (set-subset ,set1 ,set2))))
+
+(defun do-flow (cfg worklist join-fn flow-fn)
+  (declare (optimize (debug 3)(speed 0)))
+  (if (null worklist)
+      cfg ;done
+      (let* ((cur-node-id (car worklist))
+             (worklist (cdr worklist))
+             (cur-node (get-block-by-id cur-node-id cfg))
+             (new-state (reduce (lambda (state neighbor-id)
+                                  (let ((worklist (first state))
+                                        (cfg (second state))
+                                        (neighbor (get-block-by-id neighbor-id cfg)))
+                                    ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
+                                    (let ((new-out (funcall join-fn
+                                                            (empty-set)
+                                                            (get-block-out-set neighbor))))
+                                      (if (set-weaker new-out 
+                                                      (get-block-out-set cur-node))
+                                          (list (cons neighbor-id worklist)
+                                                (map-insert neighbor-id 
+                                                            (set-out-set new-out neighbor
+                                                                neighbor)
+                                                            cfg))
+                                          (list worklist cfg)))))
+                                (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
+                                :initial-value (list worklist cfg))))
+        (do-flow (first new-state) (second new-state) join-fn flow-fn))))
+
 (defun flow-forwards (cfg join-fn flow-fn)
-  (labels ((do-flow-forwards (curnode cfg worklist)
-             (declare (optimize (debug 3)(speed 0)))
-             (if (null worklist)
-                 cfg;done
-                 (let ((curnode (car worklist))
-                       (worklist (cdr worklist))
-                       )
-                   (apply flow-fn curnode cfg)
-                   ))))
-    (let* ((init-cfg ;; this first map-reduce will give us a worklist we can work with and an initialized set of blocks
-           (map-reduce (lambda (state blockid blck)
-                         (let ((cfg (first state))
-                               (worklist (second state)))
-                           (set-out-set (empty-set) blck
-                             (let ((cfg (map-insert blockid blck cfg)))
-                               (list cfg worklist)))))
-                       cfg ;; reduce over cfg
-                       (list cfg nil) ;; init-state
-                       ))
-           (cfg* (first init-cfg))
-           (worklist (second init-cfg))
-           )
-      (do-flow-forwards (get-cfg-top cfg) cfg worklist)
-)))
+  (let* ((init-cfg ;; this first map-reduce will give us a worklist we can work with and an initialized set of blocks
+          (map-reduce (lambda (state blockid blck)
+                        (let ((cfg (first state))
+                              (worklist (second state)))
+                          (set-out-set (empty-set) blck
+                            (let ((cfg (map-insert blockid blck cfg)))
+                              (list cfg worklist)))))
+                      cfg ;; reduce over cfg
+                      (list cfg nil) ;; init-state
+                      ))
+         (cfg* (first init-cfg))
+         (worklist (second init-cfg))
+         )
+    (do-flow cfg* worklist join-fn flow-fn)))
