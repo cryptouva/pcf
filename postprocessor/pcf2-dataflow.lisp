@@ -238,7 +238,6 @@
 
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
-     (print "branch instruction")
      (let ((newblock (new-block :id idx :op cur-op)))
        (add-succ (1+ idx) newblock
            (add-succ (get-idx-by-label targ lbls) newblock
@@ -269,7 +268,8 @@
 
 
 (defun get-cfg-top (cfg)
-  (get-idx-by-label "pcfentry" cfg) cfg)
+  0)
+;  (get-idx-by-label "pcfentry" cfg) cfg)
 
 (defun get-prev-blocks (block cfg)
   (mapc
@@ -341,7 +341,6 @@
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
-  (print "find preds:")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
@@ -403,25 +402,35 @@
                 blocks
               blocks)));      forward-cfg
       (print *specialfunctions*)
-      (find-preds (update-ret-succs forward-cfg
-                        (sixth lbl-fn-map)
-                        (fourth lbl-fn-map))))))
-
-
+      (let ((preds (find-preds (update-ret-succs forward-cfg
+                                     (sixth lbl-fn-map)
+                                     (fourth lbl-fn-map)))))
+        (print "got preds")
+        (circuit-topo-sort preds)
+        ;preds
+        ))))
+  
+  
 ;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
-
 (defun circuit-topo-sort (cfg)
+  (declare (optimize (debug 3)(speed 0)))
   (labels ((visit (node-id cfg sorted-list)
+             ;(break)
              (if (null node-id)
                  sorted-list ; done
                  (let ((node (get-block-by-id node-id cfg)))
-                   (reduce (lambda (dfs-list neighbor-id)
+                   ;(break)
+                   (reduce (lambda (topo-list neighbor-id)
+                             ;(break)
                              (let ((neighbor (get-block-by-id neighbor-id cfg)))
+                               ;(break)
                                (set-block-preds (remove node-id (get-block-preds neighbor)) neighbor
-                                 (insert-block node-id neighbor cfg 
+                                 ;(break)
+                                 (insert-block neighbor-id neighbor cfg 
+                                   ;(break)
                                    (if (null (get-block-preds neighbor))
-                                       (cons neighbor-id (visit neighbor-id cfg dfs-list))
-                                       dfs-list)))))
+                                       (cons neighbor-id (visit neighbor-id cfg topo-list))
+                                       topo-list)))))
                            (get-block-succs node)
                            :initial-value sorted-list 
                            )))))
