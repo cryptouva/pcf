@@ -38,7 +38,7 @@
   (ops nil :type list)
   (preds nil :type list)
   (succs nil :type list)
-  (out-set (empty-set) :type avl-set)
+  (out-set (set-insert (empty-set) "top") :type avl-set)
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -284,7 +284,13 @@
 
 (defun get-cfg-top (cfg)
   0)
+
 ;  (get-idx-by-label "pcfentry" cfg) cfg)
+
+(defun get-cfg-bottom (cfg)
+  ;; need the index of the very last node in the cfg, which is the return from "main"
+  ;; is there an efficient way to get this?
+  )
 
 (defun get-prev-blocks (block cfg)
   (mapc
@@ -435,6 +441,7 @@
       (cons cur (recursive-list limit (1+ cur)) )))
 
 ;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
+#|
 (defun circuit-topo-sort (cfg)
   ;;(declare (optimize (debug 3)(speed 0)))
   (labels ((visit (node-id cfg sorted-list)
@@ -455,9 +462,9 @@
                            (get-block-succs node)
                            :initial-value sorted-list 
                            )))))
-    (recursive-list 15000 0) ))
-    ;; (cons 0 (visit (get-cfg-top cfg) cfg nil))))
-
+    ;; (recursive-list 15000 0) ))
+    (cons 0 (visit (get-cfg-top cfg) cfg nil))))
+|#
 
 ;; when flowing,
 ;; each node carries info about its own out-set
@@ -477,6 +484,9 @@
       `(and (not (set-subset ,set2 ,set1))
             (set-subset ,set1 ,set2))))
 
+;; need to construct some functions for comparing out-sets with those that are just "top". Any meet(top, set-x) = set-x; and any join(top, set-x) is set-x
+
+
 (defun do-flow (cfg worklist join-fn flow-fn)
   (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
@@ -490,7 +500,7 @@
                                         (neighbor (get-block-by-id neighbor-id cfg)))
                                     ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
                                     (let ((new-out (funcall join-fn
-                                                            (flow-fn (get-block-out-set cur-node))
+                                                            (flow-fn (get-block-out-set cur-node)) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
                                                             (get-block-out-set neighbor))))
                                       (if (set-weaker new-out 
                                                       (get-block-out-set neighbor))
@@ -503,6 +513,8 @@
                                 (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
                                 :initial-value (list worklist cfg))))
         (do-flow (first new-state) (second new-state) join-fn flow-fn))))
+
+
 
 (defun flow-forwards (cfg join-fn flow-fn)
   (let* ((init-cfg ;; this first map-reduce will give us a worklist we can work with and an initialized set of blocks
