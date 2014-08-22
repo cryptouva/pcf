@@ -432,7 +432,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                )
                              )
                          cfg 
-o                         (list out-sets t)
+                         (list out-sets t)
                          )
               )
             )
