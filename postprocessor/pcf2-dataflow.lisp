@@ -121,6 +121,16 @@
                )))
      ,@body))
 
+(defmacro set-block-succs (succs bb &body body)
+  `(let ((,bb (make-pcf-basic-block
+               :id (get-block-id ,bb)
+               :ops (get-block-ops ,bb)
+               :preds (get-block-succs ,bb)
+               :succs ,succs
+               :out-set (get-block-out-set ,bb)
+               )))
+     ,@body))
+
 ;; not sure which of the two following I will use
 ;; new-set is the new out-set
 (defmacro set-out-set (new-set bb &body body)
@@ -177,7 +187,6 @@
   )
 
 ;; this one catches all the stuff i don't define. it performs a standard operation.
-
 (defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
   `(let ((newblock (new-block :id idx :op cur-op)))
      (add-succ (1+ idx) newblock
@@ -213,9 +222,11 @@
 (definstr initbase
   (initbase-instr))
 
+#|
 ;; the following defmethod shouldn't really be necessary because it's covered by two other defmethods, but this is here for clarity
 (defmethod cfg-basic-block (next-op (cur-op initbase) blocks lbls fns idx callstack)
   (initbase-instr))
+|#
 
 (defmacro ret-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
@@ -247,13 +258,17 @@
   (branch-instr))
 
 (defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
+  (declare (optimize (debug 3)(speed 0)))
   (with-slots (str) next-op
     (cond
       ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere, and main isn't even in "fns" anyway) and functions will get their successors from the call instruction 
-       (let ((newblock (new-block :id idx :op cur-op)))
-         (format t "~A~%" newblock)
-         (format t "~A~%" next-op)
-         (close-add-block))) 
+       (typecase cur-op
+         (initbase (initbase-instr))
+         (t
+          (let ((newblock (new-block :id idx :op cur-op)))
+            (format t "~A~%" newblock)
+            (format t "~A~%" next-op)
+            (close-add-block))))) 
       (t 
        (typecase cur-op
          ;; not every instruction can be followed by "label," so here we identify the important things that some might have to do
@@ -406,7 +421,10 @@
                                      (sixth lbl-fn-map)
                                      (fourth lbl-fn-map)))))
         (print "got preds")
-        (circuit-topo-sort preds)
+        (progn
+          (loop for i from 0 to 25
+             collect (print (get-block-by-id i preds)))
+          (circuit-topo-sort preds))
         ;preds
         ))))
   
@@ -415,26 +433,21 @@
 (defun circuit-topo-sort (cfg)
   (declare (optimize (debug 3)(speed 0)))
   (labels ((visit (node-id cfg sorted-list)
-             ;(break)
              (if (null node-id)
                  sorted-list ; done
                  (let ((node (get-block-by-id node-id cfg)))
-                   ;(break)
                    (reduce (lambda (topo-list neighbor-id)
-                             ;(break)
                              (let ((neighbor (get-block-by-id neighbor-id cfg)))
-                               ;(break)
                                (set-block-preds (remove node-id (get-block-preds neighbor)) neighbor
-                                 ;(break)
-                                 (insert-block neighbor-id neighbor cfg 
-                                   ;(break)
-                                   (if (null (get-block-preds neighbor))
-                                       (cons neighbor-id (visit neighbor-id cfg topo-list))
-                                       topo-list)))))
+                                 (set-block-succs (remove neighbor-id (get-block-succs node)) node
+                                   (insert-block neighbor-id neighbor cfg 
+                                     (if (null (get-block-preds neighbor))
+                                         (cons neighbor-id (visit neighbor-id cfg topo-list))
+                                         topo-list))))))
                            (get-block-succs node)
                            :initial-value sorted-list 
                            )))))
-    (visit (get-cfg-top cfg) cfg nil))) 
+    (cons 0 (visit (get-cfg-top cfg) cfg nil))))
 
 
 ;; when flowing,
