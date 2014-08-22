@@ -429,25 +429,34 @@
         ))))
   
   
+(defun recursive-list (limit cur)
+  (if (eq cur limit)
+      cur
+      (cons cur (recursive-list limit (1+ cur)) )))
+
 ;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
 (defun circuit-topo-sort (cfg)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (labels ((visit (node-id cfg sorted-list)
+             ;;(break)
              (if (null node-id)
                  sorted-list ; done
                  (let ((node (get-block-by-id node-id cfg)))
                    (reduce (lambda (topo-list neighbor-id)
                              (let ((neighbor (get-block-by-id neighbor-id cfg)))
                                (set-block-preds (remove node-id (get-block-preds neighbor)) neighbor
-                                 (set-block-succs (remove neighbor-id (get-block-succs node)) node
+                                 ;;(set-block-succs (remove neighbor-id (get-block-succs node)) node
                                    (insert-block neighbor-id neighbor cfg 
                                      (if (null (get-block-preds neighbor))
-                                         (cons neighbor-id (visit neighbor-id cfg topo-list))
-                                         topo-list))))))
+                                         (progn (print neighbor-id)
+                                                (cons neighbor-id (visit neighbor-id cfg topo-list)))
+                                         topo-list)))))
+                           ;;)
                            (get-block-succs node)
                            :initial-value sorted-list 
                            )))))
-    (cons 0 (visit (get-cfg-top cfg) cfg nil))))
+    (recursive-list 15000 0) ))
+    ;; (cons 0 (visit (get-cfg-top cfg) cfg nil))))
 
 
 ;; when flowing,
