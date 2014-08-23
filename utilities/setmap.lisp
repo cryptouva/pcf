@@ -269,7 +269,7 @@
 (defun map-map (fn mp)
   "Apply \"fn\" to each element of the map \"mp\" to create a new map.
 
-\"fn\" should have the form (lambda (key value) ...)"
+\"fn\" should have the form (lambda (key value) ...) and return the new value"
   (declare (type (function (t t) t) fn)
            (type avl-set mp))
   (make-avl-set :tree

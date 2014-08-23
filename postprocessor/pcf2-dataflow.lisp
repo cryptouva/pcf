@@ -26,19 +26,19 @@
              (:print-function
               (lambda (struct stream depth)
                 (declare (ignore depth))
-                (format stream "~&PCF2 basic block ~A:~%" (pcf-basic-block-id struct))
-                (format stream "Ops: ~A~%" (pcf-basic-block-ops struct))
-                (format stream "Preds: ~A~%" (pcf-basic-block-preds struct))
-                (format stream "Succs: ~A~%" (pcf-basic-block-succs struct))
-                (format stream "Out-Set: ~A~%" (pcf-basic-block-out-set struct))
+                (format stream "~&PCF2 basic block ~A:~%" (get-block-id struct))
+                (format stream "Op: ~A~%" (get-block-op struct))
+                (format stream "Preds: ~A~%" (get-block-preds struct))
+                (format stream "Succs: ~A~%" (get-block-succs struct))
+                (format stream "Out-Set: ~A~%" (get-block-out-set struct))
                 )
               )
              )
   (id)
-  (ops nil :type list)
+  (op nil :type list)
   (preds nil :type list)
   (succs nil :type list)
-  (out-set (set-insert (empty-set) "top") :type avl-set)
+  (out-set (empty-set) :type avl-set)
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -57,10 +57,10 @@
     `(let ((,blocksym ,blck))
        (pcf-basic-block-succs ,blocksym))))
 
-(defmacro get-block-ops (blck)
+(defmacro get-block-op (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
-       (pcf-basic-block-ops ,blocksym))))
+       (pcf-basic-block-op ,blocksym))))
 
 (defmacro get-block-out-set (blck)
   (let ((blocksym (gensym)))
@@ -73,16 +73,19 @@
 (defmacro get-block-by-id (id blocks)
   `(cdr (map-find (write-to-string ,id) ,blocks)))
 
+;;(defmacro get-block-by-id-str (id blocks)
+;;  `(cdr (map-find ,id ,blocks)))
+
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
    :id (write-to-string ,id)
-   :ops (list ,op)))
+   :op (list ,op)))
 
 ;; op is an opcode, bb is the block itself
 (defmacro add-op (op bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (cons ,op (get-block-ops ,bb))
+               :op (cons ,op (get-block-op ,bb))
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -93,7 +96,7 @@
 (defmacro add-pred (prd bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds (cons ,prd (get-block-preds ,bb))
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -103,7 +106,7 @@
 (defmacro set-block-preds (prds bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds ,prds
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -114,7 +117,7 @@
 (defmacro add-succ (succ bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds (get-block-preds ,bb)
                :succs (cons ,succ (get-block-succs ,bb))
                :out-set (get-block-out-set ,bb)
@@ -124,7 +127,7 @@
 (defmacro set-block-succs (succs bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds (get-block-succs ,bb)
                :succs ,succs
                :out-set (get-block-out-set ,bb)
@@ -136,18 +139,22 @@
 (defmacro set-out-set (new-set bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set ,new-set
                )))
      ,@body))
 
+(defmacro set-out-to-top (bb)
+  `(set-out-set (set-insert (empty-set) "top") ,bb
+     ,bb))
+
 ;; new-set is the new out-set
 (defmacro update-out-set (new-set join-fn bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :ops (get-block-ops ,bb)
+               :op (get-block-op ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set (funcall ,join-fn ,new-set (get-block-out-set ,bb))
@@ -430,15 +437,16 @@
         (progn
           (loop for i from 0 to 25
              collect (print (get-block-by-id i preds)))
-          (circuit-topo-sort preds))
+          (init-flow-to-top preds))
         ;preds
         ))))
   
-  
+#|
 (defun recursive-list (limit cur)
   (if (eq cur limit)
       cur
       (cons cur (recursive-list limit (1+ cur)) )))
+|#
 
 ;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
 #|
@@ -484,9 +492,24 @@
       `(and (not (set-subset ,set2 ,set1))
             (set-subset ,set1 ,set2))))
 
-;; need to construct some functions for comparing out-sets with those that are just "top". Any meet(top, set-x) = set-x; and any join(top, set-x) is set-x
+;; need to construct some functions for comparing out-sets with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
 
+(defun init-flow-to-top (cfg)
+  (map-map 
+   (lambda(key val)
+     (set-out-to-top val))
+   cfg))
+
+(defun init-flow-values (cfg flow-fn)
+  (let ((empty-cfg (init-flow-to-top cfg)))
+    (map-map
+     (lambda(key val)
+       (declare (ignore key))
+       (funcall flow-fn val cfg))
+     empty-cfg)))
+
+#|
 (defun do-flow (cfg worklist join-fn flow-fn)
   (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
@@ -513,21 +536,12 @@
                                 (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
                                 :initial-value (list worklist cfg))))
         (do-flow (first new-state) (second new-state) join-fn flow-fn))))
+|#
 
 
-
+#|
 (defun flow-forwards (cfg join-fn flow-fn)
-  (let* ((init-cfg ;; this first map-reduce will give us a worklist we can work with and an initialized set of blocks
-          (map-reduce (lambda (state blockid blck)
-                        (let ((cfg (first state))
-                              (worklist (second state)))
-                          (set-out-set (empty-set) blck
-                            (let ((cfg (map-insert blockid blck cfg)))
-                              (list cfg worklist)))))
-                      cfg ;; reduce over cfg
-                      (list cfg nil) ;; init-state
-                      ))
-         (cfg* (first init-cfg))
-         (worklist (second init-cfg))
+  (let* ((init-cfg (init-flow-values cfg))
          )
     (do-flow cfg* worklist join-fn flow-fn)))
+|#
