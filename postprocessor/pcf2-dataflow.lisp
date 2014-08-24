@@ -32,11 +32,8 @@
              (:print-function
               (lambda (struct stream depth)
                 (declare (ignore depth))
-                (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct))
                 (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
-                )
-              )
-             )
+                (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct)))))
   (cfg (map-empty :comp #'string<) :type avl-set)
   (bottom nil)
   )
@@ -65,6 +62,11 @@
   `(make-pcf-graph
     :cfg (get-graph-map ,cfg)
     :bottom ,bottom))
+
+(defmacro cfg-with-map (&key cfg map)
+  `(make-pcf-graph
+    :cfg ,map
+    :bottom (get-graph-bottom ,cfg)))
 
 (defstruct (pcf-basic-block
              (:print-function
@@ -482,9 +484,7 @@
         (progn
           (loop for i from 0 to 25
              collect (print (get-block-by-id i preds)))
-          (init-flow-to-top preds))
-        ;preds
-        ))))  
+          (cfg-with-map :cfg cfg-bottom :map (init-flow-to-top preds)))))))
 
 ;; when flowing,
 ;; each node carries info about its own out-set
