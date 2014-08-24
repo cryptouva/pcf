@@ -7,7 +7,13 @@
            get-cfg-top
            get-label-map
            get-next-blocks
-           get-prev-blocks)
+           get-prev-blocks
+           get-block-op
+           get-block-succs
+           get-block-preds
+           get-block-out-set
+           get-block-id
+           get-block-by-id)
   )
 (in-package :pcf2-dataflow)
 
@@ -16,11 +22,43 @@
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
 
-
 ;;;
 ;;; the pcf-basic-block struct 
 ;;; and supporting macros
 ;;;
+
+(defstruct (pcf-graph
+             (:print-function
+              (lambda (struct stream depth)
+                (declare (ignore depth))
+                (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct))
+                (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
+                )
+              )
+             )
+  (cfg (map-empty :comp #'string<) :type avl-set)
+  (bottom nil)
+  )
+
+(defmacro get-graph-map (cfg)
+  `(pcf-graph-cfg ,cfg)
+  )
+
+(defmacro get-graph-bottom (cfg)
+  `(pcf-graph-bottom ,cfg)
+  )
+
+(defmacro graph-insert (key val cfg)
+  `(make-pcf-graph
+    :cfg (map-insert ,key ,val (get-graph-map ,cfg))
+    :bottom (get-graph-bottom ,cfg)
+    ))                  
+
+(defmacro new-cfg ()
+  `(make-pcf-graph
+    :cfg (map-empty :comp #'string<)
+    :bottom nil)
+  )
 
 (defstruct (pcf-basic-block
              (:print-function
@@ -71,7 +109,7 @@
   `(cdr (map-find ,targ ,lbls)))
 
 (defmacro get-block-by-id (id blocks)
-  `(cdr (map-find (write-to-string ,id) ,blocks)))
+  `(cdr (map-find (write-to-string ,id) (get-graph-map ,blocks))))
 
 ;;(defmacro get-block-by-id-str (id blocks)
 ;;  `(cdr (map-find ,id ,blocks)))
@@ -175,7 +213,9 @@
 ;; val should be a block
 ;; blocks should be the map of blocks
 (defmacro insert-block (id val blocks &body body)
-  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
+  ;;  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
+  ;;     ,@body))
+  `(let ((,blocks (graph-insert (write-to-string ,id) ,val ,blocks)))
      ,@body))
 
 ;;;
@@ -290,6 +330,7 @@
 
 
 (defun get-cfg-top (cfg)
+  (declare (ignore cfg))
   0)
 
 ;  (get-idx-by-label "pcfentry" cfg) cfg)
@@ -297,6 +338,7 @@
 (defun get-cfg-bottom (cfg)
   ;; need the index of the very last node in the cfg, which is the return from "main"
   ;; is there an efficient way to get this?
+  cfg
   )
 
 (defun get-prev-blocks (block cfg)
@@ -381,7 +423,7 @@
                                     cfg*))))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
-	      f-cfg ;map
+	      (get-graph-map f-cfg) ;map
 	      f-cfg ;state
 	      ))
 
@@ -417,7 +459,7 @@
                         (apply #'cfg-basic-block (cons y x)))
                     restops
                     :initial-value (list op1
-					 (map-empty :comp #'string<) 
+					 (new-cfg) ;(map-empty :comp #'string<) 
 					 (first lbl-fn-map)
 					 (second lbl-fn-map)
 					 0
@@ -439,40 +481,7 @@
              collect (print (get-block-by-id i preds)))
           (init-flow-to-top preds))
         ;preds
-        ))))
-  
-#|
-(defun recursive-list (limit cur)
-  (if (eq cur limit)
-      cur
-      (cons cur (recursive-list limit (1+ cur)) )))
-|#
-
-;;; circuit topological sort - use the cfg to determine a topological ordering of nodes for visiting
-#|
-(defun circuit-topo-sort (cfg)
-  ;;(declare (optimize (debug 3)(speed 0)))
-  (labels ((visit (node-id cfg sorted-list)
-             ;;(break)
-             (if (null node-id)
-                 sorted-list ; done
-                 (let ((node (get-block-by-id node-id cfg)))
-                   (reduce (lambda (topo-list neighbor-id)
-                             (let ((neighbor (get-block-by-id neighbor-id cfg)))
-                               (set-block-preds (remove node-id (get-block-preds neighbor)) neighbor
-                                 ;;(set-block-succs (remove neighbor-id (get-block-succs node)) node
-                                   (insert-block neighbor-id neighbor cfg 
-                                     (if (null (get-block-preds neighbor))
-                                         (progn (print neighbor-id)
-                                                (cons neighbor-id (visit neighbor-id cfg topo-list)))
-                                         topo-list)))))
-                           ;;)
-                           (get-block-succs node)
-                           :initial-value sorted-list 
-                           )))))
-    ;; (recursive-list 15000 0) ))
-    (cons 0 (visit (get-cfg-top cfg) cfg nil))))
-|#
+        ))))  
 
 ;; when flowing,
 ;; each node carries info about its own out-set
@@ -482,9 +491,7 @@
 
 ;; need:
 ;; make sure that every node is touched by the worklist at least once
-;; (perhaps reduce on every node in the cfg -- or some method that follows all of the successors/predecessors (whichever method we're using) once -- DFS should work for this for postorder/reverse postorder)
 ;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
-
 
 (defmacro set-weaker (set1 set2 &key comp)
   (if comp
@@ -498,8 +505,9 @@
 (defun init-flow-to-top (cfg)
   (map-map 
    (lambda(key val)
+     (declare (ignore key))
      (set-out-to-top val))
-   cfg))
+   (get-graph-map cfg)))
 
 (defun init-flow-values (cfg flow-fn)
   (let ((empty-cfg (init-flow-to-top cfg)))
@@ -509,8 +517,8 @@
        (funcall flow-fn val cfg))
      empty-cfg)))
 
-#|
-(defun do-flow (cfg worklist join-fn flow-fn)
+
+(defun do-flow (cfg worklist flow-fn join-fn)
   (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
       cfg ; done
@@ -523,25 +531,23 @@
                                         (neighbor (get-block-by-id neighbor-id cfg)))
                                     ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
                                     (let ((new-out (funcall join-fn
-                                                            (flow-fn (get-block-out-set cur-node)) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
+                                                            (funcall flow-fn cur-node cfg) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
                                                             (get-block-out-set neighbor))))
                                       (if (set-weaker new-out 
                                                       (get-block-out-set neighbor))
                                           (list (cons neighbor-id worklist)
-                                                (map-insert neighbor-id 
-                                                            (set-out-set new-out neighbor
-                                                              neighbor)
-                                                            cfg))
+                                                (insert-block neighbor-id (set-out-set new-out neighbor neighbor) cfg
+                                                  cfg))
                                           (list worklist cfg)))))
                                 (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
                                 :initial-value (list worklist cfg))))
         (do-flow (first new-state) (second new-state) join-fn flow-fn))))
-|#
+
 
 
 #|
 (defun flow-forwards (cfg join-fn flow-fn)
   (let* ((init-cfg (init-flow-values cfg))
          )
-    (do-flow cfg* worklist join-fn flow-fn)))
+    (do-flow init-cfg worklist join-fn flow-fn)))
 |#

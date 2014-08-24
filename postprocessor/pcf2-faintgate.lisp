@@ -2,7 +2,7 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
-  (:export faint-analysis-flow)
+  ;;(:export faint-analysis-flow)
   )
 
 (in-package :pcf2-faintgate)
@@ -59,23 +59,145 @@
   (reduce
    (lambda (temp-out succ)
      (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
-       (funcall confluence-op temp-out succ-out)))
+       (funcall #'confluence-op temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-out-set (get-block-by-id blck))))
+   :initial-value (get-block-out-set (get-block-by-id blck cfg))))
 
-(defgeneric faint-flow-fn (blck)
+(defgeneric faint-flow-fn (blck cfg)
   (:documentation "this function describes how an operation performs its flow function")
   )
 
-(defgeneric gen (op blck)
+(defmethod faint-flow-fn (blck cfg)
+  (set-union
+   (set-diff (get-out-sets blck cfg) (kill (get-block-op blck)))
+   (gen (get-block-op blck))))
+
+(defgeneric gen (op)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op blck)
+(defgeneric kill (op)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
-(defmethod faint-flow-fn (blck)
-  (set-union
-   (set-diff (get-out-sets blck) (kill (get-block-op blck)))
-   (gen (get-block-op blck))))
+(defgeneric const-gen (op)
+  (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
+)
+
+(defgeneric dep-gen (op)
+  (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
+)
+
+(defgeneric const-kill (op)
+  (:documentation "this function describes how to compute the constant kill part of the flow function for each op")
+)
+
+(defgeneric dep-kill (op)
+  (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
+)
+
+(defmethod gen (op)
+  ;; gen = const_gen union dep_gen
+  (set-union (const-gen op) (dep-gen op)))
+
+(defmethod kill (op)
+  ;; kill = const-kill union gep_kill
+  (set-union (const-kill op) (dep-kill op)))
+
+(defmacro gen-kill-standard ()
+  ;; for faint variable analysis, standard is always empty set
+  `(empty-set))
+
+;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
+
+(defmacro def-const-gen (type &body body)
+  `(defmethod const-gen ((op ,type))
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (gen-kill-standard)
+          )))
+
+(defmacro def-dep-gen (type &body body)
+  `(defmethod dep-gen ((op ,type) blck)
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (gen-kill-standard)
+          )))
+
+(defmacro def-const-kill (type &body body)
+  `(defmethod const-kill ((op ,type))
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (gen-kill-standard)
+          )))
+
+(defmacro def-dep-kill (type &body body)
+  `(defmethod dep-kill ((op ,type))
+     (declare (optimize (debug 3) (speed 0)))
+     (aif (locally ,@body)
+          it
+          (gen-kill-standard)
+          )))
+
+;; and the macro to write const-gen, dep-gen, const-kill, and dep-kill for each instruction
+(defmacro def-gen-kill (type &key (const-gen nil) (dep-gen nil) (const-kill nil) (dep-kill nil))
+  `(def-const-gen ,type ,const-gen)
+  `(def-dep-gen ,type ,dep-gen) ; dep-gen always /0 in faint analysis
+  `(def-const-kill ,type ,const-kill)
+  `(def-dep-kill ,type ,dep-kill)
+  )
+
+
+(def-gen-kill bits
+    :const-gen `(with-slots (dest) op
+                  (set-from-list dest)) ;; everything in the list gets added to gen
+    :const-kill `(with-slots (op1) op
+                   (singleton op1)) ;; op1 is not faint
+    )
+
+(def-gen-kill join
+    :const-gen `(with-slots (op1) op
+                  (singleton op1)
+                  )
+    :const-kill `(with-slots (dest) op
+                   (set-from-list dest)
+                   )
+  )
+
+(def-gen-kill gate
+    )
+
+(def-gen-kill const
+    ;; if x = const, add x to gen
+    :const-gen `(with-slots (dest) op
+                  (singleton dest)
+                  )
+    )
+
+(def-gen-kill add)
+(def-gen-kill sub)
+(def-gen-kill mul)
+(def-gen-kill initbase
+    ;; nothing
+    )
+(def-gen-kill clear
+    ;; nothing
+    )
+
+(def-gen-kill copy
+    :const-gen`(with-slots (op1 op2) op
+                 (set-from-list
+                  (loop for i from op1 to (+ op1 op2) collect i)
+                  ))
+    )
+
+(def-gen-kill mkptr)
+(def-gen-kill copy-indir)
+(def-gen-kill indir-copy)
+(def-gen-kill call)
+(def-gen-kill ret)
+(def-gen-kill branch)
+(def-gen-kill label)
