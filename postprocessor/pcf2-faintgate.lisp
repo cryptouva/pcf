@@ -2,7 +2,7 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
-  ;;(:export faint-analysis-flow)
+  (:export gen kill)
   )
 
 (in-package :pcf2-faintgate)
@@ -162,7 +162,7 @@
     :const-gen `(with-slots (op1) op
                   (singleton op1)
                   )
-    :const-kill `(with-slots (dest) op
+    :dep-kill `(with-slots (dest) op
                    (set-from-list dest)
                    )
   )

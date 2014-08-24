@@ -17,6 +17,7 @@
   )
 (in-package :pcf2-dataflow)
 
+
 ;; these special functions are included by the PCF interpreters and therefore will not have lookups in the .PCF2 file
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
@@ -59,6 +60,11 @@
     :cfg (map-empty :comp #'string<)
     :bottom nil)
   )
+
+(defmacro cfg-with-bottom (&key cfg bottom)
+  `(make-pcf-graph
+    :cfg (get-graph-map ,cfg)
+    :bottom ,bottom))
 
 (defstruct (pcf-basic-block
              (:print-function
@@ -110,9 +116,6 @@
 
 (defmacro get-block-by-id (id blocks)
   `(cdr (map-find (write-to-string ,id) (get-graph-map ,blocks))))
-
-;;(defmacro get-block-by-id-str (id blocks)
-;;  `(cdr (map-find ,id ,blocks)))
 
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
@@ -308,7 +311,7 @@
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (str) next-op
     (cond
-      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase (this is handled elsewhere, and main isn't even in "fns" anyway) and functions will get their successors from the call instruction 
+      ((set-member str fns) ;; if we're about to declare a function, it doesn't get added as a successor right now. main is preceded by initbase and functions will get their successors from the call instruction 
        (typecase cur-op
          (initbase (initbase-instr))
          (t
@@ -337,8 +340,7 @@
 
 (defun get-cfg-bottom (cfg)
   ;; need the index of the very last node in the cfg, which is the return from "main"
-  ;; is there an efficient way to get this?
-  cfg
+  (get-graph-bottom cfg)
   )
 
 (defun get-prev-blocks (block cfg)
@@ -470,9 +472,10 @@
                 (fifth reduce-forward) ;id
                 (new-block :id (fifth reduce-forward) :op (first reduce-forward))
                 blocks
-              blocks)));      forward-cfg
+              blocks))
+           (cfg-bottom (cfg-with-bottom :cfg forward-cfg :bottom (fifth reduce-forward))))     
       (print *specialfunctions*)
-      (let ((preds (find-preds (update-ret-succs forward-cfg
+      (let ((preds (find-preds (update-ret-succs cfg-bottom
                                      (sixth lbl-fn-map)
                                      (fourth lbl-fn-map)))))
         (print "got preds")
