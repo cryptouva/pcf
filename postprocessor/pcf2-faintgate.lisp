@@ -42,10 +42,10 @@
 ;;; DepKill simply states that all of the operands of the expression which are variables hit the kill list; if a variable appears on both the lhs and rhs of an assignment, it does not become faint before the assignment, since that value is still important to the output
 
 (defparameter confluence-operator #'set-inter)
-;; "top" is Var
+;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
 (defmacro top-set ()
-  `(set-insert (empty-set) "top"))
+  `(set-insert (empty-set) *lattice-top*))
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
@@ -55,13 +55,18 @@
     (t 
      (funcall confluence-operator set1 set2))))
 
+;; this is the problem!
+;; resolve issues of cfg not being of proper type
+;; resolve issues of using block or block-id
 (defun get-out-sets (blck cfg)
+  (break)
   (reduce
    (lambda (temp-out succ)
+     (break)
      (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
        (funcall #'confluence-op temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-out-set (get-block-by-id blck cfg))))
+   :initial-value (get-block-out-set blck)))
 
 #|
 (defgeneric faint-flow-fn (blck cfg)
@@ -73,6 +78,7 @@
 
 (defun faint-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
+  (break)
   (set-union
    (set-diff (get-out-sets blck cfg) (kill (get-block-op blck)))
    (gen (get-block-op blck))))
@@ -107,6 +113,7 @@
 
 (defmethod kill (op)
   ;; kill = const-kill union gep_kill
+  (break)
   (set-union (const-kill op) (dep-kill op)))
 
 (defmacro gen-kill-standard ()
@@ -119,12 +126,14 @@
   `(defmethod const-gen ((op ,type))
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
-          it
+          (if (null it)
+              (gen-kill-standard)
+              it)
           (gen-kill-standard)
           )))
 
 (defmacro def-dep-gen (type &body body)
-  `(defmethod dep-gen ((op ,type) blck)
+  `(defmethod dep-gen ((op ,type))
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -149,12 +158,12 @@
 
 ;; and the macro to write const-gen, dep-gen, const-kill, and dep-kill for each instruction
 (defmacro def-gen-kill (type &key (const-gen nil) (dep-gen nil) (const-kill nil) (dep-kill nil))
-  `(def-const-gen ,type ,const-gen)
-  `(def-dep-gen ,type ,dep-gen) ; dep-gen always /0 in faint analysis
-  `(def-const-kill ,type ,const-kill)
-  `(def-dep-kill ,type ,dep-kill)
-  )
-
+  `(progn
+     (def-const-gen ,type ,const-gen)
+     (def-dep-gen ,type ,dep-gen) ; dep-gen always /0 in faint analysis
+     (def-const-kill ,type ,const-kill)
+     (def-dep-kill ,type ,dep-kill)
+  ))
 
 (def-gen-kill bits
     :const-gen `(with-slots (dest) op

@@ -14,7 +14,8 @@
            get-block-out-set
            get-block-id
            get-block-by-id
-           flow-test)
+           flow-test
+           *lattice-top*)
   )
 (in-package :pcf2-dataflow)
 
@@ -23,7 +24,7 @@
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-
+(defparameter *lattice-top* -1)
 ;;;
 ;;; the pcf-basic-block struct 
 ;;; and supporting macros
@@ -104,10 +105,13 @@
     `(let ((,blocksym ,blck))
        (pcf-basic-block-succs ,blocksym))))
 
-(defmacro get-block-op (blck)
-  (let ((blocksym (gensym)))
+(defmacro get-block-op-list (blck)
+    (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-op ,blocksym))))
+  
+(defmacro get-block-op (blck)
+  `(car (get-block-op-list ,blck)))
 
 (defmacro get-block-out-set (blck)
   (let ((blocksym (gensym)))
@@ -129,7 +133,7 @@
 (defmacro add-op (op bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (cons ,op (get-block-op ,bb))
+               :op (cons ,op (get-block-op-list ,bb))
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -140,7 +144,7 @@
 (defmacro add-pred (prd bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds (cons ,prd (get-block-preds ,bb))
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -150,7 +154,7 @@
 (defmacro set-block-preds (prds bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds ,prds
                :succs (get-block-succs ,bb)
                :out-set (get-block-out-set ,bb)
@@ -161,7 +165,7 @@
 (defmacro add-succ (succ bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds (get-block-preds ,bb)
                :succs (cons ,succ (get-block-succs ,bb))
                :out-set (get-block-out-set ,bb)
@@ -171,7 +175,7 @@
 (defmacro set-block-succs (succs bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds (get-block-succs ,bb)
                :succs ,succs
                :out-set (get-block-out-set ,bb)
@@ -183,7 +187,7 @@
 (defmacro set-out-set (new-set bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set ,new-set
@@ -191,29 +195,19 @@
      ,@body))
 
 (defmacro set-out-to-top (bb)
-  `(set-out-set (set-insert (empty-set) "top") ,bb
+  `(set-out-set (set-insert (empty-set) *lattice-top*) ,bb
      ,bb))
 
 ;; new-set is the new out-set
 (defmacro update-out-set (new-set join-fn bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
-               :op (get-block-op ,bb)
+               :op (get-block-op-list ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :out-set (funcall ,join-fn ,new-set (get-block-out-set ,bb))
                )))
      ,@body))
-
-(defmacro push-stack (val stack &body body)
-  `(let ((,stack (cons ,val stack)))
-     ,@body))
-
-(defmacro pop-stack (val stack &body body)
-  `(let ((,val (car ,stack))
-         (,stack (cdr ,stack)))
-     ,@body))
-
 
 ;; id should be an integer
 ;; val should be a block
@@ -519,9 +513,8 @@
     (map-map
      (lambda (key value) 
        (declare (ignore key))
-       ;;(print value)
-       (break)
-       (funcall flow-fn value (get-graph-map cfg)))
+       ;;(break)
+       (funcall flow-fn value cfg))
      (get-graph-map cfg))))
 
 (defun init-flow-to-top (cfg)
