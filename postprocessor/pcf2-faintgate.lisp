@@ -2,7 +2,7 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
-  (:export gen kill)
+  (:export faint-flow-fn)
   )
 
 (in-package :pcf2-faintgate)
@@ -63,11 +63,16 @@
    (get-block-succs blck)
    :initial-value (get-block-out-set (get-block-by-id blck cfg))))
 
+#|
 (defgeneric faint-flow-fn (blck cfg)
   (:documentation "this function describes how an operation performs its flow function")
   )
 
 (defmethod faint-flow-fn (blck cfg)
+|#
+
+(defun faint-flow-fn (blck cfg)
+  (declare (optimize (speed 0) (debug 3)))
   (set-union
    (set-diff (get-out-sets blck cfg) (kill (get-block-op blck)))
    (gen (get-block-op blck))))

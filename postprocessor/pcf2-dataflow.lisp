@@ -13,7 +13,8 @@
            get-block-preds
            get-block-out-set
            get-block-id
-           get-block-by-id)
+           get-block-by-id
+           flow-test)
   )
 (in-package :pcf2-dataflow)
 
@@ -52,10 +53,10 @@
     :bottom (get-graph-bottom ,cfg)
     ))                  
 
-(defmacro new-cfg ()
+(defmacro new-cfg (&key (cfg `(map-empty :comp #'string<)) (bottom nil))
   `(make-pcf-graph
-    :cfg (map-empty :comp #'string<)
-    :bottom nil)
+    :cfg ,cfg
+    :bottom ,bottom)
   )
 
 (defmacro cfg-with-bottom (&key cfg bottom)
@@ -415,6 +416,7 @@
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
+  (print "find preds")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
@@ -434,6 +436,7 @@
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
   (declare (optimize (debug 3)(speed 0)))
+  (print "update-ret-succs")
   (print call-addrs)
   (first (map-reduce #'(lambda (state address fname)
                          (let ((cfg (first state))
@@ -458,7 +461,6 @@
     (print lbl-fn-map)
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
-                        ;; (break)
                         (declare (optimize (debug 3)(speed 0)))
                         (apply #'cfg-basic-block (cons y x)))
                     restops
@@ -470,21 +472,28 @@
                                          nil)))
            (blocks (second reduce-forward))
            (forward-cfg
-            (insert-block
+            (insert-block 
                 (fifth reduce-forward) ;id
                 (new-block :id (fifth reduce-forward) :op (first reduce-forward))
                 blocks
               blocks))
-           (cfg-bottom (cfg-with-bottom :cfg forward-cfg :bottom (fifth reduce-forward))))     
-      (print *specialfunctions*)
-      (let ((preds (find-preds (update-ret-succs cfg-bottom
+           (cfg-bottom (cfg-with-bottom :cfg forward-cfg :bottom (fifth reduce-forward)))
+           (preds (find-preds (update-ret-succs cfg-bottom
+                                                (sixth lbl-fn-map)
+                                                (fourth lbl-fn-map))
+                              )))
+      preds
+      )))
+#|      
+(cfg-with-map :cfg cfg-bottom :map (find-preds (update-ret-succs cfg-bottom
+                                                                       (sixth lbl-fn-map)
+                                                                       (fourth lbl-fn-map))))))) |#
+#|
+(preds (find-preds (update-ret-succs cfg-bottom
                                      (sixth lbl-fn-map)
                                      (fourth lbl-fn-map)))))
-        (print "got preds")
-        (progn
-          (loop for i from 0 to 25
-             collect (print (get-block-by-id i preds)))
-          (cfg-with-map :cfg cfg-bottom :map (init-flow-to-top preds)))))))
+(cfg-with-map :cfg cfg-bottom :map preds)))))
+|#
 
 ;; when flowing,
 ;; each node carries info about its own out-set
@@ -504,22 +513,34 @@
 
 ;; need to construct some functions for comparing out-sets with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
+(defun flow-test (ops flow-fn)
+  ;;(declare (ignore flow-fn))
+  (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
+    (map-map
+     (lambda (key value) 
+       (declare (ignore key))
+       ;;(print value)
+       (break)
+       (funcall flow-fn value (get-graph-map cfg)))
+     (get-graph-map cfg))))
 
 (defun init-flow-to-top (cfg)
-  (map-map 
-   (lambda(key val)
-     (declare (ignore key))
-     (set-out-to-top val))
-   (get-graph-map cfg)))
+  (new-cfg :cfg 
+           (map-map 
+            (lambda(key val)
+              (declare (ignore key))
+              (set-out-to-top val))
+            (get-graph-map cfg))
+           :bottom (get-cfg-bottom cfg)
+           ))
 
 (defun init-flow-values (cfg flow-fn)
   (let ((empty-cfg (init-flow-to-top cfg)))
     (map-map
      (lambda(key val)
        (declare (ignore key))
-       (funcall flow-fn val cfg))
+       (funcall flow-fn val (get-graph-map cfg)))
      empty-cfg)))
-
 
 (defun do-flow (cfg worklist flow-fn join-fn)
   (declare (optimize (debug 3)(speed 0)))

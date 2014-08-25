@@ -12,7 +12,7 @@
                                :skew-list
                                :lcc-dataflow
 			       :pcf2-dataflow
-                               ;:pcf2-deadgate
+                               :pcf2-faintgate
                                )
             (:export test-interp
                      pcf-cfg
@@ -21,7 +21,8 @@
                      save-pcf-ops
                      load-pcf-ops
                      pcf-simulate
-                     test-get-ops-from-cfg)
+                     test-get-ops-from-cfg
+                     faint-analyze-cfg)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -57,10 +58,8 @@
 (defun pcf-cfg (ops)
   (make-pcf-cfg ops))
 
-#|
-(defun pcf-deadgates (ops)
-  (make-def-use-map ops))
-|#
+(defun faint-analyze-cfg (ops)
+  (flow-test ops #'faint-flow-fn))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
