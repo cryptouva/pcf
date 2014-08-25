@@ -59,10 +59,10 @@
 ;; resolve issues of cfg not being of proper type
 ;; resolve issues of using block or block-id
 (defun get-out-sets (blck cfg)
-  (break)
+  ;;(break)
   (reduce
    (lambda (temp-out succ)
-     (break)
+     ;;(break)
      (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
        (funcall #'confluence-op temp-out succ-out)))
    (get-block-succs blck)
@@ -78,10 +78,12 @@
 
 (defun faint-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
-  (break)
-  (set-union
-   (set-diff (get-out-sets blck cfg) (kill (get-block-op blck)))
-   (gen (get-block-op blck))))
+  ;;(break)
+  (let ((flow (set-union
+               (set-diff (get-out-sets blck cfg) (kill (get-block-op blck)))
+               (gen (get-block-op blck)))))
+    ;;(print flow)
+    flow))
 
 (defgeneric gen (op)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -109,12 +111,19 @@
 
 (defmethod gen (op)
   ;; gen = const_gen union dep_gen
-  (set-union (const-gen op) (dep-gen op)))
+  (let ((gen-set (set-union (const-gen op) (dep-gen op))))
+    (print "op:")
+    (print op)
+    (print "gen:")
+    (print gen-set)
+    gen-set))
 
 (defmethod kill (op)
   ;; kill = const-kill union gep_kill
-  (break)
-  (set-union (const-kill op) (dep-kill op)))
+  ;;(break)
+  (let ((kill-set (set-union (const-kill op) (dep-kill op))))
+    (print "kill:")
+    (print kill-set)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
@@ -126,9 +135,7 @@
   `(defmethod const-gen ((op ,type))
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
-          (if (null it)
-              (gen-kill-standard)
-              it)
+          it
           (gen-kill-standard)
           )))
 
@@ -182,6 +189,13 @@
   )
 
 (def-gen-kill gate
+    :const-gen `(with-slots (dest) op
+                  (singleton dest))
+    :dep-kill `(with-slots (op1 op2 dest) op
+                 (if (or (eq op1 dest)
+                         (eq op2 dest))
+                     (singleton dest)
+                     (empty-set)))
     )
 
 (def-gen-kill const
@@ -203,8 +217,9 @@
 
 (def-gen-kill copy
     :const-gen`(with-slots (op1 op2) op
+                 (break)
                  (set-from-list
-                  (loop for i from op1 to (+ op1 op2) collect i)
+                  (loop for i from op1 to (+ op1 op2) collecting i)
                   ))
     )
 
