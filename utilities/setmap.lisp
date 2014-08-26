@@ -134,13 +134,17 @@
   "Create a set that contains the elements of \"lst\""
   (declare (type list lst)
            (type (function (t t) boolean) comp))
-  (make-avl-set :tree
+#|  (make-avl-set :tree
                 (reduce (lambda (st x)
                           (avl-tree-insert-unique x st :comp comp))
-                        lst :initial-value nil)
+                        lst
+                        :initial-value (empty-set :comp comp))
                 :comp comp
-                )
-  )
+                )|#
+  (reduce (lambda (st x)
+            (set-insert st x))
+            lst
+            :initial-value (empty-set :comp comp)))
 
 (defun list-from-set (st)
   (declare (optimize (debug 3) (speed 0)))

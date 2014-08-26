@@ -173,53 +173,55 @@
   ))
 
 (def-gen-kill bits
-    :const-gen `(with-slots (dest) op
-                  (set-from-list dest)) ;; everything in the list gets added to gen
-    :const-kill `(with-slots (op1) op
-                   (singleton op1)) ;; op1 is not faint
+    :const-gen (with-slots (dest) op
+                 (progn
+                   (print (set-from-list dest))
+                   (set-from-list dest))) ;; everything in the list gets added to gen
+    :const-kill (with-slots (op1) op
+                  (singleton op1)) ;; op1 is not faint
     )
 
 (def-gen-kill join
-    :const-gen `(with-slots (op1) op
-                  (singleton op1)
-                  )
-    :dep-kill `(with-slots (dest) op
-                   (set-from-list dest)
-                   )
-  )
+    :const-gen (with-slots (op1) op
+                 (singleton op1))
+    :dep-kill (with-slots (dest) op
+                (set-from-list dest)))
 
 (def-gen-kill gate
-    :const-gen `(with-slots (dest) op
+    :const-gen (with-slots (dest) op
                   (singleton dest))
-    :dep-kill `(with-slots (op1 op2 dest) op
-                 (if (or (eq op1 dest)
-                         (eq op2 dest))
-                     (singleton dest)
-                     (empty-set)))
+    :dep-kill (with-slots (op1 op2 dest) op
+                (if (or (eq op1 dest)
+                        (eq op2 dest))
+                    (singleton dest)
+                    (empty-set)))
     )
 
 (def-gen-kill const
     ;; if x = const, add x to gen
-    :const-gen `(with-slots (dest) op
-                  (singleton dest)
-                  )
-    )
+    :const-gen (with-slots (dest) op
+                  (singleton dest)))
 
-(def-gen-kill add)
-(def-gen-kill sub)
-(def-gen-kill mul)
-(def-gen-kill initbase
-    ;; nothing
-    )
-(def-gen-kill clear
-    ;; nothing
-    )
+(def-gen-kill add
+    :const-gen (with-slots (dest) op
+                 (singleton dest)))
+
+(def-gen-kill sub
+    :const-gen (with-slots (dest) op
+                 (singleton dest)))
+
+(def-gen-kill mul
+    :const-gen (with-slots (dest) op
+                 (singleton dest)))
+
+(def-gen-kill initbase)
+(def-gen-kill clear)
 
 (def-gen-kill copy
-    :const-gen`(with-slots (op1 op2) op
-                 (break)
+    :const-gen (with-slots (op2 dest) op
+                 ;;(break)
                  (set-from-list
-                  (loop for i from op1 to (+ op1 op2) collecting i)
+                  (list dest)
                   ))
     )
 
