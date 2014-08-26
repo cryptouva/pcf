@@ -113,7 +113,7 @@
      )
     (t tr)
     )
-  )
+1  )
 
 (defun avl-list-cons (x lst)
   "Using an AVL tree representation of a list, perform cons"
