@@ -117,10 +117,8 @@
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
-    (break)
     (make-avl-set :tree
                   (avl-tree-reduce (lambda (st x)
-                                     (break)
                                      (avl-tree-insert-unique x st :comp comp))
                                    (avl-set-tree set1)
                                    (avl-set-tree set2))
@@ -130,7 +128,11 @@
   )
 
 (defun set-insert (set x)
-  (set-union set (singleton x :comp (avl-set-comp set)))
+  (let ((comp (avl-set-comp set)))
+    (make-avl-set :tree
+                  (avl-tree-insert x (avl-set-tree set) :comp comp)
+                  :comp comp))
+  ;; (set-union set (singleton x :comp (avl-set-comp set)))
   )
 
 (defun set-from-list (lst &key (comp #'<))

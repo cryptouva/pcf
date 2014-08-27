@@ -91,7 +91,6 @@
 
 (defun avl-balance (tr)
   (declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -126,38 +125,37 @@
   "Insert a new value into an AVL tree."
   (if (null lst)
       (avl-cons x nil nil)
-      (if (funcall comp x (avl-data lst))
-          (avl-balance (avl-cons
-                        (avl-data lst)
+      (cond
+        ((null x) lst)
+        ((funcall comp x (avl-data lst))
+         (avl-balance (avl-cons
+                       (avl-data lst)
                         (avl-tree-insert x (avl-left lst) :comp comp)
-                        (avl-right lst)))
-          (avl-balance (avl-cons
-                        (avl-data lst)
-                        (avl-left lst)
-                        (avl-tree-insert x (avl-right lst) :comp comp)))
-          )
-      )
-  )
+                        (avl-right lst))))
+        (t (avl-balance (avl-cons
+                         (avl-data lst)
+                         (avl-left lst)
+                         (avl-tree-insert x (avl-right lst) :comp comp)))))))
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
   (declare (optimize (debug 3) (speed 0))
            (type function comp))
-  (break)
   (if (null lst)
       (avl-cons x nil nil)
       (cond
+        ((null x) lst)
         ((funcall comp x (avl-data lst))
          (avl-balance (avl-cons
-                        (avl-data lst)
-                        (avl-tree-insert-unique x (avl-left lst) :comp comp)
-                        (avl-right lst)))
+                       (avl-data lst)
+                       (avl-tree-insert-unique x (avl-left lst) :comp comp)
+                       (avl-right lst)))
          )
         ((funcall comp (avl-data lst) x)
-          (avl-balance (avl-cons
-                        (avl-data lst)
-                        (avl-left lst)
-                        (avl-tree-insert-unique x (avl-right lst) :comp comp)))
+         (avl-balance (avl-cons
+                       (avl-data lst)
+                       (avl-left lst)
+                       (avl-tree-insert-unique x (avl-right lst) :comp comp)))
          )
         ;; To allow maps to be updated, we create a node with this input value
         (t (avl-cons x
