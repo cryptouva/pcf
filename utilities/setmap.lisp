@@ -67,7 +67,7 @@
 (defun singleton (x &key (comp #'<))
   "Create a new singleton set"
   (make-avl-set :tree
-                (set-insert (empty-set :comp comp) x) ;;(avl-tree-insert x (empty-set) :comp comp)
+                (avl-tree-insert x nil :comp comp)
                 :comp comp)
   )
 
@@ -112,12 +112,15 @@
 
 (defun set-union (set1 set2)
   "Compute the union of \"set1\" and \"set2\""
-  (declare (type avl-set set1 set2))
+  (declare (type avl-set set1 set2)
+           (optimize (debug 3)(speed 0)))
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
+    (break)
     (make-avl-set :tree
                   (avl-tree-reduce (lambda (st x)
+                                     (break)
                                      (avl-tree-insert-unique x st :comp comp))
                                    (avl-set-tree set1)
                                    (avl-set-tree set2))

@@ -36,7 +36,7 @@
 (defmacro avl-left (tr)
   `(if (null (cdr ,tr))
        nil
-       (caddr ,tr)))
+       (caddr ,tr))) 
 
 (defmacro avl-right (tr)
   `(if (null (cdr ,tr))
@@ -90,6 +90,8 @@
   )
 
 (defun avl-balance (tr)
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -99,21 +101,16 @@
                       (avl-cons (avl-data tr)
                                 (avl-left tr)
                                 (right-rotate (avl-right tr)))
-                      tr)
-                  )
-     )
+                      tr)))
     ((< -1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
      (right-rotate (if (< (avl-height (avl-left (avl-left tr)))  
                           (avl-height (avl-right (avl-left tr))))
-                        ; Need a left rotation
+                                        ; Need a left rotation
                        (avl-cons (avl-data tr)
                                  (left-rotate (avl-left tr))
                                  (avl-right tr))
-                       tr))
-     )
-    (t tr)
-    )
-1  )
+                       tr)))
+    (t tr)))
 
 (defun avl-list-cons (x lst)
   "Using an AVL tree representation of a list, perform cons"
@@ -146,6 +143,7 @@
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
   (declare (optimize (debug 3) (speed 0))
            (type function comp))
+  (break)
   (if (null lst)
       (avl-cons x nil nil)
       (cond
@@ -277,7 +275,7 @@
   "Fold the values in the tree \"tr\" using the function \"fn\".  Note:  DO NOT ASSUME ANYTHING ABOUT ORDER!!!
 
 \"fn\" should be of the form (lambda (state x) ...)"
-  (declare (optimize (debug 0) (speed 3))
+  (declare (optimize (debug 3) (speed 0))
            (type function fn))
   (if (null tr)
       st

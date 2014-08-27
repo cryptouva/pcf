@@ -55,9 +55,7 @@
     (t 
      (funcall confluence-operator set1 set2))))
 
-;; this is the problem!
-;; resolve issues of cfg not being of proper type
-;; resolve issues of using block or block-id
+
 (defun get-out-sets (blck cfg)
   ;;(break)
   (reduce
@@ -67,14 +65,6 @@
        (funcall #'confluence-op temp-out succ-out)))
    (get-block-succs blck)
    :initial-value (get-block-out-set blck)))
-
-#|
-(defgeneric faint-flow-fn (blck cfg)
-  (:documentation "this function describes how an operation performs its flow function")
-  )
-
-(defmethod faint-flow-fn (blck cfg)
-|#
 
 (defun faint-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
