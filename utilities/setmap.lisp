@@ -117,10 +117,8 @@
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
   (let ((comp (avl-set-comp set1))
         )
-    (break)
     (make-avl-set :tree
                   (avl-tree-reduce (lambda (st x)
-                                     (break)
                                      (avl-tree-insert-unique x st :comp comp))
                                    (avl-set-tree set1)
                                    (avl-set-tree set2))
