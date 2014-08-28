@@ -49,7 +49,7 @@
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  ;;(declare (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   (cond
     ((set-equalp set1 (top-set)) set2)
     ((set-equalp set2 (top-set)) set1)
@@ -73,8 +73,8 @@
 (defun faint-flow-fn (blck cfg state)
   (declare (optimize (speed 0) (debug 3)))
   (let ((flow (conf-union
-                       (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
-                       (gen (get-block-op blck)))))
+               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
+               (gen (get-block-op blck)))))
     ;;(print flow)
     flow))
 

@@ -36,7 +36,7 @@
                 (declare (ignore depth))
                 (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
                 (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct)))))
-  (cfg (map-empty :comp #'string<) :type avl-set)
+  (cfg (map-empty :comp #'<) :type avl-set)
   (bottom nil)
   )
 
@@ -54,7 +54,7 @@
     :bottom (get-graph-bottom ,cfg)
     ))                  
 
-(defmacro new-cfg (&key (cfg `(map-empty :comp #'string<)) (bottom nil))
+(defmacro new-cfg (&key (cfg `(map-empty :comp #'<)) (bottom nil))
   `(make-pcf-graph
     :cfg ,cfg
     :bottom ,bottom)
@@ -131,12 +131,12 @@
   `(cdr (map-find ,targ ,lbls)))
 
 (defmacro get-block-by-id (id blocks)
-  `(cdr (map-find (write-to-string ,id) (get-graph-map ,blocks))))
+  `(cdr (map-find ,id (get-graph-map ,blocks))))
 
 
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
-   :id (write-to-string ,id)
+   :id ,id
    :op (list ,op)))
 
 ;; op is an opcode, bb is the block itself
@@ -225,7 +225,7 @@
 (defmacro insert-block (id val blocks &body body)
   ;;  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
   ;;     ,@body))
-  `(let ((,blocks (graph-insert (write-to-string ,id) ,val ,blocks)))
+  `(let ((,blocks (graph-insert ,id ,val ,blocks)))
      ,@body))
 
 ;;;
@@ -401,7 +401,7 @@
                                        callstack
                                        (if (set-member fname *specialfunctions*)
                                            call-addrs
-                                           (map-insert (write-to-string idx) fname call-addrs)))))
+                                           (map-insert idx fname call-addrs)))))
                          (ret (list lbls
                                     fns
                                     (+ 1 idx)
@@ -415,7 +415,7 @@
                                0
                                (map-empty :comp #'string<)
                                nil
-                               (map-empty :comp #'string<))))
+                               (map-empty :comp #'<))))
 
 
 (defun find-preds (f-cfg)
@@ -426,10 +426,10 @@
 		  (reduce (lambda (cfg* succ)
 			    (declare (optimize (debug 3)(speed 0)))
                             (let ((updateblock (get-block-by-id succ cfg*))
-				  (blockid (parse-integer blockid))
+				  ;; (blockid (parse-integer blockid)
                                   )
 			      (add-pred blockid updateblock
-                                  (insert-block (parse-integer (get-block-id updateblock)) updateblock cfg*
+                                  (insert-block (get-block-id updateblock) updateblock cfg*
                                     cfg*))))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
@@ -447,8 +447,8 @@
                                (call-addrs (second state))
                                (ret-addrs (third state)))
                            (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
-                             (add-succ (1+ (parse-integer address)) retblock
-                                 (insert-block (parse-integer (get-block-id retblock)) retblock cfg
+                             (add-succ (1+ address) retblock
+                                 (insert-block (get-block-id retblock) retblock cfg
                                    (list
                                     cfg
                                     call-addrs
@@ -523,7 +523,7 @@
     (map-reduce
      (lambda (cfg* key block)
        (insert-block
-           (parse-integer key)
+           key
            (set-out-set
                (funcall flow-fn block cfg* nil)
                block
