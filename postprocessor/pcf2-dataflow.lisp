@@ -79,6 +79,7 @@
                 (format stream "Preds: ~A~%" (get-block-preds struct))
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Out-Set: ~A~%" (get-block-out-set struct))
+                
                 )
               )
              )
@@ -87,6 +88,7 @@
   (preds nil :type list)
   (succs nil :type list)
   (out-set (empty-set) :type avl-set)
+  (data nil :type list)
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -109,6 +111,7 @@
     (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-op ,blocksym))))
+
   
 (defmacro get-block-op (blck)
   `(car (get-block-op-list ,blck)))
@@ -118,11 +121,18 @@
     `(let ((,blocksym ,blck))
        (pcf-basic-block-out-set ,blocksym))))
 
+(defmacro get-block-data (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+       (pcf-basic-block-data ,blocksym))))
+
+
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
 
 (defmacro get-block-by-id (id blocks)
   `(cdr (map-find (write-to-string ,id) (get-graph-map ,blocks))))
+
 
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
@@ -521,7 +531,7 @@
            cfg*
          cfg*))
      (get-graph-map cfg)
-     (get-graph-map cfg))))
+     cfg)))
 
 (defun init-flow-to-top (cfg)
   (new-cfg :cfg 

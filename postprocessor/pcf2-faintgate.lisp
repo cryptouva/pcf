@@ -49,8 +49,7 @@
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  (declare (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(declare (optimize (debug 3)(speed 0)))
   (cond
     ((set-equalp set1 (top-set)) set2)
     ((set-equalp set2 (top-set)) set1)
@@ -64,16 +63,10 @@
     (t (set-union set1 set2))))
 
 (defun get-out-sets (blck cfg conf)
-  (break)
   (reduce
    (lambda (temp-out succ)
-     (declare (optimize (debug 3) (speed 0)))
-     (let ((tmpblck (get-block-by-id succ cfg)))
-       (break)
-       (let ((succ-out (get-block-out-set tmpblck)))
-         (funcall conf temp-out succ-out))))
-   ;;(let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
-   ;;(funcall conf temp-out succ-out)))
+     (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
+       (funcall conf temp-out succ-out)))
    (get-block-succs blck)
    :initial-value (get-block-out-set blck)))
 
@@ -111,19 +104,21 @@
 
 (defmethod gen (op)
   ;; gen = const_gen union dep_gen
-  (let ((gen-set (set-union (const-gen op) (dep-gen op))))
+  (conf-union (const-gen op) (dep-gen op)))
+#|  (let ((gen-set (set-union (const-gen op) (dep-gen op))))
     (print "op:")
     (print op)
     (print "gen:")
     (print gen-set)
-    gen-set))
+    gen-set))|#
 
 (defmethod kill (op)
   ;; kill = const-kill union gep_kill
   ;;(break)
-  (let ((kill-set (set-union (const-kill op) (dep-kill op))))
+  (conf-union (const-kill op)(dep-kill op)))
+#|  (let ((kill-set (set-union (const-kill op) (dep-kill op))))
     (print "kill:")
-    (print kill-set)))
+    (print kill-set)))|#
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
