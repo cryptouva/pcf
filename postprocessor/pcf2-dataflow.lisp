@@ -420,7 +420,7 @@
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
-  (print "find preds")
+  ;;(print "find preds")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
@@ -440,8 +440,8 @@
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
   (declare (optimize (debug 3)(speed 0)))
-  (print "update-ret-succs")
-  (print call-addrs)
+  ;;(print "update-ret-succs")
+  ;;(print call-addrs)
   (first (map-reduce #'(lambda (state address fname)
                          (let ((cfg (first state))
                                (call-addrs (second state))
@@ -462,7 +462,7 @@
   (let ((op1 (first ops))
         (restops (rest ops))
 	(lbl-fn-map (get-label-and-fn-map ops)))
-    (print lbl-fn-map)
+    ;;(print lbl-fn-map)
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         (declare (optimize (debug 3)(speed 0)))
@@ -520,6 +520,7 @@
 (defun flow-test (ops flow-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
+    ;;(print (map-keys (get-graph-map cfg)))
     (map-reduce
      (lambda (cfg* key block)
        (insert-block

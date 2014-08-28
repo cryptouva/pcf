@@ -170,7 +170,7 @@
 (def-gen-kill bits
     :const-gen (with-slots (dest) op
                  (progn
-                   (print (set-from-list dest))
+                   ;;(print (set-from-list dest))
                    (set-from-list dest))) ;; everything in the list gets added to gen
     :const-kill (with-slots (op1) op
                   (singleton op1)) ;; op1 is not faint

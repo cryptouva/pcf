@@ -207,9 +207,11 @@
   (declare (type avl-set mp) (type function cmp))
   (map-reduce (lambda (state key val)
                 (declare (ignore val))
-                  (set-insert state key))
+                ;; (set-insert state key)
+                (cons val state))
               mp
-              (empty-set :comp cmp)))
+              nil ;;(empty-set :comp cmp)
+              ))
 
 (defun map-vals (mp &key (cmp #'<))
   (declare (type avl-set mp) (type function cmp))
@@ -272,6 +274,23 @@
                                       (funcall fn (car x) (cdr x))))
                               (avl-set-tree mp) :comp (avl-set-comp mp))
                 :comp (avl-set-comp mp))
+  )
+
+(defun map-fold (fn keys mp st)
+  "fn should have the form (lambda (state key val)), keys should be the keys in order"
+  (if (null keys)
+      st
+      (map-fold fn
+                (cdr keys) 
+                mp 
+                (funcall fn st (car keys) (map-find (car keys) mp)))))
+
+(defun map-fold-forward (fn mp st)
+  (map-fold fn (list-from-set (map-keys mp)) mp st)
+  )
+
+(defun map-fold-backward (fn mp st)
+  (map-fold fn (reverse (list-from-set (map-keys mp))) mp st)
   )
 
 (defun map-reduce (fn mp st)
