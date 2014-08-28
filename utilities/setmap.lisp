@@ -30,7 +30,9 @@
                      empty-set
                      avl-set
                      alist->map
-                     alist->map*)
+                     alist->map*
+                     map-fold-forward
+                     map-fold-backward)
             )
 (in-package :setmap)
 
@@ -39,7 +41,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct) :comp (avl-set-comp struct))
+                (avl-tree-map (lambda (x) (format stream "~A " x)) (avl-set-tree struct) :comp (avl-set-comp struct))
                 (format stream "}")
                 )
               )
@@ -212,7 +214,7 @@
   (map-reduce (lambda (state key val)
                 (declare (ignore val))
                 ;; (set-insert state key)
-                (cons val state))
+                (cons key state))
               mp
               nil ;;(empty-set :comp cmp)
               ))
@@ -287,14 +289,14 @@
       (map-fold fn
                 (cdr keys) 
                 mp 
-                (funcall fn st (car keys) (map-find (car keys) mp)))))
+                (funcall fn st (car keys) (cdr (map-find (car keys) mp))))))
 
 (defun map-fold-forward (fn mp st)
-  (map-fold fn (list-from-set (map-keys mp)) mp st)
+  (map-fold fn (reverse (map-keys mp)) mp st)
   )
 
 (defun map-fold-backward (fn mp st)
-  (map-fold fn (reverse (list-from-set (map-keys mp))) mp st)
+  (map-fold fn (map-keys mp) mp st)
   )
 
 (defun map-reduce (fn mp st)

@@ -520,8 +520,8 @@
 (defun flow-test (ops flow-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
-    ;;(print (map-keys (get-graph-map cfg)))
-    (map-reduce
+    (print (map-keys (get-graph-map cfg)))
+    (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
            key
