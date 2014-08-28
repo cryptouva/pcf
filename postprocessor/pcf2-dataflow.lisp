@@ -510,11 +510,17 @@
 (defun flow-test (ops flow-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
-    (map-map
-     (lambda (key value) 
-       (declare (ignore key))
-       ;;(break)
-       (funcall flow-fn value cfg nil))
+    (map-reduce
+     (lambda (cfg* key block)
+       (insert-block
+           (parse-integer key)
+           (set-out-set
+               (funcall flow-fn block cfg* nil)
+               block
+             block)
+           cfg*
+         cfg*))
+     (get-graph-map cfg)
      (get-graph-map cfg))))
 
 (defun init-flow-to-top (cfg)

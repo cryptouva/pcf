@@ -49,28 +49,39 @@
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
+  (declare (optimize (debug 3)(speed 0)))
+  (break)
   (cond
     ((set-equalp set1 (top-set)) set2)
     ((set-equalp set2 (top-set)) set1)
     (t 
      (funcall confluence-operator set1 set2))))
 
+(defun conf-union (set1 set2)
+  (cond
+    ((set-equalp set1 (top-set)) set2)
+    ((set-equalp set2 (top-set)) set1)
+    (t (set-union set1 set2))))
 
 (defun get-out-sets (blck cfg conf)
-  ;;(break)
+  (break)
   (reduce
    (lambda (temp-out succ)
-     ;;(break)
-     (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
-       (funcall conf temp-out succ-out)))
+     (declare (optimize (debug 3) (speed 0)))
+     (let ((tmpblck (get-block-by-id succ cfg)))
+       (break)
+       (let ((succ-out (get-block-out-set tmpblck)))
+         (funcall conf temp-out succ-out))))
+   ;;(let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
+   ;;(funcall conf temp-out succ-out)))
    (get-block-succs blck)
    :initial-value (get-block-out-set blck)))
 
 (defun faint-flow-fn (blck cfg state)
   (declare (optimize (speed 0) (debug 3)))
-  (let ((flow (set-union
-               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
-               (gen (get-block-op blck)))))
+  (let ((flow (conf-union
+                       (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
+                       (gen (get-block-op blck)))))
     ;;(print flow)
     flow))
 
@@ -215,9 +226,18 @@
 (def-gen-kill clear)
 
 ;; the following instructions need to know more about the previous ones
-(def-gen-kill mkptr)
-(def-gen-kill copy-indir)
-(def-gen-kill indir-copy)
+;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
+(def-gen-kill mkptr
+;; has no effect; the loaded constant will take care of this for us.
+)
+
+(def-gen-kill copy-indir
+    ;; 
+)
+(def-gen-kill indir-copy
+    ;;
+)
+
 (def-gen-kill call)
 (def-gen-kill ret)
 (def-gen-kill branch)

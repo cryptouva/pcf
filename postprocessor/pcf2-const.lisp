@@ -7,7 +7,8 @@
 
 (in-package :pcf2-faintgate)
 
-;; this analysis tracks the uses of constants through a program to determine if we can eliminate some gates by propagating constants and to help with other dataflow analyses
+;;; this analysis tracks the uses of constants through a program to determine if we can eliminate some gates by propagating constants and to help with other dataflow analyses
+;;; A variable x e Var has a constant value c e Const at a program point u if for every path reaching u along which a definition of x reaches u, the value of x is c.
 
 ;;; f_n(x) = (x-Kill_n(x) Union Gen_n
 
@@ -50,6 +51,26 @@
 
 (defmacro top-set ()
   `(set-insert (empty-set) *lattice-top*))
+
+(defun constcmp (x y)
+  (typecase x
+    (number (typecase y
+              (number (< x y))
+              (symbol (if (equalp y 'unknown)
+                          t
+                          nil))))
+    (symbol (if (equalp x 'unknown)
+                nil
+                (typecase y ;;must compare if both x and y are symbols
+                  (number t)
+                  (symbol (if (equalp y 'unknown)
+                              t
+                              nil ;; x and y are both 'not-const
+                              ))))
+
+(defun pcf2-const-join-fn (x y)
+  
+  )
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
@@ -162,29 +183,21 @@
      (def-dep-kill ,type ,dep-kill)
   ))
 
-(def-gen-kill bits
-    )
+(def-gen-kill bits)
 
-(def-gen-kill join
-)
+(def-gen-kill join)
 
-(def-gen-kill gate
-    )
+(def-gen-kill gate)
 
-(def-gen-kill const
-)
+(def-gen-kill const)
 
-(def-gen-kill add
-)
+(def-gen-kill add)
 
-(def-gen-kill sub
-)
+(def-gen-kill sub)
 
-(def-gen-kill mul
-)
+(def-gen-kill mul)
 
-(def-gen-kill copy
-)
+(def-gen-kill copy)
 
 (def-gen-kill initbase)
 (def-gen-kill clear)

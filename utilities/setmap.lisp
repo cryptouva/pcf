@@ -141,7 +141,6 @@
           :initial-value (empty-set :comp comp)))
 
 (defun list-from-set (st)
-  (declare (optimize (debug 3) (speed 0)))
   (set-reduce (lambda (st x)
                 (cons x st)
                 )
@@ -179,7 +178,6 @@
 
 (defun set-filter (fn st)
   "Filter \"st\" to produce the subset of all elements for which \"fn\" is true"
-  (declare (optimize (debug 3) (speed 0)))
   (set-reduce (lambda (s x)
                 (if (funcall fn x)
                     (set-insert s x)
@@ -223,8 +221,7 @@
 
 (defun map-insert (x y mp)
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
-  (declare (optimize (debug 3) (speed 0))
-           (type avl-set mp))
+  (declare (type avl-set mp))
   (let ((comp (avl-set-comp mp))
         )
     (make-avl-set :tree
@@ -249,7 +246,6 @@
 
 (defun map-find (x mp &optional (allow-no-result nil))
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
-  (declare (optimize (speed 0)(debug 3)))
   (let ((comp (avl-set-comp mp))
         )
     (multiple-value-bind (found value) (avl-tree-search (cons x nil)
@@ -293,7 +289,6 @@
 
 (defun map-filter (fn mp)
   "Filter \"mp\" to produce the submap of all elements for which \"fn\" is true"
-  (declare (optimize (debug 3) (speed 0)))
   (map-reduce (lambda (m x y)
                 (if (funcall fn x y) ;; functions should be of form (key val)
                     (map-insert x y m)
