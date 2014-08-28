@@ -514,7 +514,7 @@
      (lambda (key value) 
        (declare (ignore key))
        ;;(break)
-       (funcall flow-fn value cfg))
+       (funcall flow-fn value cfg nil))
      (get-graph-map cfg))))
 
 (defun init-flow-to-top (cfg)
@@ -545,19 +545,21 @@
              (new-state (reduce (lambda (state neighbor-id)
                                   (let ((worklist (first state))
                                         (cfg (second state))
+                                        (flow-state (third state))
                                         (neighbor (get-block-by-id neighbor-id cfg)))
                                     ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
                                     (let ((new-out (funcall join-fn
-                                                            (funcall flow-fn cur-node cfg) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
+                                                            (funcall flow-fn cur-node cfg flow-state) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
                                                             (get-block-out-set neighbor))))
                                       (if (set-weaker new-out 
                                                       (get-block-out-set neighbor))
                                           (list (cons neighbor-id worklist)
                                                 (insert-block neighbor-id (set-out-set new-out neighbor neighbor) cfg
-                                                  cfg))
-                                          (list worklist cfg)))))
+                                                  cfg)
+                                                flow-state)
+                                          (list worklist cfg flow-state)))))
                                 (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
-                                :initial-value (list worklist cfg))))
+                                :initial-value (list worklist cfg nil))))
         (do-flow (first new-state) (second new-state) join-fn flow-fn))))
 
 
