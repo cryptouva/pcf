@@ -90,7 +90,6 @@
   )
 
 (defun avl-balance (tr)
-  (declare (optimize (debug 3)(speed 0)))
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -139,8 +138,7 @@
 
 (defun avl-tree-insert-unique (x lst &key (comp #'<))
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
-  (declare (optimize (debug 3) (speed 0))
-           (type function comp))
+  (declare (type function comp))
   (if (null lst)
       (avl-cons x nil nil)
       (cond
@@ -182,7 +180,6 @@
 
 (defun avl-tree-remove (x lst &key (comp #'<))
   "Remove a value from an AVL tree"
-  (declare (optimize (debug 3)(speed 0)))
   (if (null lst)
       (error 'value-not-in-tree)
       (cond
@@ -273,8 +270,7 @@
   "Fold the values in the tree \"tr\" using the function \"fn\".  Note:  DO NOT ASSUME ANYTHING ABOUT ORDER!!!
 
 \"fn\" should be of the form (lambda (state x) ...)"
-  (declare (optimize (debug 3) (speed 0))
-           (type function fn))
+  (declare (type function fn))
   (if (null tr)
       st
       (let* ((st-left (avl-tree-reduce fn (avl-left tr) st))

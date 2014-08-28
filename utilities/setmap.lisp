@@ -145,7 +145,6 @@
           :initial-value (empty-set :comp comp)))
 
 (defun list-from-set (st)
-  (declare (optimize (debug 3) (speed 0)))
   (set-reduce (lambda (st x)
                 (cons x st)
                 )
@@ -183,7 +182,6 @@
 
 (defun set-filter (fn st)
   "Filter \"st\" to produce the subset of all elements for which \"fn\" is true"
-  (declare (optimize (debug 3) (speed 0)))
   (set-reduce (lambda (s x)
                 (if (funcall fn x)
                     (set-insert s x)
@@ -213,9 +211,11 @@
   (declare (type avl-set mp) (type function cmp))
   (map-reduce (lambda (state key val)
                 (declare (ignore val))
-                  (set-insert state key))
+                ;; (set-insert state key)
+                (cons val state))
               mp
-              (empty-set :comp cmp)))
+              nil ;;(empty-set :comp cmp)
+              ))
 
 (defun map-vals (mp &key (cmp #'<))
   (declare (type avl-set mp) (type function cmp))
@@ -227,8 +227,7 @@
 
 (defun map-insert (x y mp)
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
-  (declare (optimize (debug 3) (speed 0))
-           (type avl-set mp))
+  (declare (type avl-set mp))
   (let ((comp (avl-set-comp mp))
         )
     (make-avl-set :tree
@@ -253,7 +252,6 @@
 
 (defun map-find (x mp &optional (allow-no-result nil))
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
-  (declare (optimize (speed 0)(debug 3)))
   (let ((comp (avl-set-comp mp))
         )
     (multiple-value-bind (found value) (avl-tree-search (cons x nil)
@@ -282,6 +280,23 @@
                 :comp (avl-set-comp mp))
   )
 
+(defun map-fold (fn keys mp st)
+  "fn should have the form (lambda (state key val)), keys should be the keys in order"
+  (if (null keys)
+      st
+      (map-fold fn
+                (cdr keys) 
+                mp 
+                (funcall fn st (car keys) (map-find (car keys) mp)))))
+
+(defun map-fold-forward (fn mp st)
+  (map-fold fn (list-from-set (map-keys mp)) mp st)
+  )
+
+(defun map-fold-backward (fn mp st)
+  (map-fold fn (reverse (list-from-set (map-keys mp))) mp st)
+  )
+
 (defun map-reduce (fn mp st)
   "Fold the map \"mp\" over the function \"fn\"
 
@@ -297,7 +312,6 @@
 
 (defun map-filter (fn mp)
   "Filter \"mp\" to produce the submap of all elements for which \"fn\" is true"
-  (declare (optimize (debug 3) (speed 0)))
   (map-reduce (lambda (m x y)
                 (if (funcall fn x y) ;; functions should be of form (key val)
                     (map-insert x y m)

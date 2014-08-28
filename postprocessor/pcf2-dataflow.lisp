@@ -36,7 +36,7 @@
                 (declare (ignore depth))
                 (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
                 (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct)))))
-  (cfg (map-empty :comp #'string<) :type avl-set)
+  (cfg (map-empty :comp #'<) :type avl-set)
   (bottom nil)
   )
 
@@ -54,7 +54,7 @@
     :bottom (get-graph-bottom ,cfg)
     ))                  
 
-(defmacro new-cfg (&key (cfg `(map-empty :comp #'string<)) (bottom nil))
+(defmacro new-cfg (&key (cfg `(map-empty :comp #'<)) (bottom nil))
   `(make-pcf-graph
     :cfg ,cfg
     :bottom ,bottom)
@@ -79,6 +79,7 @@
                 (format stream "Preds: ~A~%" (get-block-preds struct))
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Out-Set: ~A~%" (get-block-out-set struct))
+                
                 )
               )
              )
@@ -87,6 +88,7 @@
   (preds nil :type list)
   (succs nil :type list)
   (out-set (empty-set) :type avl-set)
+  (data nil :type list)
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -109,6 +111,7 @@
     (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-op ,blocksym))))
+
   
 (defmacro get-block-op (blck)
   `(car (get-block-op-list ,blck)))
@@ -118,15 +121,22 @@
     `(let ((,blocksym ,blck))
        (pcf-basic-block-out-set ,blocksym))))
 
+(defmacro get-block-data (blck)
+  (let ((blocksym (gensym)))
+    `(let ((,blocksym ,blck))
+       (pcf-basic-block-data ,blocksym))))
+
+
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
 
 (defmacro get-block-by-id (id blocks)
-  `(cdr (map-find (write-to-string ,id) (get-graph-map ,blocks))))
+  `(cdr (map-find ,id (get-graph-map ,blocks))))
+
 
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
-   :id (write-to-string ,id)
+   :id ,id
    :op (list ,op)))
 
 ;; op is an opcode, bb is the block itself
@@ -215,7 +225,7 @@
 (defmacro insert-block (id val blocks &body body)
   ;;  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
   ;;     ,@body))
-  `(let ((,blocks (graph-insert (write-to-string ,id) ,val ,blocks)))
+  `(let ((,blocks (graph-insert ,id ,val ,blocks)))
      ,@body))
 
 ;;;
@@ -391,7 +401,7 @@
                                        callstack
                                        (if (set-member fname *specialfunctions*)
                                            call-addrs
-                                           (map-insert (write-to-string idx) fname call-addrs)))))
+                                           (map-insert idx fname call-addrs)))))
                          (ret (list lbls
                                     fns
                                     (+ 1 idx)
@@ -405,21 +415,21 @@
                                0
                                (map-empty :comp #'string<)
                                nil
-                               (map-empty :comp #'string<))))
+                               (map-empty :comp #'<))))
 
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
-  (print "find preds")
+  ;;(print "find preds")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
 			    (declare (optimize (debug 3)(speed 0)))
                             (let ((updateblock (get-block-by-id succ cfg*))
-				  (blockid (parse-integer blockid))
+				  ;; (blockid (parse-integer blockid)
                                   )
 			      (add-pred blockid updateblock
-                                  (insert-block (parse-integer (get-block-id updateblock)) updateblock cfg*
+                                  (insert-block (get-block-id updateblock) updateblock cfg*
                                     cfg*))))
 			  (get-block-succs blck) ; for each successor, add the pred
 		 	  :initial-value cfg))
@@ -430,15 +440,15 @@
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
   (declare (optimize (debug 3)(speed 0)))
-  (print "update-ret-succs")
-  (print call-addrs)
+  ;;(print "update-ret-succs")
+  ;;(print call-addrs)
   (first (map-reduce #'(lambda (state address fname)
                          (let ((cfg (first state))
                                (call-addrs (second state))
                                (ret-addrs (third state)))
                            (let ((retblock (get-block-by-id (get-idx-by-label fname ret-addrs) cfg)))
-                             (add-succ (1+ (parse-integer address)) retblock
-                                 (insert-block (parse-integer (get-block-id retblock)) retblock cfg
+                             (add-succ (1+ address) retblock
+                                 (insert-block (get-block-id retblock) retblock cfg
                                    (list
                                     cfg
                                     call-addrs
@@ -452,7 +462,7 @@
   (let ((op1 (first ops))
         (restops (rest ops))
 	(lbl-fn-map (get-label-and-fn-map ops)))
-    (print lbl-fn-map)
+    ;;(print lbl-fn-map)
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         (declare (optimize (debug 3)(speed 0)))
@@ -510,12 +520,19 @@
 (defun flow-test (ops flow-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
-    (map-map
-     (lambda (key value) 
-       (declare (ignore key))
-       ;;(break)
-       (funcall flow-fn value cfg nil))
-     (get-graph-map cfg))))
+    ;;(print (map-keys (get-graph-map cfg)))
+    (map-reduce
+     (lambda (cfg* key block)
+       (insert-block
+           key
+           (set-out-set
+               (funcall flow-fn block cfg* nil)
+               block
+             block)
+           cfg*
+         cfg*))
+     (get-graph-map cfg)
+     cfg)))
 
 (defun init-flow-to-top (cfg)
   (new-cfg :cfg 
