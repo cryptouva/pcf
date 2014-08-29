@@ -40,12 +40,12 @@
   (bottom nil)
   )
 
-(defmacro get-graph-map (cfg)
-  `(pcf-graph-cfg ,cfg)
+(defun get-graph-map (cfg)
+  (pcf-graph-cfg cfg)
   )
 
-(defmacro get-graph-bottom (cfg)
-  `(pcf-graph-bottom ,cfg)
+(defun get-graph-bottom (cfg)
+  (pcf-graph-bottom cfg)
   )
 
 (defmacro graph-insert (key val cfg)
@@ -92,40 +92,35 @@
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
+
+(defun get-block-id (blck)
+  (pcf-basic-block-id blck))
+#|
 (defmacro get-block-id (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-id ,blocksym))))
+|#
 
-(defmacro get-block-preds (blck)
-  (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-      (pcf-basic-block-preds ,blocksym))))
+(defun get-block-preds (blck)
+  (pcf-basic-block-preds blck))
 
-(defmacro get-block-succs (blck)
-  (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-       (pcf-basic-block-succs ,blocksym))))
+(defun get-block-succs (blck)
+  (pcf-basic-block-succs blck))
 
-(defmacro get-block-op-list (blck)
-    (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-       (pcf-basic-block-op ,blocksym))))
-
+(defun get-block-op-list (blck)
+  (pcf-basic-block-op blck))
   
-(defmacro get-block-op (blck)
-  `(car (get-block-op-list ,blck)))
+(defun get-block-op (blck)
+  (car (get-block-op-list blck)))
 
-(defmacro get-block-out-set (blck)
-  (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-       (pcf-basic-block-out-set ,blocksym))))
+(defun get-block-out-set (blck)
+  (pcf-basic-block-out-set blck))
 
 (defmacro get-block-data (blck)
   (let ((blocksym (gensym)))
     `(let ((,blocksym ,blck))
        (pcf-basic-block-data ,blocksym))))
-
 
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
