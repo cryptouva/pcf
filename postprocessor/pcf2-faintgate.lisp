@@ -51,8 +51,8 @@
 (defparameter confluence-operator #'set-union)  ;;#'set-inter)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
-(defparameter output-functions (set-from-list (list "output_alice" "output_bob")))
-(defparameter input-functions (set-from-list (list "alice" "bob")))
+(defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
+(defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
 (defmacro top-set ()
   `(empty-set))
@@ -83,17 +83,18 @@
 
 (defun faint-flow-fn (blck cfg state)
   (declare (optimize (speed 0) (debug 3)))
-  (let ((flow (conf-union
-               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
-               (gen (get-block-op blck)))))
+  (let* ((in-flow (get-out-sets blck cfg #'confluence-op)) 
+         (flow (conf-union
+                (set-diff in-flow (kill (get-block-op blck) in-flow))
+                (gen (get-block-op blck) in-flow))))
     ;;(print flow)
     flow))
 
-(defgeneric gen (op)
+(defgeneric gen (op flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op)
+(defgeneric kill (op flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -101,7 +102,8 @@
   (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
 )
 
-(defgeneric dep-gen (op)
+
+(defgeneric dep-gen (op flow-data)
   (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
 )
 
@@ -117,7 +119,8 @@
   ;; gen = const_gen union dep_gen
   (conf-union (const-gen op) (dep-gen op flow-data)))
 
-(defmethod kill (op)
+(defmethod kill (op flow-data)
+  (declare (ignore flow-data))
   ;; kill = const-kill uniond ep_kill
   (conf-union (const-kill op)(dep-kill op)))
 
@@ -168,13 +171,6 @@
      (def-dep-kill ,type ,dep-kill)
   ))
 
-(def-gen-kill bits
-    :const-gen (with-slots (dest op1) op
-                
-                 )
-    :const-kill (with-slots (dest op1) op
-                  ) ;; op1 is not faint
-    )
 
 (def-gen-kill join
     ;; if any of the wires are live, then the join should be live
@@ -191,39 +187,68 @@
                         (singleton dest)))
     )
 
+(def-gen-kill bits
+    ;; if the wire is live, then the outputs should be
+    :dep-gen (with-slots (dest op1) op
+                 (if (set-member op1 flow-data)
+                     (set-from-list dest)
+                     (empty-set)))
+    ;; if the op is a member of the dests, then don't kill it
+    :const-kill (with-slots (dest op1) op
+                  (if (member op1 dest)
+                      (empty-set)
+                      (singleton op1)))
+    )
+
 
 (def-gen-kill const
     ;; if x = const, add x to gen
     :const-kill (with-slots (dest) op
                   (singleton dest)))
 
-(defmacro gate-add-sub-mul ()
-  `(:dep-gen (with-slots (op1 op2 dest) op
+(def-gen-kill gate
+    :dep-gen (with-slots (op1 op2 dest) op
                (if (set-member dest flow-data)
                    (set-from-list (list op1 op2))
                    (empty-set)))
     :const-kill (with-slots (op1 op2 dest) op
                   (if (or (equalp op1 dest) (equalp op2 dest))
                       (empty-set)
-                      (singleton dest)))))
-(def-gen-kill gate
-    (gate-add-sub-mul))
+                      (singleton dest))))
 
 (def-gen-kill add
-    (gate-add-sub-mul))
-
+    :dep-gen (with-slots (op1 op2 dest) op
+               (if (set-member dest flow-data)
+                   (set-from-list (list op1 op2))
+                   (empty-set)))
+    :const-kill (with-slots (op1 op2 dest) op
+                  (if (or (equalp op1 dest) (equalp op2 dest))
+                      (empty-set)
+                      (singleton dest))))
 (def-gen-kill sub
-    (gate-add-sub-mul))
-
+    :dep-gen (with-slots (op1 op2 dest) op
+               (if (set-member dest flow-data)
+                   (set-from-list (list op1 op2))
+                   (empty-set)))
+    :const-kill (with-slots (op1 op2 dest) op
+                  (if (or (equalp op1 dest) (equalp op2 dest))
+                      (empty-set)
+                      (singleton dest))))
 (def-gen-kill mul
-    (gate-add-sub-mul))
-
+    :dep-gen (with-slots (op1 op2 dest) op
+               (if (set-member dest flow-data)
+                   (set-from-list (list op1 op2))
+                   (empty-set)))
+    :const-kill (with-slots (op1 op2 dest) op
+                  (if (or (equalp op1 dest) (equalp op2 dest))
+                      (empty-set)
+                      (singleton dest))))
 (def-gen-kill copy
     ;; if dest is live (not faint), then whatever it copies will also be useful
     :dep-gen (with-slots (op1 op2 dest) op
                (if (set-member dest flow-data)
                    (if (equalp op2 1)
-                       (singleton o1)
+                       (singleton op1)
                        (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))
                    (empty-set)))
     :const-kill (with-slots (op1 op2 dest) op
@@ -254,12 +279,12 @@
 
 (def-gen-kill call
     :const-gen (with-slots (newbase fname) op
-                 (if (set-member fname output_functions)
-                     (loop for i from (- newbase 32) to (- newbase 1) collect i)
+                 (if (set-member fname output-functions)
+                     (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                      (empty-set)))
     :const-kill (with-slots (newbase fname) op
-                  (if (set-member fname input_functions)
-                      (loop for i from (- newbase 32) to (- newbase 1) collect i) 
+                  (if (set-member fname input-functions)
+                      (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                       (empty-set)))
 )
 

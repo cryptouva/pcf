@@ -24,7 +24,7 @@
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-(defparameter *lattice-top* -1)
+(defparameter *lattice-top* nil)
 ;;;
 ;;; the pcf-basic-block struct 
 ;;; and supporting macros
