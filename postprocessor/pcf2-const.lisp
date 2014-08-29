@@ -16,12 +16,10 @@
 ;;; the confluence operation is defined in terms of applying conf-hat on pairs of the same variable
 ;; ForAll x1,x2 e L, x1 conf x2 = { <z, dx conf-hat dy > | <z,dx> e x1, <z,dy> e x2, x e Var }
 
-;;; and since the most aggressive optimization is to declare all variables faint, the "top" value is Var (or all variables)
-
 ;;; Gen_n(x) = ConstGen_n Union DepGen_n(x)
 ;;; Kill_n(x) = ConstKill_n Union DepKill_n(x)
 
-;;; in general, Gen and Kill for faint variable analysis are:
+;;; in general, Gen and Kill for constant propagation are:
 ;;;
 ;;; In_n = { BI                          n is Start
 ;;;          Meet (p in pred(n)) Out_p   Otw
@@ -34,7 +32,7 @@
 ;;; DepGen_n(x) = { <x,d>    n is assignment x=e, <x,d> e *x*
 ;;;                  \0      otw
 ;;;
-;;; explanation: 
+
 
 ;;; ConstKill_n    =  /0
 ;;; DepKill_n(x)   = { {<x,d>} n is assignment x=e, <x,d> e *x*

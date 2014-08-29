@@ -36,16 +36,27 @@
 
 ;;; ConstKill_n    = { {x}  n is use(x) ;; here, out use(x) comes in output_alice and output_bob, or 
 ;;;                    /0   otw
-;;; DepKill_n(x)   = { Opd(e) Intersect Var   n is assignment x=e, x/e *x*
+;;; DepKill_n(x)   = { Opd(e) Intersect Var   n is assignment x=e, x /e *x*
 ;;;                     /0                otw
 ;;; explanation: x is not faint if it is used towards the output of the program
-;;; DepKill simply states that all of the operands of the expression which are variables hit the kill list; if a variable appears on both the lhs and rhs of an assignment, it does not become faint before the assignment, since that value is still important to the output
+;;; DepKill states that if a variable is not faint after a definition, then all of the variables used to define it are not faint before the definition. This achieves the transitive property we're looking for.
 
-(defparameter confluence-operator #'set-inter)
+
+;;; it is less efficient to track all of the faint gates than it is to track all of the live gates, in reverse, as they move through the program. This alters the calculation of flow function
+;;; in standard faint variable analysis, T = Var, Bottom = {}, and conf = Union
+;;; but this tracks all of the _faint_ gates, while it is more efficient for us to track Live Gates
+;;; so instead, **WE SWITCH THE DEFINITIONS OF GEN AND KILL** (their const and dep versions follow respectively)
+;;; now, Top is {}, bottom is {Var}, and the confluence operator is set-union
+
+(defparameter confluence-operator #'set-union)  ;;#'set-inter)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
+(defparameter output-functions (set-from-list (list "output_alice" "output_bob")))
+(defparameter input-functions (set-from-list (list "alice" "bob")))
+
 (defmacro top-set ()
-  `(set-insert (empty-set) *lattice-top*))
+  `(empty-set))
+  ;;`(set-insert (empty-set) *lattice-top*))
 
 (defun confluence-op (set1 set2)
   ;; if either set is "top," return the other set
@@ -102,23 +113,13 @@
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op)
+(defmethod gen (op flow-data)
   ;; gen = const_gen union dep_gen
-  (conf-union (const-gen op) (dep-gen op)))
-#|  (let ((gen-set (set-union (const-gen op) (dep-gen op))))
-    (print "op:")
-    (print op)
-    (print "gen:")
-    (print gen-set)
-    gen-set))|#
+  (conf-union (const-gen op) (dep-gen op flow-data)))
 
 (defmethod kill (op)
-  ;; kill = const-kill union gep_kill
-  ;;(break)
+  ;; kill = const-kill uniond ep_kill
   (conf-union (const-kill op)(dep-kill op)))
-#|  (let ((kill-set (set-union (const-kill op) (dep-kill op))))
-    (print "kill:")
-    (print kill-set)))|#
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
@@ -135,7 +136,7 @@
           )))
 
 (defmacro def-dep-gen (type &body body)
-  `(defmethod dep-gen ((op ,type))
+  `(defmethod dep-gen ((op ,type) flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -168,53 +169,70 @@
   ))
 
 (def-gen-kill bits
-    :const-gen (with-slots (dest) op
-                 (progn
-                   ;;(print (set-from-list dest))
-                   (set-from-list dest))) ;; everything in the list gets added to gen
-    :const-kill (with-slots (op1) op
-                  (singleton op1)) ;; op1 is not faint
+    :const-gen (with-slots (dest op1) op
+                
+                 )
+    :const-kill (with-slots (dest op1) op
+                  ) ;; op1 is not faint
     )
 
 (def-gen-kill join
-    :const-gen (with-slots (dest) op
-                 (singleton dest))
-    :dep-kill (with-slots (op1) op
-                (set-from-list op1)))
+    ;; if any of the wires are live, then the join should be live
+    :dep-gen (with-slots (dest op1) op
+                 (let ((opwires (set-from-list op1)))
+                   (if (set-equalp (empty-set) (set-inter opwires flow-data))
+                       (empty-set)
+                       (singleton dest))))
 
-(def-gen-kill gate
-    :const-gen (with-slots (dest) op
-                  (singleton dest))
-    :dep-kill (with-slots (op1 op2 dest) op
-                (if (or (eq op1 dest)
-                        (eq op2 dest))
-                    (singleton dest)
-                    (empty-set)))
+    ;; if the dest is a member of the bits to join, then don't kill it; else, do since this is its definition
+    :const-kill (with-slots (dest op1) op
+                    (if (member dest op1)
+                        (empty-set)
+                        (singleton dest)))
     )
+
 
 (def-gen-kill const
     ;; if x = const, add x to gen
-    :const-gen (with-slots (dest) op
+    :const-kill (with-slots (dest) op
                   (singleton dest)))
 
+(defmacro gate-add-sub-mul ()
+  `(:dep-gen (with-slots (op1 op2 dest) op
+               (if (set-member dest flow-data)
+                   (set-from-list (list op1 op2))
+                   (empty-set)))
+    :const-kill (with-slots (op1 op2 dest) op
+                  (if (or (equalp op1 dest) (equalp op2 dest))
+                      (empty-set)
+                      (singleton dest)))))
+(def-gen-kill gate
+    (gate-add-sub-mul))
+
 (def-gen-kill add
-    :const-gen (with-slots (dest) op
-                 (singleton dest)))
+    (gate-add-sub-mul))
 
 (def-gen-kill sub
-    :const-gen (with-slots (dest) op
-                 (singleton dest)))
+    (gate-add-sub-mul))
 
 (def-gen-kill mul
-    :const-gen (with-slots (dest) op
-                 (singleton dest)))
+    (gate-add-sub-mul))
 
 (def-gen-kill copy
-    :const-gen (with-slots (op2 dest) op
-                 ;;(break)
-                 (set-from-list
-                  (list dest)
-                  ))
+    ;; if dest is live (not faint), then whatever it copies will also be useful
+    :dep-gen (with-slots (op1 op2 dest) op
+               (if (set-member dest flow-data)
+                   (if (equalp op2 1)
+                       (singleton o1)
+                       (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))
+                   (empty-set)))
+    :const-kill (with-slots (op1 op2 dest) op
+                  (if (and (> dest op1) (< dest (+ op1 op2)))
+                      (empty-set)
+                      (if (equalp 1 op2)
+                          (singleton dest)
+                          (set-from-list
+                           (loop for i from dest to (+ dest op2) collect i)))))
     )
 
 (def-gen-kill initbase)
@@ -222,6 +240,7 @@
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
+
 (def-gen-kill mkptr
 ;; has no effect; the loaded constant will take care of this for us.
 )
@@ -233,7 +252,17 @@
     ;;
 )
 
-(def-gen-kill call)
+(def-gen-kill call
+    :const-gen (with-slots (newbase fname) op
+                 (if (set-member fname output_functions)
+                     (loop for i from (- newbase 32) to (- newbase 1) collect i)
+                     (empty-set)))
+    :const-kill (with-slots (newbase fname) op
+                  (if (set-member fname input_functions)
+                      (loop for i from (- newbase 32) to (- newbase 1) collect i) 
+                      (empty-set)))
+)
+
 (def-gen-kill ret)
 (def-gen-kill branch)
 (def-gen-kill label)
