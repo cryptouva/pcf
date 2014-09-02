@@ -67,21 +67,15 @@
     (t 
      (funcall confluence-operator set1 set2))))
 
-(defun conf-union (set1 set2)
-  (cond
-    ((set-equalp set1 (top-set)) set2)
-    ((set-equalp set2 (top-set)) set1)
-    (t (set-union set1 set2))))
-
 (defun get-out-sets (blck cfg conf)
   (reduce
    (lambda (temp-out succ)
-     (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
+     (let ((succ-out (get-block-faints (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-out-set blck)))
+   :initial-value (get-block-faints blck)))
 
-(defun faint-flow-fn (blck cfg state)
+(defun faint-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
   (let* ((in-flow (get-out-sets blck cfg #'confluence-op)) 
          (flow (conf-union
@@ -117,12 +111,12 @@
 
 (defmethod gen (op flow-data)
   ;; gen = const_gen union dep_gen
-  (conf-union (const-gen op) (dep-gen op flow-data)))
+  (confluence-op (const-gen op) (dep-gen op flow-data)))
 
 (defmethod kill (op flow-data)
   (declare (ignore flow-data))
   ;; kill = const-kill uniond ep_kill
-  (conf-union (const-kill op)(dep-kill op)))
+  (confluence-op (const-kill op)(dep-kill op)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set

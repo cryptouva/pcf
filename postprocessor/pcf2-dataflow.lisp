@@ -11,7 +11,8 @@
            get-block-op
            get-block-succs
            get-block-preds
-           get-block-out-set
+           get-block-faints
+           get-block-consts
            get-block-id
            get-block-by-id
            flow-test
@@ -78,8 +79,8 @@
                 (format stream "Op: ~A~%" (get-block-op struct))
                 (format stream "Preds: ~A~%" (get-block-preds struct))
                 (format stream "Succs: ~A~%" (get-block-succs struct))
-                (format stream "Out-Set: ~A~%" (get-block-out-set struct))
-                
+                (format stream "Faint-Out: ~A~%" (get-block-faints struct))
+                (format stream "Consts: ~A~%" (get-block-consts struct))
                 )
               )
              )
@@ -87,8 +88,8 @@
   (op nil :type list)
   (preds nil :type list)
   (succs nil :type list)
-  (out-set (empty-set) :type avl-set)
-  (data nil :type list)
+  ;; (out-set (empty-set) :type avl-set)
+  (data (list (map-empty) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -114,13 +115,14 @@
 (defun get-block-op (blck)
   (car (get-block-op-list blck)))
 
-(defun get-block-out-set (blck)
-  (pcf-basic-block-out-set blck))
+(defun get-block-data (blck)
+  (pcf-basic-block-data blck))
 
-(defmacro get-block-data (blck)
-  (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-       (pcf-basic-block-data ,blocksym))))
+(defun get-block-faints (blck)
+  (second (pcf-basic-block-data blck)))
+
+(defun get-block-consts (blck)
+  (first (pcf-basic-block-data blck)))
 
 (defmacro get-idx-by-label (targ lbls)
   `(cdr (map-find ,targ ,lbls)))
@@ -141,7 +143,7 @@
                :op (cons ,op (get-block-op-list ,bb))
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
-               :out-set (get-block-out-set ,bb)
+               :data (get-block-data ,bb)
                )))
      ,@body))
 
@@ -152,17 +154,7 @@
                :op (get-block-op-list ,bb)
                :preds (cons ,prd (get-block-preds ,bb))
                :succs (get-block-succs ,bb)
-               :out-set (get-block-out-set ,bb)
-               )))
-     ,@body))
-
-(defmacro set-block-preds (prds bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds ,prds
-               :succs (get-block-succs ,bb)
-               :out-set (get-block-out-set ,bb)
+               :data (get-block-data ,bb)
                )))
      ,@body))
 
@@ -173,46 +165,27 @@
                :op (get-block-op-list ,bb)
                :preds (get-block-preds ,bb)
                :succs (cons ,succ (get-block-succs ,bb))
-               :out-set (get-block-out-set ,bb)
+               :data (get-block-data ,bb)
                )))
      ,@body))
 
-(defmacro set-block-succs (succs bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds (get-block-succs ,bb)
-               :succs ,succs
-               :out-set (get-block-out-set ,bb)
-               )))
-     ,@body))
+(defun block-with-faints (new-faint bb)
+  (make-pcf-basic-block
+               :id (get-block-id bb)
+               :op (get-block-op-list bb)
+               :preds (get-block-preds bb)
+               :succs (get-block-succs bb)
+               :data (list (get-block-consts bb) new-faint)
+               ))
 
-;; not sure which of the two following I will use
-;; new-set is the new out-set
-(defmacro set-out-set (new-set bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds (get-block-preds ,bb)
-               :succs (get-block-succs ,bb)
-               :out-set ,new-set
-               )))
-     ,@body))
-
-(defmacro set-out-to-top (bb)
-  `(set-out-set (empty-set) ,bb
-     ,bb))
-
-;; new-set is the new out-set
-(defmacro update-out-set (new-set join-fn bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds (get-block-preds ,bb)
-               :succs (get-block-succs ,bb)
-               :out-set (funcall ,join-fn ,new-set (get-block-out-set ,bb))
-               )))
-     ,@body))
+(defun block-with-consts (new-consts bb)
+  (make-pcf-basic-block
+               :id (get-block-id bb)
+               :op (get-block-op-list bb)
+               :preds (get-block-preds bb)
+               :succs (get-block-succs bb)
+               :data (list new-consts (get-block-faints bb))
+               ))
 
 ;; id should be an integer
 ;; val should be a block
@@ -495,7 +468,7 @@
 |#
 
 ;; when flowing,
-;; each node carries info about its own out-set
+;; each node carries info about its own data
 ;; and updates its information using predecessors' inputs
 ;; then, if changed, it adds its successors to the worklist
 ;; flow functions should be parameterizable by method used to get successors
@@ -510,75 +483,66 @@
       `(and (not (set-subset ,set2 ,set1))
             (set-subset ,set1 ,set2))))
 
-;; need to construct some functions for comparing out-sets with those that are just "top". Any confluence operation with "top" (conf x top) = x
+;; need to construct some functions for comparing datas with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
 (defun flow-test (ops flow-fn)
   ;;(declare (ignore flow-fn))
-  (let ((cfg (init-flow-to-top (make-pcf-cfg ops))))
-    (print (map-keys (get-graph-map cfg)))
+  (let ((cfg (make-pcf-cfg ops)))
     (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
            key
-           (set-out-set
-               (funcall flow-fn block cfg* nil)
-               block
-             block)
+           (block-with-faints (funcall flow-fn block cfg*) block)
            cfg*
          cfg*))
      (get-graph-map cfg)
      cfg)))
 
-(defun init-flow-to-top (cfg)
-  (new-cfg :cfg 
-           (map-map 
-            (lambda(key val)
-              (declare (ignore key))
-              (set-out-to-top val))
-            (get-graph-map cfg))
-           :bottom (get-cfg-bottom cfg)
-           ))
-
 (defun init-flow-values (cfg flow-fn)
-  (let ((empty-cfg (init-flow-to-top cfg)))
-    (map-map
-     (lambda(key val)
-       (declare (ignore key))
-       (funcall flow-fn val (get-graph-map cfg)))
-     empty-cfg)))
+  (map-map
+   (lambda(key val)
+     (declare (ignore key))
+     (funcall flow-fn val (get-graph-map cfg)))
+   cfg))
 
-(defun do-flow (cfg worklist flow-fn join-fn)
-  (declare (optimize (debug 3)(speed 0)))
-  (if (null worklist)
+(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist1 worklist2)
+  (declare (optimize (debug 3)(speed 0)))             
+  (if (and (null worklist1) (null worklist2))
       cfg ; done
-      (let* ((cur-node-id (car worklist))
-             (worklist (cdr worklist))
+      (let* ((cur-node-id (if (null worklist1) (car worklist2) (car worklist1)))
+             (worklist1 (if (null worklist1) worklist1 (cdr worklist1)))
+             (worklist2 (if (null worklist1) (cdr worklist2) worklist2))
              (cur-node (get-block-by-id cur-node-id cfg))
+             ;; new-state will compute an updated cfg and compile things to add to the worklist
              (new-state (reduce (lambda (state neighbor-id)
-                                  (let ((worklist (first state))
-                                        (cfg (second state))
-                                        (flow-state (third state))
-                                        (neighbor (get-block-by-id neighbor-id cfg)))
-                                    ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
-                                    (let ((new-out (funcall join-fn
-                                                            (funcall flow-fn cur-node cfg flow-state) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
-                                                            (get-block-out-set neighbor))))
-                                      (if (set-weaker new-out 
-                                                      (get-block-out-set neighbor))
-                                          (list (cons neighbor-id worklist)
-                                                (insert-block neighbor-id (set-out-set new-out neighbor neighbor) cfg
-                                                  cfg)
-                                                flow-state)
-                                          (list worklist cfg flow-state)))))
-                                (get-block-succs cur-node) ;; get-block-succs to be replaced with a way to specify whether to get succs or preds, depending on our direction
-                                :initial-value (list worklist cfg nil))))
-        (do-flow (first new-state) (second new-state) join-fn flow-fn))))
-
-
+                                  (let* ((cfg* (first state))
+                                         (new-work (second state))
+                                         (neighbor (get-block-by-id neighbor-id cfg*))
+                                         ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
+                                         (new-out (funcall join-fn
+                                                           (funcall flow-fn cur-node cfg*) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
+                                                           (funcall get-data-fn neighbor))))
+                                    (if (funcall weaker-fn new-out (funcall get-data-fun neighbor))
+                                        (list
+                                         (insert-block neighbor-id (set-data-fn new-out neighbor) cfg
+                                           cfg)
+                                         (cons neighbor-id new-work))
+                                        (list cfg new-work))))
+                                (funcall get-neighbor-fn cur-node)
+                                :initial-value (list cfg nil))))
+        (let ((more-work (if (null (second new-state))
+                             worklist2
+                             (cons (second new-state worklist2)))))
+          (do-flow (first new-state) join-fn flow-fn get-neighbor-fn get-data-fn set-data-fn worklist1 more-work)))))
 
 #|
-(defun flow-forwards (cfg join-fn flow-fn)
-  (let* ((init-cfg (init-flow-values cfg))
-         )
-    (do-flow init-cfg worklist join-fn flow-fn)))
+(defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)
+  `(do-flow ,cfg ,join-fn ,flow-fn ,get-neighbors ,worklist))
+
+(defun flow-forward (cfg join-fn flow-fn)
+  (flow-forward-backward cfg #'join-fn #'flow-fn #'get-block-succs (map-keys (get-graph-map cfg)) nil))
+
+(defun flow-backward (cfg join-fn flow-fn)
+  (flow-forward-backward cfg #'join-fn #'flow-fn #'get-block-preds (reverse (map-keys (get-graph-map cfg))) nil))
+
 |#
