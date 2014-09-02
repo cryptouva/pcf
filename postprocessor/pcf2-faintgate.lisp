@@ -2,7 +2,9 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
-  (:export faint-flow-fn)
+  (:export faint-flow-fn
+           faint-confluence-op
+           faint-weaker-fn)
   )
 
 (in-package :pcf2-faintgate)
@@ -48,7 +50,7 @@
 ;;; so instead, **WE SWITCH THE DEFINITIONS OF GEN AND KILL** (their const and dep versions follow respectively)
 ;;; now, Top is {}, bottom is {Var}, and the confluence operator is set-union
 
-(defparameter confluence-operator #'set-union)  ;;#'set-inter)
+(defparameter faint-confluence-operator #'set-union)  ;;#'set-inter)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
 (defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
@@ -58,15 +60,6 @@
   `(empty-set))
   ;;`(set-insert (empty-set) *lattice-top*))
 
-(defun confluence-op (set1 set2)
-  ;; if either set is "top," return the other set
-  (declare (optimize (debug 3)(speed 0)))
-  (cond
-    ((set-equalp set1 (top-set)) set2)
-    ((set-equalp set2 (top-set)) set1)
-    (t 
-     (funcall confluence-operator set1 set2))))
-
 (defun get-out-sets (blck cfg conf)
   (reduce
    (lambda (temp-out succ)
@@ -75,10 +68,23 @@
    (get-block-succs blck)
    :initial-value (get-block-faints blck)))
 
+(defun faint-confluence-op (set1 set2)
+  ;; if either set is "top," return the other set
+  (declare (optimize (debug 3)(speed 0)))
+  (cond
+    ((set-equalp set1 (top-set)) set2)
+    ((set-equalp set2 (top-set)) set1)
+    (t 
+     (funcall faint-confluence-operator set1 set2))))
+
+(defun faint-weaker-fn (set1 set2)
+  (set-subset set2 set1)
+  )
+
 (defun faint-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
-  (let* ((in-flow (get-out-sets blck cfg #'confluence-op)) 
-         (flow (conf-union
+  (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op)) 
+         (flow (faint-confluence-op
                 (set-diff in-flow (kill (get-block-op blck) in-flow))
                 (gen (get-block-op blck) in-flow))))
     ;;(print flow)
@@ -111,12 +117,12 @@
 
 (defmethod gen (op flow-data)
   ;; gen = const_gen union dep_gen
-  (confluence-op (const-gen op) (dep-gen op flow-data)))
+  (faint-confluence-op (const-gen op) (dep-gen op flow-data)))
 
 (defmethod kill (op flow-data)
   (declare (ignore flow-data))
   ;; kill = const-kill uniond ep_kill
-  (confluence-op (const-kill op)(dep-kill op)))
+  (faint-confluence-op (const-kill op)(dep-kill op)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set

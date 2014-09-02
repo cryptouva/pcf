@@ -15,6 +15,8 @@
            get-block-consts
            get-block-id
            get-block-by-id
+           block-with-faints
+           block-with-consts
            flow-test
            *lattice-top*)
   )
@@ -485,10 +487,11 @@
 
 ;; need to construct some functions for comparing datas with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
-(defun flow-test (ops flow-fn)
+(defun flow-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (make-pcf-cfg ops)))
-    (map-fold-backward
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)) nil)))
+#|    (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
            key
@@ -497,7 +500,8 @@
          cfg*))
      (get-graph-map cfg)
      cfg)))
-
+|#
+  
 (defun init-flow-values (cfg flow-fn)
   (map-map
    (lambda(key val)
@@ -506,7 +510,7 @@
    cfg))
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist1 worklist2)
-  (declare (optimize (debug 3)(speed 0)))             
+  (declare (optimize (debug 3)(speed 0)))
   (if (and (null worklist1) (null worklist2))
       cfg ; done
       (let* ((cur-node-id (if (null worklist1) (car worklist2) (car worklist1)))
@@ -522,19 +526,18 @@
                                          (new-out (funcall join-fn
                                                            (funcall flow-fn cur-node cfg*) ;; this one should be the flow function on the path from pred (neighbor) to node (cur-node)
                                                            (funcall get-data-fn neighbor))))
-                                    (if (funcall weaker-fn new-out (funcall get-data-fun neighbor))
+                                    (if (funcall weaker-fn new-out (funcall get-data-fn neighbor))
                                         (list
-                                         (insert-block neighbor-id (set-data-fn new-out neighbor) cfg
-                                           cfg)
+                                         (insert-block neighbor-id (funcall set-data-fn new-out neighbor) cfg*
+                                           cfg*)
                                          (cons neighbor-id new-work))
-                                        (list cfg new-work))))
+                                        (list cfg* new-work))))
                                 (funcall get-neighbor-fn cur-node)
                                 :initial-value (list cfg nil))))
         (let ((more-work (if (null (second new-state))
                              worklist2
-                             (cons (second new-state worklist2)))))
-          (do-flow (first new-state) join-fn flow-fn get-neighbor-fn get-data-fn set-data-fn worklist1 more-work)))))
-
+                             (append (second new-state) worklist2))))
+          (do-flow (first new-state) flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist1 more-work)))))
 #|
 (defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)
   `(do-flow ,cfg ,join-fn ,flow-fn ,get-neighbors ,worklist))
