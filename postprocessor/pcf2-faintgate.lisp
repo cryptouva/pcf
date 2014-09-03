@@ -78,6 +78,7 @@
      (funcall faint-confluence-operator set1 set2))))
 
 (defun faint-weaker-fn (set1 set2)
+  ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
   (set-subset set2 set1)
   )
 
