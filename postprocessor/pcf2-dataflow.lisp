@@ -490,7 +490,7 @@
 (defun flow-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   ;;(declare (ignore flow-fn))
   (let ((cfg (make-pcf-cfg ops)))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)) nil)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)) )))
 #|    (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
@@ -510,37 +510,37 @@
    cfg))
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (reduce (state neighbor-id)
-          (let* ((cfg* (first state)) 
-                 (neighbor (get-block-by-id neighbor-id cfg*))
-                 (worklist (second state))
-                 ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
-                 (new-out (funcall join-fn
-                                   (funcall flow-fn cur-node
- cfg*) 
-                                   (funcall get-data-fn neighbor))))
-            (if (funcall weaker-fn new-out (funcall get-data-fn neighbor))
-                (list
-                 (insert-block neighbor-id (funcall set-data-fn new-out neighbor) cfg*
-                   cfg*)
-                 (cons neighbor-id new-work))
-                (list cfg* new-work))))
-  (funcall get-neighbor-fn cur-node)
-  :initial-value (list cfg nil))
+  (reduce (lambda (state neighbor-id)
+            (let* ((cfg* (first state)) 
+                   (neighbor (get-block-by-id neighbor-id cfg*))
+                   (worklist (second state))
+                   ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
+                   (new-out (funcall join-fn
+                                     (funcall flow-fn cur-node
+                                              cfg*) 
+                                     (funcall get-data-fn neighbor))))
+              (if (funcall weaker-fn new-out (funcall get-data-fn neighbor))
+                  (list
+                   (insert-block neighbor-id (funcall set-data-fn new-out neighbor) cfg*
+                     cfg*)
+                   (cons neighbor-id worklist))
+                  (list cfg* worklist))))
+          (funcall get-neighbor-fn cur-node)
+          :initial-value (list cfg nil)))
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)
-  (declare (optimize (debug 3)(speed 0)))
+  ;; (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
       cfg ; done
       (let* ((cur-node-id (car worklist))
              (worklist (cdr worklist))
              (cur-node (get-block-by-id cur-node-id cfg))
              ;; new-state will compute an updated cfg and compile things to add to the worklist
-             (new-state (flow-once cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)))
-        (let ((more-work (if (null (second new-state))
+             (new-state (flow-once cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn))
+             (more-work (if (null (second new-state))
                              worklist
                              (append (second new-state) worklist))))
-          (do-flow (first new-state) flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)))))
+        (do-flow (first new-state) flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work))))
 #|
 (defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)
   `(do-flow ,cfg ,join-fn ,flow-fn ,get-neighbors ,worklist))
