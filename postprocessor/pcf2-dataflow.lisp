@@ -479,18 +479,12 @@
 ;; make sure that every node is touched by the worklist at least once
 ;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
 
-(defmacro set-weaker (set1 set2 &key comp)
-  (if comp
-      `(,comp ,set1 ,set2)
-      `(and (not (set-subset ,set2 ,set1))
-            (set-subset ,set1 ,set2))))
-
 ;; need to construct some functions for comparing datas with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
 (defun flow-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  ;;(declare (ignore flow-fn))
   (let ((cfg (make-pcf-cfg ops)))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)) )))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)))))
+
 #|    (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
@@ -519,7 +513,7 @@
                    (new-out (funcall join-fn
                                      (funcall flow-fn cur-node cfg*) 
                                      (funcall get-data-fn neighbor))))
-              (break)
+              ;;(break)
               (if (funcall weaker-fn new-out (funcall get-data-fn neighbor))
                   (list
                    (insert-block neighbor-id (funcall set-data-fn new-out neighbor) cfg*

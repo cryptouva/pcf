@@ -59,7 +59,7 @@
   (make-pcf-cfg ops))
 
 (defun faint-analyze-cfg (ops)
-  (flow-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-succs #'get-block-faints #'block-with-faints))
+  (flow-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""

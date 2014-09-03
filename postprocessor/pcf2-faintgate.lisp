@@ -71,11 +71,7 @@
 (defun faint-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
   (declare (optimize (debug 3)(speed 0)))
-  (cond
-    ((set-equalp set1 (top-set)) set2)
-    ((set-equalp set2 (top-set)) set1)
-    (t 
-     (funcall faint-confluence-operator set1 set2))))
+  (funcall faint-confluence-operator set1 set2))
 
 (defun faint-weaker-fn (set1 set2)
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
@@ -89,6 +85,7 @@
                 (set-diff in-flow (kill (get-block-op blck) in-flow))
                 (gen (get-block-op blck) in-flow))))
     ;;(print flow)
+    ;;(break)
     flow))
 
 (defgeneric gen (op flow-data)
