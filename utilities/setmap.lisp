@@ -27,6 +27,7 @@
                      map-reduce
                      map-empty
                      map-filter
+                     map-singleton
                      empty-set
                      avl-set
                      alist->map
@@ -117,17 +118,14 @@
   (declare (type avl-set set1 set2)
            (optimize (debug 3)(speed 0)))
   (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
-  (let ((comp (avl-set-comp set1))
-        )
+  (let ((comp (avl-set-comp set1)))
     (make-avl-set :tree
                   (avl-tree-reduce (lambda (st x)
                                      (avl-tree-insert-unique x st :comp comp))
                                    (avl-set-tree set1)
                                    (avl-set-tree set2))
                   :comp comp
-                  )
-    )
-  )
+                  )))
 
 (defun set-insert (set x)
   (let ((comp (avl-set-comp set)))
@@ -267,6 +265,11 @@
       )
     )
   )
+
+(defmacro map-singleton (x y &key (comp nil))
+  (if (null comp)
+      `(map-insert x y (map-empty))
+      `(map-insert x y (map-empty :comp comp))))
 
 (defun map-map (fn mp)
   "Apply \"fn\" to each element of the map \"mp\" to create a new map.

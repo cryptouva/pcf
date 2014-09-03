@@ -483,9 +483,7 @@
 
 (defun flow-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (let ((cfg (make-pcf-cfg ops)))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)))))
-
-#|    (map-fold-backward
+    (let ((cfg (map-fold-backward
      (lambda (cfg* key block)
        (insert-block
            key
@@ -494,7 +492,8 @@
          cfg*))
      (get-graph-map cfg)
      cfg)))
-|#
+      (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg))))))
+
   
 (defun init-flow-values (cfg flow-fn)
   (map-map

@@ -13,6 +13,7 @@
 ;;; f_n(x) = (x-Kill_n(x) Union Gen_n
 
 ;;; Constant propagation is forward data flow problem
+;;; we represent the constants available at a program point as a map from variable to constant. if the variable is not a constant, we exclude it from the map (this is a memory consideration)
 ;;; the confluence operation is defined in terms of applying conf-hat on pairs of the same variable
 ;; ForAll x1,x2 e L, x1 conf x2 = { <z, dx conf-hat dy > | <z,dx> e x1, <z,dy> e x2, x e Var }
 
@@ -27,14 +28,13 @@
 ;;; (remember, Out_n is passed to the next block, In_n is an input to this block)
 
 ;;; ConstGen_n = { {<x,eval(e,Top)>}  n is assignment x=e, Opd(e) subset Const 
-;;;                {<x,bottom-hat>} n is read(x) ;; read is always alice() or bob()
+;;;                **{<x,bottom-hat>} n is read(x) ;; read is always alice() or bob()
 ;;;                /0  otw
 ;;; DepGen_n(x) = { <x,d>    n is assignment x=e, <x,d> e *x*
 ;;;                  \0      otw
 ;;;
 
-
-;;; ConstKill_n    =  /0
+;;; ConstKill_n    =  **/0
 ;;; DepKill_n(x)   = { {<x,d>} n is assignment x=e, <x,d> e *x*
 ;;;                    {<x,d>} n is read(x), <x,d> e *x*
 ;;;                     /0                otw
@@ -44,12 +44,14 @@
 ;;;              d if e is x e Car, <x,d> e *x*
 ;;;
 
-(defparameter confluence-operator #'set-inter)
-;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
+;;; **because read(x) is a way for us to input non-consts, we move <x,bottom-hat> from ConstGen to ConstKill
+
+(defparameter confluence-operator #'set-inter) ;; this is not set-inter, needs to be updated with a form of map-inter
 
 (defmacro top-set ()
-  `(set-insert (empty-set) *lattice-top*))
+  `(map-empty))
 
+#|
 (defun constcmp (x y)
   (typecase x
     (number (typecase y
@@ -64,20 +66,23 @@
                   (symbol (if (equalp y 'unknown)
                               t
                               nil ;; x and y are both 'not-const
-                              ))))
+                              )))))))
+|#
 
-(defun pcf2-const-join-fn (x y)
-  
-  )
-
-(defun confluence-op (set1 set2)
+(defun cost-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  (cond
-    ((set-equalp set1 (top-set)) set2)
-    ((set-equalp set2 (top-set)) set1)
-    (t 
-     (funcall confluence-operator set1 set2))))
+  (funcall confluence-operator set1 set2))
 
+(defun const-flow-fn (blck cfg state)
+  ;; this will be fixed later, as per p 112
+  (declare (optimize (speed 0) (debug 3)))
+  (let ((flow (set-union
+               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
+               (gen (get-block-op blck)))))
+    flow))
+
+(defun const-weaker-fn (set1 set2)
+  t)
 
 (defun get-out-sets (blck cfg conf)
   (reduce
@@ -87,18 +92,11 @@
    (get-block-succs blck)
    :initial-value (get-block-out-set blck)))
 
-(defun const-flow-fn (blck cfg state)
-  (declare (optimize (speed 0) (debug 3)))
-  (let ((flow (set-union
-               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
-               (gen (get-block-op blck)))))
-    flow))
-
-(defgeneric gen (op)
+(defgeneric gen (op flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op)
+(defgeneric kill (op flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -106,7 +104,7 @@
   (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
 )
 
-(defgeneric dep-gen (op)
+(defgeneric dep-gen (op flow-data)
   (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
 )
 
@@ -114,29 +112,22 @@
   (:documentation "this function describes how to compute the constant kill part of the flow function for each op")
 )
 
-(defgeneric dep-kill (op)
+(defgeneric dep-kill (op flow-data)
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op)
+(defmethod gen (op flow-data)
   ;; gen = const_gen union dep_gen
-  (let ((gen-set (set-union (const-gen op) (dep-gen op))))
-    (print "op:")
-    (print op)
-    (print "gen:")
-    (print gen-set)
-    gen-set))
+  (const-confluence-op (const-gen op) (dep-gen op flow-data)))
 
-(defmethod kill (op)
+(defmethod kill (op flow-data)
   ;; kill = const-kill union gep_kill
   ;;(break)
-  (let ((kill-set (set-union (const-kill op) (dep-kill op))))
-    (print "kill:")
-    (print kill-set)))
-
+  (const-confluence-op (const-kill op) (dep-kill op flow-data)))
+  
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
-  `(empty-set))
+  `(map-empty))
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 
@@ -149,7 +140,7 @@
           )))
 
 (defmacro def-dep-gen (type &body body)
-  `(defmethod dep-gen ((op ,type))
+  `(defmethod dep-gen ((op ,type) flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -165,7 +156,7 @@
           )))
 
 (defmacro def-dep-kill (type &body body)
-  `(defmethod dep-kill ((op ,type))
+  `(defmethod dep-kill ((op ,type) flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -187,9 +178,25 @@
 
 (def-gen-kill gate)
 
-(def-gen-kill const)
+(def-gen-kill const
+    :const-gen (with-slots (dest op1) op
+                 (map-singleton dest op1)
+                 )
+    :dep-kill (with-slots (dest) op
+                (if (map-find dest flow-data t)
+                    (singleton dest)
+                )
+    )
 
-(def-gen-kill add)
+(def-gen-kill add
+    :const-gen (with-slots (dest op1 op2)
+                   (let ((o1 (map-find op1 flow-data))
+                         (o2 (map-find op2 flow-data)))
+                     (if (and (o1 o2))
+                         (map-singleton dest (+ o1 o2))
+                         (map-empty))
+                   )
+    )
 
 (def-gen-kill sub)
 
