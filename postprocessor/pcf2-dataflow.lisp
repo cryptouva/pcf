@@ -510,10 +510,9 @@
                    (neighbor (get-block-by-id neighbor-id cfg*))
                    (worklist (second state))
                    ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
-                   (new-out (funcall join-fn
-                                     (funcall flow-fn cur-node cfg*) 
-                                     (funcall get-data-fn neighbor))))
-              ;;(break)
+                   (new-flow (funcall flow-fn cur-node cfg*))
+                   (old-flow (funcall get-data-fn neighbor))
+                   (new-out (funcall join-fn new-flow old-flow)))
               (if (funcall weaker-fn new-out (funcall get-data-fn neighbor))
                   (list
                    (insert-block neighbor-id (funcall set-data-fn new-out neighbor) cfg*
@@ -534,7 +533,8 @@
              (new-state (flow-once cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn))
              (more-work (if (null (second new-state))
                              worklist
-                             (append worklist (second new-state)))))
+                             (append (second new-state) worklist))))
+        (print cur-node-id)
         (do-flow (first new-state) flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work))))
 #|
 (defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)

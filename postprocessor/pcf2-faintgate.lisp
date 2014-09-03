@@ -79,7 +79,7 @@
   )
 
 (defun faint-flow-fn (blck cfg)
-  (declare (optimize (speed 0) (debug 3)))
+  ;;(declare (optimize (speed 0) (debug 3)))
   (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op)) 
          (flow (faint-confluence-op
                 (set-diff in-flow (kill (get-block-op blck) in-flow))
