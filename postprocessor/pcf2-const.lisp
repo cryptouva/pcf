@@ -179,9 +179,12 @@
 
 (def-gen-kill join)
 
-(defmacro with-not-nill-from (a b &body body)
+(defmacro with-not-nil-from (a b &body body)
   `(let ((it (if (,a) ,a ,b)))
      ,@body ))
+
+(defmacro loginot (a)
+  `(if (eq ,a 1) 1 0))
 
 (def-gen-kill gate
     ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
@@ -190,18 +193,29 @@
                      (o2 (map-find op2 flow-data t)))
                  (if (or (o1 o2))
                      (cond 
-                       ((and o1 o2)
-                        (case truth-table
-                          (#*0001 ())
-                          (#*1100 ())
-                          (#*0111 ())))
-                       (t (with-not-nill-from o1 o2
+                       ((and o1 o2) ;; if both are constant, we can precompute the gate
+                        (let ((out-val (case truth-table
+                                         (#*0001 (logand o1 o2))
+                                         (#*1100 (lognot o1))
+                                         (#*0111 (logior o1 o2))
+                                         (#*0110 (logxor o1 o2))
+                                         (#*1001 (lognot (logxor o1 o2)))
+                                         (otherwise 'undef))))
+                          (if (equalp out-val 'undef)
+                              (map-empty)
+                              (map-singleton dest out-val))))
+                       (t (with-not-nil-from o1 o2
                             (case truth-table
-                              (#*0001 ())
-                              (#*1100 ())
-                              (#*0111 ())
-                              (otherwise ())))))
+                              (#*0001 (if (zerop it)
+                                          (map-singleton dest 0)
+                                          (map-empty)))
+                              (#*0111 (if (zerop it)
+                                          (map-empty)
+                                          (map-singleton dest 1)))
+                              (otherwise (map-empty))))))
                      (empty-set))))
+    :dep-kill (with-slots (dest) op
+                (singleton-if-found))
 )
 
 (defmacro singleton-if-found ()
@@ -274,11 +288,13 @@
                             :initial-value (empty-set))))
 )
 
-(def-gen-kill initbase) ;; no consts
-(def-gen-kill clear) ;; no consts
+
 (def-gen-kill mkptr) ;; no consts
 (def-gen-kill copy-indir) ;; might deal with consts
 (def-gen-kill indir-copy) ;; might deal with consts
+
+(def-gen-kill initbase) ;; no consts
+(def-gen-kill clear) ;; no consts
 (def-gen-kill call) ;; no consts
 (def-gen-kill ret) ;; no consts
 (def-gen-kill branch) ;; no consts

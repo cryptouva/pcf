@@ -207,8 +207,8 @@
       )
   )
 
-(defun map-keys (mp &key (cmp #'<))
-  (declare (type avl-set mp) (type function cmp))
+(defun map-keys (mp)
+  (declare (type avl-set mp))
   (map-reduce (lambda (state key val)
                 (declare (ignore val))
                 ;; (set-insert state key)
@@ -268,8 +268,8 @@
 
 (defmacro map-singleton (x y &key (comp nil))
   (if (null comp)
-      `(map-insert x y (map-empty))
-      `(map-insert x y (map-empty :comp comp))))
+      `(map-insert ,x ,y (map-empty))
+      `(map-insert ,x ,y (map-empty :comp comp))))
 
 (defun map-map (fn mp)
   "Apply \"fn\" to each element of the map \"mp\" to create a new map.
