@@ -172,45 +172,114 @@
      (def-dep-kill ,type ,dep-kill)
   ))
 
+;; gen sets are represented as maps of variable -> value
+;; kill sets are represented as sets of variables since their values aren't necessary for the kill
+
 (def-gen-kill bits)
 
 (def-gen-kill join)
 
-(def-gen-kill gate)
+(defmacro with-not-nill-from (a b &body body)
+  `(let ((it (if (,a) ,a ,b)))
+     ,@body ))
+
+(def-gen-kill gate
+    ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
+    :dep-gen (with-slots (dest op1 op2 truth-table) op
+               (let ((o1 (map-find op1 flow-data t))
+                     (o2 (map-find op2 flow-data t)))
+                 (if (or (o1 o2))
+                     (cond 
+                       ((and o1 o2)
+                        (case truth-table
+                          (#*0001 ())
+                          (#*1100 ())
+                          (#*0111 ())))
+                       (t (with-not-nill-from o1 o2
+                            (case truth-table
+                              (#*0001 ())
+                              (#*1100 ())
+                              (#*0111 ())
+                              (otherwise ())))))
+                     (empty-set))))
+)
+
+(defmacro singleton-if-found ()
+  `(if (map-find dest flow-data t)
+      (singleton dest)
+      (empty-set)))
 
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op
-                 (map-singleton dest op1)
-                 )
+                 (map-singleton dest op1))
     :dep-kill (with-slots (dest) op
-                (if (map-find dest flow-data t)
-                    (singleton dest)
-                )
+                (singleton-if-found))
     )
 
 (def-gen-kill add
-    :const-gen (with-slots (dest op1 op2)
+    :dep-gen (with-slots (dest op1 op2) op
                    (let ((o1 (map-find op1 flow-data))
                          (o2 (map-find op2 flow-data)))
-                     (if (and (o1 o2))
-                         (map-singleton dest (+ o1 o2))
-                         (map-empty))
-                   )
+                     (assert (and o1 o2)) ;; can only add on constants
+                     (map-singleton dest (+ o1 o2))))
+    :dep-kill (with-slots (dest) op
+                (singleton-if-found))
+)
+
+(def-gen-kill sub
+    :dep-gen (with-slots (dest op1 op2) op
+                    (let ((o1 (map-find op1 flow-data))
+                         (o2 (map-find op2 flow-data)))
+                     (assert (and o1 o2)) ;; can only add on constants
+                     (map-singleton dest (- o1 o2))))
+    :dep-kill (with-slots (dest) op
+                (singleton-if-found))
     )
 
-(def-gen-kill sub)
+(def-gen-kill mul
+    :dep-gen (with-slots (dest op1 op2) op
+                    (let ((o1 (map-find op1 flow-data))
+                         (o2 (map-find op2 flow-data)))
+                     (assert (and o1 o2)) ;; can only add on constants
+                     (map-singleton dest (* o1 o2))))
+    :dep-kill (with-slots (dest) op
+                (singleton-if-found))
+    )
 
-(def-gen-kill mul)
+(def-gen-kill copy
+    :dep-gen (with-slots (dest op1 op2) op
+                 (if (equal op2 1)
+                     (let ((o1 (map-find op1 flow-data t)))
+                       (if o1
+                           (map-singleton dest o1)
+                           (map-empty)))
+                     (reduce (lambda (map var)
+                               (let ((data (map-find var flow-data t)))
+                                 (if data
+                                     (map-insert var data map)
+                                     map)))
+                             (loop for i from op1 to (+ op1 op2) collect i)
+                             :initial-value (map-empty))))
+    :dep-kill (with-slots (dest op1 op2) op
+                (if (equal 1 op2)
+                    (if (map-find dest flow-data t)
+                        (singleton dest)
+                        (empty-set))
+                    (reduce (lambda (set var)
+                              (let ((data (map-find var flow-data t)))
+                                (if data
+                                    (set-insert set var)
+                                    set)))
+                            (loop for i from op1 to (+ op1 op2) collect i)
+                            :initial-value (empty-set))))
+)
 
-(def-gen-kill copy)
-
-(def-gen-kill initbase)
-(def-gen-kill clear)
-
-(def-gen-kill mkptr)
-(def-gen-kill copy-indir)
-(def-gen-kill indir-copy)
-(def-gen-kill call)
-(def-gen-kill ret)
-(def-gen-kill branch)
-(def-gen-kill label)
+(def-gen-kill initbase) ;; no consts
+(def-gen-kill clear) ;; no consts
+(def-gen-kill mkptr) ;; no consts
+(def-gen-kill copy-indir) ;; might deal with consts
+(def-gen-kill indir-copy) ;; might deal with consts
+(def-gen-kill call) ;; no consts
+(def-gen-kill ret) ;; no consts
+(def-gen-kill branch) ;; no consts
+(def-gen-kill label) ;; no consts
