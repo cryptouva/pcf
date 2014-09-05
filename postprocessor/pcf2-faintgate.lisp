@@ -65,7 +65,7 @@
    (lambda (temp-out succ)
      (let ((succ-out (get-block-faints (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
-   (get-block-succs blck)
+   (get-block-preds blck)
    :initial-value (get-block-faints blck)))
 
 (defun faint-confluence-op (set1 set2)
@@ -100,7 +100,6 @@
   (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
 )
 
-
 (defgeneric dep-gen (op flow-data)
   (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
 )
@@ -109,7 +108,7 @@
   (:documentation "this function describes how to compute the constant kill part of the flow function for each op")
 )
 
-(defgeneric dep-kill (op)
+(defgeneric dep-kill (op flow-data)
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
@@ -118,9 +117,9 @@
   (faint-confluence-op (const-gen op) (dep-gen op flow-data)))
 
 (defmethod kill (op flow-data)
-  (declare (ignore flow-data))
+  ;;(declare (ignore flow-data))
   ;; kill = const-kill uniond ep_kill
-  (faint-confluence-op (const-kill op)(dep-kill op)))
+  (faint-confluence-op (const-kill op)(dep-kill op flow-data)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
@@ -153,8 +152,9 @@
           )))
 
 (defmacro def-dep-kill (type &body body)
-  `(defmethod dep-kill ((op ,type))
-     (declare (optimize (debug 3) (speed 0)))
+  `(defmethod dep-kill ((op ,type) flow-data)
+     (declare (optimize (debug 3) (speed 0))
+              (ignore flow-data))
      (aif (locally ,@body)
           it
           (gen-kill-standard)

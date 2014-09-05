@@ -5,7 +5,7 @@
   (:export const-flow-fn)
   )
 
-(in-package :pcf2-faintgate)
+(in-package :pcf2-const)
 
 ;;; this analysis tracks the uses of constants through a program to determine if we can eliminate some gates by propagating constants and to help with other dataflow analyses
 ;;; A variable x e Var has a constant value c e Const at a program point u if for every path reaching u along which a definition of x reaches u, the value of x is c.
@@ -73,7 +73,10 @@
   ;; if either set is "top," return the other set
   (funcall confluence-operator set1 set2))
 
-(defun const-flow-fn (blck cfg state)
+(defun map-merge ())
+(defun map-union())
+
+(defun const-flow-fn (blck cfg)
   ;; this will be fixed later, as per p 112
   (declare (optimize (speed 0) (debug 3)))
   (let ((flow (set-union
@@ -88,7 +91,7 @@
   (reduce
    (lambda (temp-out succ)
      (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
-       (funcall #'conf temp-out succ-out)))
+       (funcall conf temp-out succ-out)))
    (get-block-succs blck)
    :initial-value (get-block-out-set blck)))
 
@@ -125,43 +128,40 @@
   ;;(break)
   (const-confluence-op (const-kill op) (dep-kill op flow-data)))
   
-(defmacro gen-kill-standard ()
-  ;; for faint variable analysis, standard is always empty set
+;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
+(defmacro empty-gen ()
   `(map-empty))
 
-;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
+(defmacro empty-kill ()
+  `(empty-set))
 
 (defmacro def-const-gen (type &body body)
   `(defmethod const-gen ((op ,type))
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
-          (gen-kill-standard)
-          )))
+          (empty-gen))))
 
 (defmacro def-dep-gen (type &body body)
   `(defmethod dep-gen ((op ,type) flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
-          (gen-kill-standard)
-          )))
+          (empty-gen))))
 
 (defmacro def-const-kill (type &body body)
   `(defmethod const-kill ((op ,type))
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
-          (gen-kill-standard)
-          )))
+          (empty-kill))))
 
 (defmacro def-dep-kill (type &body body)
   `(defmethod dep-kill ((op ,type) flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
-          (gen-kill-standard)
-          )))
+          (empty-kill))))
 
 ;; and the macro to write const-gen, dep-gen, const-kill, and dep-kill for each instruction
 (defmacro def-gen-kill (type &key (const-gen nil) (dep-gen nil) (const-kill nil) (dep-kill nil))
@@ -175,16 +175,61 @@
 ;; gen sets are represented as maps of variable -> value
 ;; kill sets are represented as sets of variables since their values aren't necessary for the kill
 
-(def-gen-kill bits)
-
-(def-gen-kill join)
-
 (defmacro with-not-nil-from (a b &body body)
-  `(let ((it (if (,a) ,a ,b)))
+  `(let ((it (if ,a ,a ,b)))
      ,@body ))
 
 (defmacro loginot (a)
   `(if (eq ,a 1) 1 0))
+
+(defun to-32-bit-binary-list (num)
+  (labels ((to-32-bit (n depth)
+             (if (eq depth 0)
+                 (list (mod n 2))
+                 (append (list (mod n 2)) (to-32-bit (floor (/ n 2)) (- depth 1))))))
+  (to-32-bit num 31)))
+
+
+(def-gen-kill bits
+    :dep-gen (with-slots (dest op1) op
+               (aif (map-find op1 flow-data t)
+                    (let ((bin-list (to-32-bit-binary-list it)))
+                      (reduce (lambda (state bit)
+                                (let ((map (first state))
+                                      (wire (car (second state))))
+                                  (list (map-insert wire bit map) (cdr (second state)))))
+                              bin-list
+                              :initial-value (list (map-empty) dest)))
+                    (empty-gen)))
+    :dep-kill (with-slots (dest) op
+                (reduce (lambda (set wire)
+                          (if (map-find wire flow-data t)
+                              (set-insert set wire)
+                              set))
+                        dest
+                        :initial-value (empty-set)))
+    )
+
+(def-gen-kill join
+    :dep-gen (labels ((all-list-found (map lst)
+                        (if (null lst)
+                            t
+                            (and (map-find (car lst) map t) (all-list-found map (cdr lst))))))
+               (with-slots (dest op1) op
+                 (if (all-list-found flow-data op1)
+                     (let ((val (loop for i in op1
+                                   for count from 0 to (- (length op1) 1)
+                                   with x = (map-find i flow-data)
+                                   summing (* x (expt 2 count)) into dec-var
+                                   finally (return dec-var)
+                                     )))
+                       (map-singleton dest val))
+                     (empty-gen))))
+    :dep-kill (with-slots (dest) op
+                (if (map-find dest flow-data t)
+                     (singleton dest)
+                     (empty-kill)))
+    )
 
 (def-gen-kill gate
     ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
@@ -202,7 +247,7 @@
                                          (#*1001 (lognot (logxor o1 o2)))
                                          (otherwise 'undef))))
                           (if (equalp out-val 'undef)
-                              (map-empty)
+                              (empty-gen)
                               (map-singleton dest out-val))))
                        (t (with-not-nil-from o1 o2
                             (case truth-table
@@ -213,7 +258,7 @@
                                           (map-empty)
                                           (map-singleton dest 1)))
                               (otherwise (map-empty))))))
-                     (empty-set))))
+                     (empty-gen))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
 )
@@ -221,7 +266,7 @@
 (defmacro singleton-if-found ()
   `(if (map-find dest flow-data t)
       (singleton dest)
-      (empty-set)))
+      (empty-kill)))
 
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op
@@ -243,7 +288,7 @@
 (def-gen-kill sub
     :dep-gen (with-slots (dest op1 op2) op
                     (let ((o1 (map-find op1 flow-data))
-                         (o2 (map-find op2 flow-data)))
+                          (o2 (map-find op2 flow-data)))
                      (assert (and o1 o2)) ;; can only add on constants
                      (map-singleton dest (- o1 o2))))
     :dep-kill (with-slots (dest) op
@@ -266,7 +311,7 @@
                      (let ((o1 (map-find op1 flow-data t)))
                        (if o1
                            (map-singleton dest o1)
-                           (map-empty)))
+                           (empty-gen)))
                      (reduce (lambda (map var)
                                (let ((data (map-find var flow-data t)))
                                  (if data
@@ -278,7 +323,7 @@
                 (if (equal 1 op2)
                     (if (map-find dest flow-data t)
                         (singleton dest)
-                        (empty-set))
+                        (empty-kill))
                     (reduce (lambda (set var)
                               (let ((data (map-find var flow-data t)))
                                 (if data
@@ -290,8 +335,50 @@
 
 
 (def-gen-kill mkptr) ;; no consts
-(def-gen-kill copy-indir) ;; might deal with consts
-(def-gen-kill indir-copy) ;; might deal with consts
+
+(defmacro gen-for-indirection (source-address dest-address length)
+  `(if (equal ,length 1)
+       (aif (map-find ,dest-address flow-data nil)
+            (map-singleton ,dest-address it)
+            (empty-gen))
+       (reduce (lambda (state oldwire)
+                 (let ((map (first state))
+                       (newwire (car (second state))))
+                   (aif (map-find oldwire flow-data t)
+                        (list (map-insert newwire it map) (cdr (second state)))
+                        (list map (cdr (second state))))))
+               (loop for i from ,source-address to (+ ,source-address ,length) collect i)
+               :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length))))))
+
+(defmacro kill-for-indirection (source-address dest-address length)
+  `(if (equal ,length 1)
+      (if (map-find ,dest-address flow-data nil)
+          (singleton ,dest-address)
+          (empty-kill))
+      (reduce (lambda (state oldwire)
+                (let ((set (first state))
+                      (newwire (car (second state))))
+                  (aif (map-find oldwire flow-data t)
+                       (list (set-insert set newwire) (cdr (second state)))
+                       (list set (cdr (second state))))))
+              (loop for i from ,source-address to (+ ,source-address ,length) collect i)
+              :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length))))))
+
+(def-gen-kill copy-indir
+    :dep-gen (with-slots (dest op1 op2) op
+               (let ((addr (map-find op1 flow-data)))
+                 (gen-for-indirection addr dest op2)))
+    :dep-kill (with-slots (dest op1 op2) op
+                (let ((addr (map-find op1 flow-data)))
+                  (kill-for-indirection addr dest op2))))
+
+(def-gen-kill indir-copy
+    :dep-gen (with-slots (dest op1 op2) op
+               (let ((addr (map-find dest flow-data)))
+                 (gen-for-indirection op1 addr op2)))
+    :dep-kill (with-slots (dest op1 op2) op
+                (let ((addr (map-find dest flow-data)))
+                  (kill-for-indirection op1 addr op2)))) 
 
 (def-gen-kill initbase) ;; no consts
 (def-gen-kill clear) ;; no consts
