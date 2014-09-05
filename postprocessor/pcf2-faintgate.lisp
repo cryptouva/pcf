@@ -80,13 +80,10 @@
 
 (defun faint-flow-fn (blck cfg)
   ;;(declare (optimize (speed 0) (debug 3)))
-  (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op)) 
-         (flow (faint-confluence-op
-                (set-diff in-flow (kill (get-block-op blck) in-flow))
-                (gen (get-block-op blck) in-flow))))
-    ;;(print flow)
-    ;;(break)
-    flow))
+  (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
+    (flow (faint-confluence-op
+           (set-diff in-flow (kill (get-block-op blck) in-flow))
+           (gen (get-block-op blck) in-flow)))))
 
 (defgeneric gen (op flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 

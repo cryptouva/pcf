@@ -2,7 +2,9 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-const
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
-  (:export const-flow-fn)
+  (:export const-flow-fn
+           const-confluence-op
+           const-weaker-fn)
   )
 
 (in-package :pcf2-const)
@@ -16,6 +18,8 @@
 ;;; we represent the constants available at a program point as a map from variable to constant. if the variable is not a constant, we exclude it from the map (this is a memory consideration)
 ;;; the confluence operation is defined in terms of applying conf-hat on pairs of the same variable
 ;; ForAll x1,x2 e L, x1 conf x2 = { <z, dx conf-hat dy > | <z,dx> e x1, <z,dy> e x2, x e Var }
+;; our analysis will merge maps of constant values by taking all of the key-value pairs that are common to both maps and all of the key-value pairs for which the keys are unique to one map. Pairs from two maps with the same key but different values will be discarded.
+;; Our map-intersect operation uses the same idea, but takes only the key-value pairs that the maps have in common, discarding everything else.
 
 ;;; Gen_n(x) = ConstGen_n Union DepGen_n(x)
 ;;; Kill_n(x) = ConstKill_n Union DepKill_n(x)
@@ -46,54 +50,66 @@
 
 ;;; **because read(x) is a way for us to input non-consts, we move <x,bottom-hat> from ConstGen to ConstKill
 
-(defparameter confluence-operator #'set-inter) ;; this is not set-inter, needs to be updated with a form of map-inter
+
+(defun map-union-without-conflicts (map1 map2)
+  (map-reduce (lambda (map-accum key val)
+                (aif (map-find key map2 t)
+                     (if (eq it val)
+                         map-accum ;; already have the element
+                         (map-remove key map-accum)) ;; element duplicates not equivalent
+                     (map-insert key val map-accum))) ;; add element
+              map1
+              map2))
+
+(defparameter confluence-operator #'map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of map-inter
 
 (defmacro top-set ()
   `(map-empty))
 
-#|
-(defun constcmp (x y)
-  (typecase x
-    (number (typecase y
-              (number (< x y))
-              (symbol (if (equalp y 'unknown)
-                          t
-                          nil))))
-    (symbol (if (equalp x 'unknown)
-                nil
-                (typecase y ;;must compare if both x and y are symbols
-                  (number t)
-                  (symbol (if (equalp y 'unknown)
-                              t
-                              nil ;; x and y are both 'not-const
-                              )))))))
-|#
+(defun map-intersect (map1 map2)
+  (map-reduce (lambda (map-accum key val)
+                (aif (map-find key map2 t)
+                     (if (eq it val)
+                         (map-insert key val map-accum) ;; values correspond
+                         map-accum) ;; values do not correspond
+                     map-accum ;; value not in both maps
+                ))
+              map1
+              (map-empty)))
 
-(defun cost-confluence-op (set1 set2)
+(defun map-diff (map1 map2)
+  ;; map1 without the elements from map2
+  (map-reduce (lambda (map key val)
+                (declare (ignore val))
+                (if (map-find key map t)
+                    (map-remove key map)
+                    map))
+              map2 ;; remove elements from map2
+              map1 ;; use map1 as initial
+              ))
+
+(defun const-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
   (funcall confluence-operator set1 set2))
 
-(defun map-merge ())
-(defun map-union())
-
 (defun const-flow-fn (blck cfg)
-  ;; this will be fixed later, as per p 112
-  (declare (optimize (speed 0) (debug 3)))
-  (let ((flow (set-union
-               (set-diff (get-out-sets blck cfg #'confluence-op) (kill (get-block-op blck)))
-               (gen (get-block-op blck)))))
-    flow))
+  ;;(declare (optimize (speed 0) (debug 3)))
+  (let ((in-flow (get-out-sets blck cfg #'map-intersect)))
+    (map-union-without-conflicts
+     (map-diff in-flow (kill (get-block-op blck) in-flow))
+     (gen (get-block-op blck) in-flow))))
 
 (defun const-weaker-fn (set1 set2)
-  t)
+  ;; set 1 is weaker than (safely estimates) set 2 if set 1 is a subset of set2
+  (set-subset set1 set2))
 
 (defun get-out-sets (blck cfg conf)
   (reduce
    (lambda (temp-out succ)
-     (let ((succ-out (get-block-out-set (get-block-by-id succ cfg))))
+     (let ((succ-out (get-block-consts (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-out-set blck)))
+   :initial-value (get-block-consts blck)))
 
 (defgeneric gen (op flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -236,7 +252,7 @@
     :dep-gen (with-slots (dest op1 op2 truth-table) op
                (let ((o1 (map-find op1 flow-data t))
                      (o2 (map-find op2 flow-data t)))
-                 (if (or (o1 o2))
+                 (if (or o1 o2)
                      (cond 
                        ((and o1 o2) ;; if both are constant, we can precompute the gate
                         (let ((out-val (case truth-table
@@ -378,7 +394,7 @@
                  (gen-for-indirection op1 addr op2)))
     :dep-kill (with-slots (dest op1 op2) op
                 (let ((addr (map-find dest flow-data)))
-                  (kill-for-indirection op1 addr op2)))) 
+                  (kill-for-indirection op1 addr op2))))
 
 (def-gen-kill initbase) ;; no consts
 (def-gen-kill clear) ;; no consts
