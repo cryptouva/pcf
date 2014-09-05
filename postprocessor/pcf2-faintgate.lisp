@@ -81,15 +81,15 @@
 (defun faint-flow-fn (blck cfg)
   ;;(declare (optimize (speed 0) (debug 3)))
   (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
-    (flow (faint-confluence-op
-           (set-diff in-flow (kill (get-block-op blck) in-flow))
-           (gen (get-block-op blck) in-flow)))))
+    (faint-confluence-op
+     (set-diff in-flow (kill (get-block-op blck) blck in-flow))
+     (gen (get-block-op blck) blck in-flow))))
 
-(defgeneric gen (op flow-data)
+(defgeneric gen (op blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op flow-data)
+(defgeneric kill (op blck flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -97,7 +97,7 @@
   (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
 )
 
-(defgeneric dep-gen (op flow-data)
+(defgeneric dep-gen (op blck flow-data)
   (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
 )
 
@@ -105,18 +105,18 @@
   (:documentation "this function describes how to compute the constant kill part of the flow function for each op")
 )
 
-(defgeneric dep-kill (op flow-data)
+(defgeneric dep-kill (op blck flow-data)
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op flow-data)
+(defmethod gen (op blck flow-data)
   ;; gen = const_gen union dep_gen
-  (faint-confluence-op (const-gen op) (dep-gen op flow-data)))
+  (faint-confluence-op (const-gen op) (dep-gen op blck flow-data)))
 
-(defmethod kill (op flow-data)
+(defmethod kill (op blck flow-data)
   ;;(declare (ignore flow-data))
   ;; kill = const-kill uniond ep_kill
-  (faint-confluence-op (const-kill op)(dep-kill op flow-data)))
+  (faint-confluence-op (const-kill op)(dep-kill op blck flow-data)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
@@ -133,7 +133,7 @@
           )))
 
 (defmacro def-dep-gen (type &body body)
-  `(defmethod dep-gen ((op ,type) flow-data)
+  `(defmethod dep-gen ((op ,type) blck flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -149,7 +149,7 @@
           )))
 
 (defmacro def-dep-kill (type &body body)
-  `(defmethod dep-kill ((op ,type) flow-data)
+  `(defmethod dep-kill ((op ,type) blck flow-data)
      (declare (optimize (debug 3) (speed 0))
               (ignore flow-data))
      (aif (locally ,@body)
@@ -265,11 +265,36 @@
 ;; has no effect; the loaded constant will take care of this for us.
 )
 
+(defmacro gen-for-indirection (source destination length)
+  `(if (eq ,length 1)
+       (if (set-member ,destination flow-data)
+            (singleton ,source)
+            (empty-set))
+       (loop for i from 0 to ,length
+            when (set-member (+ i ,destination) flow-data)
+            collect (+ i ,source))
+       ))
+
+(defmacro kill-for-indirection (destination length)
+  `(if (eq ,length 1)
+       (singleton ,destination)
+       (loop for i from ,destination to (+ ,length ,destination) collect i)))
+
 (def-gen-kill copy-indir
-    ;; 
+    :dep-gen (with-slots (dest op1 op2) op
+                 (let ((addr (map-find op1 (get-block-consts blck))))
+                   (gen-for-indirection addr dest op2)))
+    :const-kill (with-slots (dest op2) op
+                  (kill-for-indirection dest op2))
 )
+
 (def-gen-kill indir-copy
-    ;;
+    :dep-gen (with-slots (dest op1 op2) op
+               (let ((addr (map-find dest (get-block-consts blck))))
+                 (gen-for-indirection op1 addr op2)))
+    :dep-kill (with-slots (dest op2) op
+                  (let ((addr (map-find dest (get-block-consts blck))))
+                    (kill-for-indirection addr op2)))
 )
 
 (def-gen-kill call
@@ -277,7 +302,7 @@
                  (if (set-member fname output-functions)
                      (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                      (empty-set)))
-    :const-kill (with-slots (newbase fname) op
+    :dep-kill (with-slots (newbase fname) op
                   (if (set-member fname input-functions)
                       (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                       (empty-set)))
