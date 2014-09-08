@@ -52,6 +52,7 @@
 
 
 (defun map-union-without-conflicts (map1 map2)
+  (break)
   (map-reduce (lambda (map-accum key val)
                 (aif (map-find key map2 t)
                      (if (eq it val)
@@ -88,15 +89,24 @@
               map1 ;; use map1 as initial
               ))
 
+(defun map-remove-key-set (map set)
+  (set-reduce (lambda (map key)
+                (if (map-find key map t)
+                    (map-remove key map)
+                    map))
+              set
+              map))
+
 (defun const-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
   (funcall confluence-operator set1 set2))
 
 (defun const-flow-fn (blck cfg)
-  ;;(declare (optimize (speed 0) (debug 3)))
-  (let ((in-flow (get-out-sets blck cfg #'map-intersect)))
+  (declare (optimize (speed 0) (debug 3)))
+  (break)
+  (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
     (map-union-without-conflicts
-     (map-diff in-flow (kill (get-block-op blck) in-flow))
+     (map-remove-key-set in-flow (kill (get-block-op blck) in-flow))
      (gen (get-block-op blck) in-flow))))
 
 (defun const-weaker-fn (set1 set2)
@@ -104,11 +114,11 @@
   (set-subset set1 set2))
 
 (defun get-out-sets (blck cfg conf)
-  (print (get-block-preds blck))
+  (format t "block preds: ~A~%" (get-block-preds blck))
   (reduce
    (lambda (temp-out pred)
      (let ((pred-out (get-block-consts (get-block-by-id pred cfg))))
-       (format t "pred out: ~A~%" (print pred-out))
+       (format t "pred out: ~A~%" pred-out)
        (funcall conf temp-out pred-out)))
    (get-block-preds blck)
    :initial-value (get-block-consts blck)))
@@ -217,7 +227,7 @@
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
                (aif (map-find op1 flow-data t)
-                    (let ((bin-list (to-32-bit-binary-list it)))
+                    (let ((bin-list (to-32-bit-binary-list (cdr it))))
                       (reduce (lambda (state bit)
                                 (let ((map (first state))
                                       (wire (car (second state))))

@@ -485,18 +485,7 @@
 (defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (let ((cfg (make-pcf-cfg ops)))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)))))
-#|
-(let ((cfg (map-fold-backward
-     (lambda (cfg* key block)
-       (insert-block
-           key
-           (funcall set-data-fn (funcall flow-fn block cfg*) block)
-           ;; (block-with-faints (funcall flow-fn block cfg*) block)
-           cfg*
-         cfg*))
-     (get-graph-map cfg)
-     cfg)))
-|#
+
 
 (defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (let ((cfg (make-pcf-cfg ops)))
@@ -510,18 +499,32 @@
    cfg))
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (reduce (lambda (state neighbor-id)
+  ;;  (format t "block id: ~A~%" (get-block-id cur-node))
+  (format t "block: ~A~%" cur-node)
+  (let ((new-flow (funcall flow-fn cur-node cfg)))
+    (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
+      (format t "new out: ~A~%" new-flow)
+      (values cfg
+              (reduce (lambda (worklist neighbor-id)
+                        (format t "new flow (again): ~A~%" new-flow)
+                        (let* ((neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
+                               (compare-flow (funcall join-fn new-flow neighbor-flow)))
+                          (format t "neighbor flow: ~A~%" neighbor-flow)
+                          (format t "compare-flow: ~A~%" compare-flow)
+                          (if (funcall weaker-fn compare-flow neighbor-flow)
+                              (append worklist (list neighbor-id))
+                              worklist)))
+                      (funcall get-neighbor-fn cur-node)
+                      :initial-value nil)))))
+#|                  
+    (reduce (lambda (state neighbor-id)
             (declare (optimize (debug 3)(speed 0)))
             (let* ((cfg* (first state)) 
                    (neighbor (get-block-by-id neighbor-id cfg*))
                    (worklist (second state))
                    ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
-                   (new-flow (funcall flow-fn cur-node cfg*))
                    (old-flow (funcall get-data-fn neighbor))
                    (new-out (funcall join-fn new-flow old-flow)))
-              (print old-flow)
-              (print new-flow)
-              (print new-out)
               ;;(if (funcall weaker-fn new-out old-flow)
               (list
                (insert-block neighbor-id (funcall set-data-fn new-out cur-node) cfg*
@@ -532,23 +535,27 @@
                   ;;(list cfg* worklist))))
           (funcall get-neighbor-fn cur-node)
           :initial-value (list cfg nil)))
+|#
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)
   ;; (declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
       cfg ; done
-      (let* ((cur-node-id (car worklist))
-             (worklist (cdr worklist))
-             (cur-node (get-block-by-id cur-node-id cfg))
-             ;; new-state will compute an updated cfg and compile things to add to the worklist
+      (let ((cur-node-id (car worklist))
+            (worklist (cdr worklist)))
+        (multiple-value-bind (cfg* more-work) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+          (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work))))))
+
+#|
+
+
+                       ;; new-state will compute an updated cfg and compile things to add to the worklist
              (new-state (flow-once cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn))
              (more-work (if (null (second new-state))
                             worklist
                             (append (second new-state) worklist))))
-        (print cur-node-id)
-       ;; (print (first new-state))
-        (do-flow (first new-state) flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work))))
-#|
+
+
 (defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)
   `(do-flow ,cfg ,join-fn ,flow-fn ,get-neighbors ,worklist))
 
