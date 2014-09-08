@@ -23,6 +23,7 @@
 		     map-upsert
                      map-remove
                      map-find
+                     map-val
                      map-map
                      map-reduce
                      map-empty
@@ -265,6 +266,12 @@
       )
     )
   )
+
+(defun map-val (x mp &optional (allow-no-result nil))
+  (let ((val (map-find x mp allow-no-result)))
+    (if (null val)
+        nil
+        (cdr val))))
 
 (defmacro map-singleton (x y &key (comp nil))
   (if (null comp)

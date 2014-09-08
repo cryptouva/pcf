@@ -52,9 +52,8 @@
 
 
 (defun map-union-without-conflicts (map1 map2)
-  (break)
   (map-reduce (lambda (map-accum key val)
-                (aif (map-find key map2 t)
+                (aif (map-val key map2 t)
                      (if (eq it val)
                          map-accum ;; already have the element
                          (map-remove key map-accum)) ;; element duplicates not equivalent
@@ -69,7 +68,7 @@
 
 (defun map-intersect (map1 map2)
   (map-reduce (lambda (map-accum key val)
-                (aif (map-find key map2 t)
+                (aif (map-val key map2 t)
                      (if (eq it val)
                          (map-insert key val map-accum) ;; values correspond
                          map-accum) ;; values do not correspond
@@ -82,7 +81,7 @@
   ;; map1 without the elements from map2
   (map-reduce (lambda (map key val)
                 (declare (ignore val))
-                (if (map-find key map t)
+                (if (map-val key map t)
                     (map-remove key map)
                     map))
               map2 ;; remove elements from map2
@@ -91,7 +90,7 @@
 
 (defun map-remove-key-set (map set)
   (set-reduce (lambda (map key)
-                (if (map-find key map t)
+                (if (map-val key map t)
                     (map-remove key map)
                     map))
               set
@@ -103,7 +102,6 @@
 
 (defun const-flow-fn (blck cfg)
   (declare (optimize (speed 0) (debug 3)))
-  (break)
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
     (map-union-without-conflicts
      (map-remove-key-set in-flow (kill (get-block-op blck) in-flow))
@@ -114,11 +112,11 @@
   (set-subset set1 set2))
 
 (defun get-out-sets (blck cfg conf)
-  (format t "block preds: ~A~%" (get-block-preds blck))
+  ;;(format t "block preds: ~A~%" (get-block-preds blck))
   (reduce
    (lambda (temp-out pred)
      (let ((pred-out (get-block-consts (get-block-by-id pred cfg))))
-       (format t "pred out: ~A~%" pred-out)
+       ;;(format t "pred out: ~A~%" pred-out)
        (funcall conf temp-out pred-out)))
    (get-block-preds blck)
    :initial-value (get-block-consts blck)))
@@ -212,7 +210,7 @@
 
 
 (defmacro singleton-if-found ()
-  `(if (map-find dest flow-data t)
+  `(if (map-val dest flow-data t)
        (singleton dest)
        (empty-kill)))
 
@@ -226,18 +224,18 @@
 
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
-               (aif (map-find op1 flow-data t)
-                    (let ((bin-list (to-32-bit-binary-list (cdr it))))
-                      (reduce (lambda (state bit)
-                                (let ((map (first state))
-                                      (wire (car (second state))))
-                                  (list (map-insert wire bit map) (cdr (second state)))))
-                              bin-list
-                              :initial-value (list (map-empty) dest)))
+               (aif (map-val op1 flow-data t)
+                    (let ((bin-list (to-32-bit-binary-list it)))
+                      (first (reduce (lambda (state bit)
+                                       (let ((map (first state))
+                                             (wire (car (second state))))
+                                         (list (map-insert wire bit map) (cdr (second state)))))
+                                     bin-list
+                                     :initial-value (list (map-empty) dest))))
                     (empty-gen)))
     :dep-kill (with-slots (dest) op
                 (reduce (lambda (set wire)
-                          (if (map-find wire flow-data t)
+                          (if (map-val wire flow-data t)
                               (set-insert set wire)
                               set))
                         dest
@@ -248,19 +246,19 @@
     :dep-gen (labels ((all-list-found (map lst)
                         (if (null lst)
                             t
-                            (and (map-find (car lst) map t) (all-list-found map (cdr lst))))))
+                            (and (map-val (car lst) map t) (all-list-found map (cdr lst))))))
                (with-slots (dest op1) op
                  (if (all-list-found flow-data op1)
                      (let ((val (loop for i in op1
                                    for count from 0 to (- (length op1) 1)
-                                   with x = (map-find i flow-data)
+                                   with x = (map-val i flow-data)
                                    summing (* x (expt 2 count)) into dec-var
                                    finally (return dec-var)
                                      )))
                        (map-singleton dest val))
                      (empty-gen))))
     :dep-kill (with-slots (dest) op
-                (if (map-find dest flow-data t)
+                (if (map-val dest flow-data t)
                      (singleton dest)
                      (empty-kill)))
     )
@@ -268,8 +266,8 @@
 (def-gen-kill gate
     ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
     :dep-gen (with-slots (dest op1 op2 truth-table) op
-               (let ((o1 (map-find op1 flow-data t))
-                     (o2 (map-find op2 flow-data t)))
+               (let ((o1 (map-val op1 flow-data t))
+                     (o2 (map-val op2 flow-data t)))
                  (if (or o1 o2)
                      (cond 
                        ((and o1 o2) ;; if both are constant, we can precompute the gate
@@ -306,8 +304,8 @@
 
 (def-gen-kill add
     :dep-gen (with-slots (dest op1 op2) op
-                   (let ((o1 (map-find op1 flow-data))
-                         (o2 (map-find op2 flow-data)))
+                   (let ((o1 (map-val op1 flow-data))
+                         (o2 (map-val op2 flow-data)))
                      (assert (and o1 o2)) ;; can only add on constants
                      (map-singleton dest (+ o1 o2))))
     :dep-kill (with-slots (dest) op
@@ -316,8 +314,8 @@
 
 (def-gen-kill sub
     :dep-gen (with-slots (dest op1 op2) op
-                    (let ((o1 (map-find op1 flow-data))
-                          (o2 (map-find op2 flow-data)))
+                    (let ((o1 (map-val op1 flow-data))
+                          (o2 (map-val op2 flow-data)))
                      (assert (and o1 o2)) ;; can only add on constants
                      (map-singleton dest (- o1 o2))))
     :dep-kill (with-slots (dest) op
@@ -326,8 +324,8 @@
 
 (def-gen-kill mul
     :dep-gen (with-slots (dest op1 op2) op
-                    (let ((o1 (map-find op1 flow-data))
-                         (o2 (map-find op2 flow-data)))
+                    (let ((o1 (map-val op1 flow-data))
+                          (o2 (map-val op2 flow-data)))
                      (assert (and o1 o2)) ;; can only add on constants
                      (map-singleton dest (* o1 o2))))
     :dep-kill (with-slots (dest) op
@@ -337,12 +335,12 @@
 (def-gen-kill copy
     :dep-gen (with-slots (dest op1 op2) op
                  (if (equal op2 1)
-                     (let ((o1 (map-find op1 flow-data t)))
+                     (let ((o1 (map-val op1 flow-data t)))
                        (if o1
                            (map-singleton dest o1)
                            (empty-gen)))
                      (reduce (lambda (map var)
-                               (let ((data (map-find var flow-data t)))
+                               (let ((data (map-val var flow-data t)))
                                  (if data
                                      (map-insert var data map)
                                      map)))
@@ -350,11 +348,11 @@
                              :initial-value (map-empty))))
     :dep-kill (with-slots (dest op1 op2) op
                 (if (equal 1 op2)
-                    (if (map-find dest flow-data t)
+                    (if (map-val dest flow-data t)
                         (singleton dest)
                         (empty-kill))
                     (reduce (lambda (set var)
-                              (let ((data (map-find var flow-data t)))
+                              (let ((data (map-val var flow-data t)))
                                 (if data
                                     (set-insert set var)
                                     set)))
@@ -367,46 +365,46 @@
 
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
-       (aif (map-find ,dest-address flow-data nil)
+       (aif (map-val ,dest-address flow-data nil)
             (map-singleton ,dest-address it)
             (empty-gen))
-       (reduce (lambda (state oldwire)
+       (first (reduce (lambda (state oldwire)
                  (let ((map (first state))
                        (newwire (car (second state))))
-                   (aif (map-find oldwire flow-data t)
+                   (aif (map-val oldwire flow-data t)
                         (list (map-insert newwire it map) (cdr (second state)))
                         (list map (cdr (second state))))))
                (loop for i from ,source-address to (+ ,source-address ,length) collect i)
-               :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length))))))
+               :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
 (defmacro kill-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
-      (if (map-find ,dest-address flow-data nil)
+      (if (map-find ,dest-address flow-data nil) ;; nil because it must always be found
           (singleton ,dest-address)
           (empty-kill))
-      (reduce (lambda (state oldwire)
+      (first (reduce (lambda (state oldwire)
                 (let ((set (first state))
                       (newwire (car (second state))))
-                  (aif (map-find oldwire flow-data t)
+                  (aif (map-val oldwire flow-data t)
                        (list (set-insert set newwire) (cdr (second state)))
                        (list set (cdr (second state))))))
               (loop for i from ,source-address to (+ ,source-address ,length) collect i)
-              :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length))))))
+              :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((addr (map-find op1 flow-data)))
+               (let ((addr (map-val op1 flow-data)))
                  (gen-for-indirection addr dest op2)))
     :dep-kill (with-slots (dest op1 op2) op
-                (let ((addr (map-find op1 flow-data)))
+                (let ((addr (map-val op1 flow-data)))
                   (kill-for-indirection addr dest op2))))
 
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((addr (map-find dest flow-data)))
+               (let ((addr (map-val dest flow-data)))
                  (gen-for-indirection op1 addr op2)))
     :dep-kill (with-slots (dest op1 op2) op
-                (let ((addr (map-find dest flow-data)))
+                (let ((addr (map-val dest flow-data)))
                   (kill-for-indirection op1 addr op2))))
 
 (def-gen-kill initbase) ;; no consts
