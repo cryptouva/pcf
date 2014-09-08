@@ -174,6 +174,14 @@
                )))
      ,@body))
 
+(defun block-with-op (new-op bb)
+   (make-pcf-basic-block
+               :id (get-block-id bb)
+               :op  new-op
+               :preds (get-block-preds bb)
+               :succs (get-block-succs bb)
+               :data (list (get-block-consts bb) (get-block-faints bb))))
+
 (defun block-with-faints (new-faint bb)
   (make-pcf-basic-block
                :id (get-block-id bb)
@@ -461,16 +469,6 @@
                               )))
       preds
       )))
-#|      
-(cfg-with-map :cfg cfg-bottom :map (find-preds (update-ret-succs cfg-bottom
-                                                                       (sixth lbl-fn-map)
-                                                                       (fourth lbl-fn-map))))))) |#
-#|
-(preds (find-preds (update-ret-succs cfg-bottom
-                                     (sixth lbl-fn-map)
-                                     (fourth lbl-fn-map)))))
-(cfg-with-map :cfg cfg-bottom :map preds)))))
-|#
 
 ;; when flowing,
 ;; each node carries info about its own data
@@ -498,13 +496,6 @@
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg)))))
 
-(defun init-flow-values (cfg flow-fn)
-  (map-map
-   (lambda(key val)
-     (declare (ignore key))
-     (funcall flow-fn val (get-graph-map cfg)))
-   cfg))
-
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (format t "block id: ~A~%" (get-block-id cur-node))
   ;; (format t "block: ~A~%" cur-node)
@@ -523,26 +514,7 @@
                               worklist)))
                       (funcall get-neighbor-fn cur-node)
                       :initial-value nil)))))
-#|                  
-    (reduce (lambda (state neighbor-id)
-            (declare (optimize (debug 3)(speed 0)))
-            (let* ((cfg* (first state)) 
-                   (neighbor (get-block-by-id neighbor-id cfg*))
-                   (worklist (second state))
-                   ;; for each neighbor, check if the neighbor's flow information is different from its recomputation
-                   (old-flow (funcall get-data-fn neighbor))
-                   (new-out (funcall join-fn new-flow old-flow)))
-              ;;(if (funcall weaker-fn new-out old-flow)
-              (list
-               (insert-block neighbor-id (funcall set-data-fn new-out cur-node) cfg*
-                 cfg*)
-               (if (funcall weaker-fn new-out old-flow)
-                   (append worklist (list neighbor-id))
-                   worklist))))
-                  ;;(list cfg* worklist))))
-          (funcall get-neighbor-fn cur-node)
-          :initial-value (list cfg nil)))
-|#
+
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)
   ;; (declare (optimize (debug 3)(speed 0)))
@@ -553,23 +525,30 @@
         (multiple-value-bind (cfg* more-work) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
           (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work))))))
 
-#|
 
+(defun remove-block-from-cfg (blck cfg)
+  (declare (ignore blck))
+  cfg
+  )
 
-                       ;; new-state will compute an updated cfg and compile things to add to the worklist
-             (new-state (flow-once cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn))
-             (more-work (if (null (second new-state))
-                            worklist
-                            (append (second new-state) worklist))))
-
-
-(defmacro flow-forward-backward (cfg worklist join-fn flow-fn get-neighbors)
-  `(do-flow ,cfg ,join-fn ,flow-fn ,get-neighbors ,worklist))
-
-(defun flow-forward (cfg join-fn flow-fn)
-  (flow-forward-backward cfg #'join-fn #'flow-fn #'get-block-succs (map-keys (get-graph-map cfg)) nil))
-
-(defun flow-backward (cfg join-fn flow-fn)
-  (flow-forward-backward cfg #'join-fn #'flow-fn #'get-block-preds (reverse (map-keys (get-graph-map cfg))) nil))
-
-|#
+(defun eliminate-extra-gates (cfg)
+  ;; gates that are unnecessary may be eliminated here!
+  ;; rules:
+  ;; if the block is a gate with a constant in its output, replace the gate with a const 
+  ;; if the output of the gate is faint, remove it entirely
+  (map-reduce (lambda (cfg* blockid blck)
+                (let ((op (get-block-op blck)))
+                  (typecase op
+                    (gate (with-slots (op1 op2 dest) op
+                            (if (not (and
+                                      (member op1 (get-block-faints blck))
+                                      (member op2 (get-block-faints blck))))
+                                (remove-block-from-cfg blck cfg*);; remove this op from the cfg
+                                (aif (map-val dest cfg* t)
+                                     (map-insert blockid
+                                                 (block-with-op (make-instance 'const :dest dest :op1 it) blck)
+                                                 cfg*)
+                                     cfg*))))
+                    (otherwise cfg*))))
+              cfg
+              cfg))

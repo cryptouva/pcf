@@ -75,8 +75,9 @@
 
 (defun faint-weaker-fn (set1 set2)
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
-  (set-subset set2 set1)
-  )
+  (and (not (set-subset set1 set2))
+       (set-subset set2 set1)
+  ))
 
 (defun faint-flow-fn (blck cfg)
   ;;(declare (optimize (speed 0) (debug 3)))

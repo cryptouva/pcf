@@ -214,18 +214,18 @@
        (singleton dest)
        (empty-kill)))
 
-(defun to-32-bit-binary-list (num)
-  (labels ((to-32-bit (n depth)
+(defun to-n-bit-binary-list (num bits)
+  (labels ((to-binary (n depth)
              (if (eq depth 0)
                  (list (mod n 2))
-                 (append (list (mod n 2)) (to-32-bit (floor (/ n 2)) (- depth 1))))))
-  (to-32-bit num 31)))
+                 (append (list (mod n 2)) (to-binary (floor (/ n 2)) (- depth 1))))))
+  (to-binary num (- bits 1))))
 
 
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
                (aif (map-val op1 flow-data t)
-                    (let ((bin-list (to-32-bit-binary-list it)))
+                    (let ((bin-list (to-n-bit-binary-list it (length dest))))
                       (first (reduce (lambda (state bit)
                                        (let ((map (first state))
                                              (wire (car (second state))))
