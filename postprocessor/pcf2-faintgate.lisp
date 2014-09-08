@@ -65,7 +65,7 @@
    (lambda (temp-out succ)
      (let ((succ-out (get-block-faints (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
-   (get-block-preds blck)
+   (get-block-succs blck)
    :initial-value (get-block-faints blck)))
 
 (defun faint-confluence-op (set1 set2)
@@ -270,15 +270,16 @@
        (if (set-member ,destination flow-data)
             (singleton ,source)
             (empty-set))
-       (loop for i from 0 to ,length
-            when (set-member (+ i ,destination) flow-data)
-            collect (+ i ,source))
+       (set-from-list (loop for i from 0 to ,length
+                         when (set-member (+ i ,destination) flow-data)
+                         collect (+ i ,source)))
        ))
 
 (defmacro kill-for-indirection (destination length)
   `(if (eq ,length 1)
        (singleton ,destination)
-       (loop for i from ,destination to (+ ,length ,destination) collect i)))
+       (set-from-list 
+        (loop for i from ,destination to (+ ,length ,destination) collect i))))
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op

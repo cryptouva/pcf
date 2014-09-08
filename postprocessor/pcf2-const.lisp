@@ -104,11 +104,13 @@
   (set-subset set1 set2))
 
 (defun get-out-sets (blck cfg conf)
+  (print (get-block-preds blck))
   (reduce
-   (lambda (temp-out succ)
-     (let ((succ-out (get-block-consts (get-block-by-id succ cfg))))
-       (funcall conf temp-out succ-out)))
-   (get-block-succs blck)
+   (lambda (temp-out pred)
+     (let ((pred-out (get-block-consts (get-block-by-id pred cfg))))
+       (format t "pred out: ~A~%" (print pred-out))
+       (funcall conf temp-out pred-out)))
+   (get-block-preds blck)
    :initial-value (get-block-consts blck)))
 
 (defgeneric gen (op flow-data)
@@ -198,6 +200,12 @@
 (defmacro loginot (a)
   `(if (eq ,a 1) 1 0))
 
+
+(defmacro singleton-if-found ()
+  `(if (map-find dest flow-data t)
+       (singleton dest)
+       (empty-kill)))
+
 (defun to-32-bit-binary-list (num)
   (labels ((to-32-bit (n depth)
              (if (eq depth 0)
@@ -278,11 +286,6 @@
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
 )
-
-(defmacro singleton-if-found ()
-  `(if (map-find dest flow-data t)
-      (singleton dest)
-      (empty-kill)))
 
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op

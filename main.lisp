@@ -13,6 +13,7 @@
                                :lcc-dataflow
 			       :pcf2-dataflow
                                :pcf2-faintgate
+                               :pcf2-const
                                )
             (:export test-interp
                      pcf-cfg
@@ -22,7 +23,8 @@
                      load-pcf-ops
                      pcf-simulate
                      test-get-ops-from-cfg
-                     faint-analyze-cfg)
+                     faint-analyze-cfg
+                     const-analyze-cfg)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -59,7 +61,10 @@
   (make-pcf-cfg ops))
 
 (defun faint-analyze-cfg (ops)
-  (flow-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))
+  (flow-backward-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))
+
+(defun const-analyze-cfg (ops)
+  (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
