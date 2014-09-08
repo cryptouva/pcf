@@ -24,7 +24,8 @@
                      pcf-simulate
                      test-get-ops-from-cfg
                      faint-analyze-cfg
-                     const-analyze-cfg)
+                     const-analyze-cfg
+                     test-analyze-cfg)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -65,6 +66,12 @@
 
 (defun const-analyze-cfg (ops)
   (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
+
+(defun test-analyze-cfg (ops)
+  (let ((const-cfg (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts)))
+    (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints)))
+
+
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""

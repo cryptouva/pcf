@@ -19,6 +19,8 @@
            block-with-consts
            flow-forward-test
            flow-backward-test
+           flow-forward
+           flow-backward
            *lattice-top*)
   )
 (in-package :pcf2-dataflow)
@@ -486,10 +488,15 @@
   (let ((cfg (make-pcf-cfg ops)))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)))))
 
+(defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+  (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg))))
 
 (defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (let ((cfg (make-pcf-cfg ops)))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg))))))
+
+(defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+  (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg)))))
 
 (defun init-flow-values (cfg flow-fn)
   (map-map

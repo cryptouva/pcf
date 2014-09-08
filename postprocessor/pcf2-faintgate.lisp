@@ -283,7 +283,7 @@
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
-                 (let ((addr (map-find op1 (get-block-consts blck))))
+                 (let ((addr (map-val op1 (get-block-consts blck))))
                    (gen-for-indirection addr dest op2)))
     :const-kill (with-slots (dest op2) op
                   (kill-for-indirection dest op2))
@@ -291,10 +291,10 @@
 
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((addr (map-find dest (get-block-consts blck))))
+               (let ((addr (map-val dest (get-block-consts blck))))
                  (gen-for-indirection op1 addr op2)))
     :dep-kill (with-slots (dest op2) op
-                  (let ((addr (map-find dest (get-block-consts blck))))
+                  (let ((addr (map-val dest (get-block-consts blck))))
                     (kill-for-indirection addr op2)))
 )
 
