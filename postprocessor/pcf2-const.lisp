@@ -304,30 +304,30 @@
 
 (def-gen-kill add
     :dep-gen (with-slots (dest op1 op2) op
-                   (let ((o1 (map-val op1 flow-data))
-                         (o2 (map-val op2 flow-data)))
-                     (assert (and o1 o2)) ;; can only add on constants
-                     (map-singleton dest (+ o1 o2))))
+                   (let ((o1 (map-val op1 flow-data t))
+                         (o2 (map-val op2 flow-data t)))
+                     (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                     (map-singleton dest (+ (aif o1 it 0) (aif o2 it 0)))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
 )
 
 (def-gen-kill sub
     :dep-gen (with-slots (dest op1 op2) op
-                    (let ((o1 (map-val op1 flow-data))
-                          (o2 (map-val op2 flow-data)))
-                     (assert (and o1 o2)) ;; can only add on constants
-                     (map-singleton dest (- o1 o2))))
+                    (let ((o1 (map-val op1 flow-data t))
+                          (o2 (map-val op2 flow-data t)))
+                      (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                      (map-singleton dest (- (aif o1 it 0) (aif o2 it 0)))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
 
 (def-gen-kill mul
     :dep-gen (with-slots (dest op1 op2) op
-                    (let ((o1 (map-val op1 flow-data))
-                          (o2 (map-val op2 flow-data)))
-                     (assert (and o1 o2)) ;; can only add on constants
-                     (map-singleton dest (* o1 o2))))
+                    (let ((o1 (map-val op1 flow-data t))
+                          (o2 (map-val op2 flow-data t)))
+                      (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                      (map-singleton dest (* (aif o1 it 0) (aif o2 it 0)))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -365,8 +365,8 @@
 
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
-       (aif (map-val ,dest-address flow-data nil)
-            (map-singleton ,dest-address it)
+       (aif (map-val ,dest-address flow-data t)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
+            (map-singleton ,dest-address it) 
             (empty-gen))
        (first (reduce (lambda (state oldwire)
                  (let ((map (first state))
@@ -379,33 +379,41 @@
 
 (defmacro kill-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
-      (if (map-find ,dest-address flow-data nil) ;; nil because it must always be found
-          (singleton ,dest-address)
-          (empty-kill))
-      (first (reduce (lambda (state oldwire)
-                (let ((set (first state))
-                      (newwire (car (second state))))
-                  (aif (map-val oldwire flow-data t)
-                       (list (set-insert set newwire) (cdr (second state)))
-                       (list set (cdr (second state))))))
-              (loop for i from ,source-address to (+ ,source-address ,length) collect i)
-              :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
+       (if (map-find ,dest-address flow-data t) ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
+           (singleton ,dest-address)
+           (empty-kill))
+       (first (reduce (lambda (state oldwire)
+                        (let ((set (first state))
+                              (newwire (car (second state))))
+                          (aif (map-val oldwire flow-data t)
+                               (list (set-insert set newwire) (cdr (second state)))
+                               (list set (cdr (second state))))))
+                      (loop for i from ,source-address to (+ ,source-address ,length) collect i)
+                      :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((addr (map-val op1 flow-data)))
-                 (gen-for-indirection addr dest op2)))
+               (if (and (zerop op1)(equal op2 1))
+                   (empty-gen) ;; sometimes we use the global condition wire here, as in asgn-mux
+                   (let ((addr (map-val op1 flow-data)))
+                     (gen-for-indirection addr dest op2))))
     :dep-kill (with-slots (dest op1 op2) op
-                (let ((addr (map-val op1 flow-data)))
-                  (kill-for-indirection addr dest op2))))
+                (if (and (zerop op1 )(equal op2 1))
+                    (singleton dest) ;; accounts for asgn-mux, as above
+                    (let ((addr (map-val op1 flow-data)))
+                      (kill-for-indirection addr dest op2)))))
 
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((addr (map-val dest flow-data)))
-                 (gen-for-indirection op1 addr op2)))
+               (if (and (zerop dest)(equal op2 1))
+                   (empty-gen) ;; asgn-mux with glob
+                   (let ((addr (map-val dest flow-data)))
+                     (gen-for-indirection op1 addr op2))))
     :dep-kill (with-slots (dest op1 op2) op
-                (let ((addr (map-val dest flow-data)))
-                  (kill-for-indirection op1 addr op2))))
+                (if (and (zerop dest)(equal op2 1))
+                    (singleton op1)
+                    (let ((addr (map-val dest flow-data)))
+                      (kill-for-indirection op1 addr op2)))))
 
 (def-gen-kill initbase) ;; no consts
 (def-gen-kill clear) ;; no consts

@@ -68,9 +68,9 @@
   (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
 
 (defun test-analyze-cfg (ops)
-  (let ((const-cfg (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts)))
-    (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints)))
-
+  (let* ((const-cfg (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
+         (faint-cfg (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints)))
+    (optimize-circuit faint-cfg)))
 
 
 (defun pcf-simulate (ops inpname)
@@ -79,7 +79,7 @@
   (restart-case
       (let ((state (setup-labels ops
                                  (with-open-file (inputs inpname :direction :input)
-                                   (init-state 20000 ops inputs 16384 16384)
+                                   (init-state 2000000 ops inputs 16384 16384)
                                    )
                                  )
               )

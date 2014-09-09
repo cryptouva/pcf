@@ -21,7 +21,8 @@
            flow-backward-test
            flow-forward
            flow-backward
-           *lattice-top*)
+           *lattice-top*
+           optimize-circuit)
   )
 (in-package :pcf2-dataflow)
 
@@ -85,7 +86,7 @@
                 (format stream "Preds: ~A~%" (get-block-preds struct))
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Faint-Out: ~A~%" (get-block-faints struct))
-                (format stream "Consts: ~A~%" (get-block-consts struct))
+                ;;(format stream "Consts: ~A~%" (get-block-consts struct))
                 )
               )
              )
@@ -181,6 +182,23 @@
                :preds (get-block-preds bb)
                :succs (get-block-succs bb)
                :data (list (get-block-consts bb) (get-block-faints bb))))
+
+(defun block-with-preds (preds bb)
+   (make-pcf-basic-block
+               :id (get-block-id bb)
+               :op  (get-block-op bb)
+               :preds preds
+               :succs (get-block-succs bb)
+               :data (list (get-block-consts bb) (get-block-faints bb))))
+
+(defun block-with-succs (succs bb)
+   (make-pcf-basic-block
+               :id (get-block-id bb)
+               :op  (get-block-op bb)
+               :preds (get-block-preds bb)
+               :succs succs
+               :data (list (get-block-consts bb) (get-block-faints bb))))
+
 
 (defun block-with-faints (new-faint bb)
   (make-pcf-basic-block
@@ -527,24 +545,40 @@
 
 
 (defun remove-block-from-cfg (blck cfg)
-  (declare (ignore blck))
-  cfg
-  )
+  ;; remove this block from its preds' succs and its succs' preds
+  ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
+  (let ((preds (get-block-preds blck))
+        (succs (get-block-succs blck))
+        (blckid (get-block-id blck)))
+    (let ((remove-back (reduce (lambda(cfg* pred)
+                                 (let* ((predblck (get-block-by-id pred cfg*))
+                                        (predsuccs (get-block-succs predblck)))
+                                   (map-insert pred (block-with-preds (append (remove blckid predsuccs) succs) predblck) cfg*)
+                                   ))
+                               preds
+                               :initial-value cfg)))
+      (reduce (lambda(cfg* succ)
+                (let* ((succblck (get-block-by-id succ cfg*))
+                       (succpreds (get-block-preds succblck)))
+                  (map-insert succ (block-with-succs (append (remove blckid succpreds) preds) succblck) cfg*)
+                  ))
+              succs
+              :initial-value remove-back))))
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
   ;; rules:
   ;; if the block is a gate with a constant in its output, replace the gate with a const 
-  ;; if the output of the gate is faint, remove it entirely
+  ;; if the output of the gate is faint, remove it entirel
+  (declare (optimize (debug 3) (speed 0)))
+  (break)
   (map-reduce (lambda (cfg* blockid blck)
                 (let ((op (get-block-op blck)))
                   (typecase op
-                    (gate (with-slots (op1 op2 dest) op
-                            (if (not (and
-                                      (member op1 (get-block-faints blck))
-                                      (member op2 (get-block-faints blck))))
+                    (gate (with-slots (dest op1 op2) op
+                            (if (not (set-member dest (get-block-faints blck)))
                                 (remove-block-from-cfg blck cfg*);; remove this op from the cfg
-                                (aif (map-val dest cfg* t)
+                                (aif (map-val dest (get-block-consts blck) t)
                                      (map-insert blockid
                                                  (block-with-op (make-instance 'const :dest dest :op1 it) blck)
                                                  cfg*)
@@ -552,3 +586,14 @@
                     (otherwise cfg*))))
               cfg
               cfg))
+
+(defun extract-ops (cfg)
+  (map-reduce (lambda (ops id blck)
+                (declare (ignore id))
+                (cons (get-block-op blck) ops))
+              cfg
+              nil))
+
+(defun optimize-circuit (cfg)
+  (eliminate-extra-gates (get-graph-map cfg))
+)

@@ -1212,44 +1212,26 @@ number of arguments."
       (cond
         ((= (length arg1) (length arg2) 1)
          (add-instrs (list
-                      (make-instance 'pcf2-bc:add :dest wires :op1 (first arg1) :op2 (first arg2))
-                      )
+                      (make-instance 'pcf2-bc:add :dest wires :op1 (first arg1) :op2 (first arg2)))
            (push-stack stack 1 (list wires)
-             (let ((wires (1+ wires))
-                   )
-               (close-instr)
-               )
-             )
-           )
-         )
+             (let ((wires (1+ wires)))
+               (close-instr)))))
         ((= (length arg1) 1)
          (add-instrs (list (make-instance 'join :dest wires :op1 arg2)
                            (make-instance 'const :dest (1+ wires) :op1 *byte-width*) ;; magic 8?
                            (make-instance 'pcf2-bc:mul :dest wires :op1 wires :op2 (1+ wires))
-                           (make-instance 'pcf2-bc:add :dest (1+ wires) :op1 (first arg1) :op2 wires)
-                           )
+                           (make-instance 'pcf2-bc:add :dest (1+ wires) :op1 (first arg1) :op2 wires))
            (push-stack stack 1 (list (1+ wires))
-             (let ((wires (+ 2 wires))
-                   )
-               (close-instr)
-               )
-             )
-           )
-         )
+             (let ((wires (+ 2 wires)))
+               (close-instr)))))
         ((= (length arg2) 1)
          (add-instrs (list (make-instance 'join :dest wires :op1 arg1)
                            (make-instance 'const :dest (1+ wires) :op1 *byte-width*) ;; magic 8?
                            (make-instance 'pcf2-bc:mul :dest wires :op1 wires :op2 (1+ wires))
-                           (make-instance 'pcf2-bc:add :dest (1+ wires) :op1 (first arg2) :op2 wires)
-                           )
+                           (make-instance 'pcf2-bc:add :dest (1+ wires) :op1 (first arg2) :op2 wires))
            (push-stack stack 1 (list (1+ wires))
-             (let ((wires (+ 2 wires))
-                   )
-               (close-instr)
-               )
-             )
-           )
-         )
+             (let ((wires (+ 2 wires)))
+               (close-instr)))))
         (t
          (add-instrs (list (make-instance 'join :dest wires :op1 arg1)
                            (make-instance 'const :dest (1+ wires) :op1 *byte-width*) ;; magic 8?
@@ -1257,20 +1239,10 @@ number of arguments."
                            (make-instance 'join :dest (1+ wires) :op1 arg2)
                            (make-instance 'const :dest (+ 2 wires) :op1 *byte-width*) ;; magic 8?
                            (make-instance 'pcf2-bc:mul :dest (1+ wires) :op1 (1+ wires) :op2 (+ 2 wires))
-                           (make-instance 'pcf2-bc:add :dest (+ 2 wires) :op1 wires :op2 (1+ wires))
-                           )
+                           (make-instance 'pcf2-bc:add :dest (+ 2 wires) :op1 wires :op2 (1+ wires)))
            (push-stack stack 1 (list (+ 2 wires))
-             (let ((wires (+ 3 wires))
-                   )
-               (close-instr)
-               )
-             )
-           )
-         )
-        )
-      )
-    )
-  )
+             (let ((wires (+ 3 wires)))
+               (close-instr)))))))))
 
 ;;; arithmetic operations
 ;;; add, subtract, multiply, divide
@@ -1489,11 +1461,9 @@ number of arguments."
 					 (let ((shifted-value ,cnst-shift))
 					   (assert (= (length shifted-value) width))
 					   (loop for i in (reverse shifted-value) for j in (reverse rwires*) collect ; why reverse both here?
-						(make-instance 'copy :dest j :op1 i :op2 1)
-						)))
+						(make-instance 'copy :dest j :op1 i :op2 1))))
 			      (push-stack stack width rwires*
-				,@body
-				)))))))))))))))
+				,@body)))))))))))))))
 
 (definstr lshu ; left shift unsigned
   (right-or-left-shift 
@@ -1622,8 +1592,7 @@ number of arguments."
 	      (push-stack stack width rwires
 		(add-instrs
 		    (twos-complement arg rwires tmp1 tmp2)
-		  (close-instr)
-		  )))))))))
+		  (close-instr))))))))))
 
 ;;; CALLING FUNCTIONS
 
@@ -1757,38 +1726,22 @@ number of arguments."
     (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
           ;(width (parse-integer (first s-args)))
           )
-      (let ((a (gethash (first addr*) labels nil))
-            )
+      (let ((a (gethash (first addr*) labels nil)))
         (declare (type (or null (cons symbol (integer 1))) a))
         (let ((addr (if a
                         (if (equalp (car a) 'glob)
                             ;; Do not multiply by width here.
                             (+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
-                            (second s-args)
-                            );(gethash (second s-args) labels nil)
-                        (second s-args)
-                        )
-                )
-              )
+                            (second s-args));(gethash (second s-args) labels nil)
+                        (second s-args))))
           (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
           (add-instrs (if (equalp (car a) 'glob)
-                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0) (cdr a))))
-                          )
-
+                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0) (cdr a)))))
             (push-stack stack 1 (if (equalp (car a) 'glob) 
                                     (list wires) 
                                     (list addr))
-              (let ((wires (if (equalp (car a) 'glob) (1+ wires) wires))
-                    )
-                (close-instr)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+              (let ((wires (if (equalp (car a) 'glob) (1+ wires) wires)))
+                (close-instr)))))))))
 
 
 ;; Below we offset the addresses by 1 because the base of the stack
