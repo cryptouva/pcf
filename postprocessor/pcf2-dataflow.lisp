@@ -186,7 +186,7 @@
 (defun block-with-preds (preds bb)
    (make-pcf-basic-block
                :id (get-block-id bb)
-               :op  (get-block-op bb)
+               :op  (get-block-op-list bb)
                :preds preds
                :succs (get-block-succs bb)
                :data (list (get-block-consts bb) (get-block-faints bb))))
@@ -194,7 +194,7 @@
 (defun block-with-succs (succs bb)
    (make-pcf-basic-block
                :id (get-block-id bb)
-               :op  (get-block-op bb)
+               :op  (get-block-op-list bb)
                :preds (get-block-preds bb)
                :succs succs
                :data (list (get-block-consts bb) (get-block-faints bb))))
@@ -547,18 +547,19 @@
 (defun remove-block-from-cfg (blck cfg)
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
+  (declare (optimize (debug 3)(speed 0)))
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
     (let ((remove-back (reduce (lambda(cfg* pred)
-                                 (let* ((predblck (get-block-by-id pred cfg*))
+                                 (let* ((predblck (map-val pred cfg*))
                                         (predsuccs (get-block-succs predblck)))
                                    (map-insert pred (block-with-preds (append (remove blckid predsuccs) succs) predblck) cfg*)
                                    ))
                                preds
                                :initial-value cfg)))
       (reduce (lambda(cfg* succ)
-                (let* ((succblck (get-block-by-id succ cfg*))
+                (let* ((succblck (map-val succ cfg*))
                        (succpreds (get-block-preds succblck)))
                   (map-insert succ (block-with-succs (append (remove blckid succpreds) preds) succblck) cfg*)
                   ))
@@ -571,7 +572,6 @@
   ;; if the block is a gate with a constant in its output, replace the gate with a const 
   ;; if the output of the gate is faint, remove it entirel
   (declare (optimize (debug 3) (speed 0)))
-  (break)
   (map-reduce (lambda (cfg* blockid blck)
                 (let ((op (get-block-op blck)))
                   (typecase op
@@ -580,7 +580,7 @@
                                 (remove-block-from-cfg blck cfg*);; remove this op from the cfg
                                 (aif (map-val dest (get-block-consts blck) t)
                                      (map-insert blockid
-                                                 (block-with-op (make-instance 'const :dest dest :op1 it) blck)
+                                                 (block-with-op (list (make-instance 'const :dest dest :op1 it)) blck)
                                                  cfg*)
                                      cfg*))))
                     (otherwise cfg*))))
@@ -595,5 +595,5 @@
               nil))
 
 (defun optimize-circuit (cfg)
-  (eliminate-extra-gates (get-graph-map cfg))
+  (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )
