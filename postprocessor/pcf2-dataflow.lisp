@@ -548,6 +548,7 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
+  (break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
@@ -558,13 +559,15 @@
                                    ))
                                preds
                                :initial-value cfg)))
-      (reduce (lambda(cfg* succ)
-                (let* ((succblck (map-val succ cfg*))
-                       (succpreds (get-block-preds succblck)))
-                  (map-insert succ (block-with-succs (append (remove blckid succpreds) preds) succblck) cfg*)
-                  ))
-              succs
-              :initial-value remove-back))))
+      (let ((remove-forward (reduce (lambda(cfg* succ)
+                                      (let* ((succblck (map-val succ cfg*))
+                                             (succpreds (get-block-preds succblck)))
+                                        (map-insert succ (block-with-succs (append (remove blckid succpreds) preds) succblck) cfg*)
+                                        ))
+                                    succs
+                                    :initial-value remove-back)))
+        (map-remove blckid remove-forward)))))
+      
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
