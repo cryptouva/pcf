@@ -102,12 +102,6 @@
 
 (defun get-block-id (blck)
   (pcf-basic-block-id blck))
-#|
-(defmacro get-block-id (blck)
-  (let ((blocksym (gensym)))
-    `(let ((,blocksym ,blck))
-       (pcf-basic-block-id ,blocksym))))
-|#
 
 (defun get-block-preds (blck)
   (pcf-basic-block-preds blck))
@@ -135,7 +129,6 @@
 
 (defmacro get-block-by-id (id blocks)
   `(cdr (map-find ,id (get-graph-map ,blocks))))
-
 
 (defmacro new-block (&key id op)
   `(make-pcf-basic-block
@@ -199,7 +192,6 @@
                :succs succs
                :data (list (get-block-consts bb) (get-block-faints bb))))
 
-
 (defun block-with-faints (new-faint bb)
   (make-pcf-basic-block
                :id (get-block-id bb)
@@ -232,7 +224,6 @@
 ;;; cfg-basic-block functions that instruct how to behave when building the cfg and encountering all of the possible ops
 ;;;
 ;;;
-
 
 (defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack)
   (:documentation "update the entities in the cfg for each op that we encounter from ops")
@@ -553,17 +544,17 @@
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
     (let ((remove-back (reduce (lambda(cfg* pred)
+                                 (declare (optimize (debug 3) (speed 0)))
+                                 (break)
                                  (let* ((predblck (map-val pred cfg*))
                                         (predsuccs (get-block-succs predblck)))
-                                   (map-insert pred (block-with-preds (append (remove blckid predsuccs) succs) predblck) cfg*)
-                                   ))
+                                   (map-insert pred (block-with-succs (append (remove blckid predsuccs) succs) predblck) cfg*)))
                                preds
                                :initial-value cfg)))
       (let ((remove-forward (reduce (lambda(cfg* succ)
                                       (let* ((succblck (map-val succ cfg*))
                                              (succpreds (get-block-preds succblck)))
-                                        (map-insert succ (block-with-succs (append (remove blckid succpreds) preds) succblck) cfg*)
-                                        ))
+                                        (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
                                     succs
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
