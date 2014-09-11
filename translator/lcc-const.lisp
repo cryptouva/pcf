@@ -113,13 +113,11 @@ as its value."
                                   (let ((valmap (third st))
                                         (stack (second st))
                                         (lsts (first st)))
-                                    (let ((val (gen x stack valmap lsize))
-                                          )
+                                    (let ((val (gen x stack valmap lsize)))
                                       (cons (cons (car val) lsts)
-                                            (cdr val))
-                                      )
-                                    )
-                                  ) (basic-block-ops bb) :initial-value (list nil instack valmap)))
+                                            (cdr val)))))
+                              (basic-block-ops bb)
+                              :initial-value (list nil instack valmap)))
                  :initial-value empty-s));(map-empty :comp constcmp)))
         (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
          (reduce #'(lambda (&optional x y)
@@ -234,18 +232,6 @@ as its value."
     :stck (cons 'not-const (cddr stack))
     )
 
-(def-gen-kill addu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (+ o1 o2))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
-
 (def-gen-kill cmp-jump-instruction
     :stck (let ((o1 (first stack))
                 (o2 (second stack)))
@@ -303,11 +289,7 @@ as its value."
                  ;(declare (type integer addr))
                  (typecase addr
                      (integer (map-insert addr (first stack) valmap))
-                     (t valmap)
-                     )
-                 )
-               )
-            )
+                     (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
            ((eql (second stack) 'glob) nil)
@@ -322,8 +304,7 @@ as its value."
            ;((eql (second stack) 'const)
            ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack))))
-           )
+           (t (list (cons (the integer (second stack)) (first stack)))))
     )
 
 (def-gen-kill asgni
@@ -337,27 +318,21 @@ as its value."
                  ;(declare (type integer addr))
                  (typecase addr
                      (integer (map-insert addr (first stack) valmap))
-                     (t valmap)
-                     )
-                 )
-               )
-            )
+                     (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
            ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack))))
-           )
+           (t (list (cons (the integer (second stack)) (first stack)))))
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'const)
            ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack))))
-           )
+           (t (list (cons (the integer (second stack)) (first stack)))))
     )
 
 ;; (def-gen-kill asgni
@@ -426,4 +401,259 @@ as its value."
                                (t 'not-const)))
                     (t 'not-const)))
                 (cddr stack))
+    )
+
+(def-gen-kill lshi
+    :stck (cons (let ((op1 (first stack))
+                      (op2 (second stack)))
+                  (typecase op1
+                    (integer (typecase op2
+                               (integer (ash op2 op1))
+                               (t 'not-const)))
+                    (t 'not-const)))
+                (cddr stack))
+    )
+
+(def-gen-kill rshu
+    :stck (cons (let ((op1 (first stack))
+                      (op2 (second stack)))
+                  (typecase op1
+                    (integer (typecase op2
+                               (integer (ash op2 (* -1 op1)))
+                               (t 'not-const)))
+                    (t 'not-const)))
+                (cddr stack))
+    )
+
+(def-gen-kill rshi
+    :stck (cons (let ((op1 (first stack))
+                      (op2 (second stack)))
+                  (typecase op1
+                    (integer (typecase op2
+                               (integer (ash op2 (* -1 op1)))
+                               (t 'not-const)))
+                    (t 'not-const)))
+                (cddr stack))
+    )
+
+
+(def-gen-kill addu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (+ o1 o2))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill addi
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (+ o1 o2))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill subu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (- o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill subi
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (- o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill mulu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (* o1 o2))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill muli
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (* o1 o2))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill divu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (/ o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill divi
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (/ o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill modu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (mod o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill modi
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (mod o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill boru
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logior o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bori
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logior o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bandu
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logand o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bandi
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logand o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bxoru
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logxor o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bxori
+    :stck (let ((o1 (first stack))
+                (o2 (second stack)))
+            (cons
+             (typecase o1
+               (number (typecase o2
+                         (number (logxor o2 o1))
+                         (symbol 'not-const)))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bcomu
+    :stck (let ((o1 (first stack))
+                )
+            (cons
+             (typecase o1
+               (number (lognot o1))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill bcomi
+    :stck (let ((o1 (first stack))
+                )
+            (cons
+             (typecase o1
+               (number (lognot o1))
+               (symbol 'not-const))
+             (cddr stack)))
+    )
+
+(def-gen-kill negi
+    :stck (let ((o1 (first stack)))
+            (cons
+             (typecase o1
+               (number (* -1  1))
+               (symbol 'not-const))
+             (cddr stack)))
     )

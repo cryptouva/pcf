@@ -50,6 +50,8 @@
 
 ;;; **because read(x) is a way for us to input non-consts, we move <x,bottom-hat> from ConstGen to ConstKill
 
+;; TODO: all unassigned wires are 0, so we can remove 0s from our own dataflow (for memory concerns) and start adding 'unknown (we should add 'unknown even if we don't remove the 0s for memory). However, this would lead to bad coupling
+
 
 (defun map-union-without-conflicts (map1 map2)
   (map-reduce (lambda (map-accum key val)
