@@ -353,25 +353,26 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                (declare (optimize (debug 3) (speed 0)))
                (if (or (null cblock) (null (basic-block-id cblock)))
                    (list in-sets in-stacks valmaps done)
-                   (let ((new-out (reduce (lambda (x y)
-                                        (let ((res (funcall flow-fn 
-                                                          (aif (map-find y in-sets t)
-                                                               (cdr it)
-                                                               empty-set)
-                                                          (cdr (map-find y in-stacks t))
-                                                          (cdr (map-find y valmaps t));(third x) ;valmap 
-                                                          (cdr (map-find y cfg t)))))
-                                          (list (first res)
-                                                (funcall join-fn 
-                                                         (second x)
-                                                         (second res))
-                                                (third res))))
-                                      (basic-block-preds cblock)
-                                      :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t)) 
-                                                           empty-set
-                                                           (aif (cdr (map-find (basic-block-id cblock) valmaps t))
-                                                                it
-                                                                (map-empty))))))
+                   (let ((new-out (reduce (lambda (state pred)
+                                            ;;(break)
+                                            (let ((res (funcall flow-fn
+                                                                (aif (map-find pred in-sets t)
+                                                                     (cdr it)
+                                                                     empty-set) ;; shouldn't this be impossible?
+                                                                (cdr (map-find pred in-stacks t))
+                                                                (cdr (map-find pred valmaps t)) ;valmap 
+                                                                (cdr (map-find pred cfg t)))))
+                                              (list (first res) ;; stack
+                                                    (funcall join-fn ;; state U in-stack??
+                                                             (second state) ;; old flow | empty-set
+                                                             (second res)) ;; new flow
+                                                    (third res)))) ;; valmap
+                                          (basic-block-preds cblock)
+                                          :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t))  ;; stack
+                                                               empty-set ;; no in-flow 
+                                                               (aif (cdr (map-find (basic-block-id cblock) valmaps t))
+                                                                    it
+                                                                    (map-empty))))))
                      (let* ((nblock 
                              (map-find
                               (loop 
@@ -385,13 +386,12 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                             (done (and done (set-equalp 
                                              (aif (map-find bbid in-sets t)
                                                   (cdr it)
-                                                  empty-set
-                                                  )
+                                                  empty-set)
                                              (second new-out))))
                             ;(ostack (first (funcall flow-fn (second new-out) (first new-out) (third new-out) cblock)))
                             )
                        (declare (type string bbid nbid))
-                       ;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%new-out: ~A~%" bbid nbid nblock new-out)
+                       (format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%" bbid nbid nblock)
                        (do-flow-forwards 
                            (cdr nblock)
                          (map-insert bbid (second new-out) in-sets)
@@ -404,13 +404,8 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
         (if (fourth ret)
             (values (first ret)
                     (second ret)
-                    (third ret)
-                    )
-            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) (third ret) empty-set (1+ cnt))
-            )
-        )
-      )
-    )
+                    (third ret))
+            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) (third ret) empty-set (1+ cnt))))))
   )
 
 (defun flow-forwards* (join-fn flow-fn cfg in-sets in-stacks empty-set &optional (cnt 0))

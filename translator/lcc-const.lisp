@@ -33,23 +33,26 @@
 
 (defun lcc-const-join-fn (x y)
   "Compute the join operation on the constant propagation lattice."
-  (map-map (lambda (k v)
-             (aif (map-find k y)
-                  (typecase v
-                    (number (typecase (cdr it)
-                              (number (if (= v (cdr it))
-                                          v
-                                          'not-const))
-                              (symbol (cond
-                                        ((equalp (cdr it) 'not-const)
-                                         'not-const)
-                                        ((equalp (cdr it) 'unknown) v)
-                                        (t (error "Bad value for (cdr it)"))))))
-                    (symbol (if (equalp v 'not-const)
-                                'not-const
-                                (cdr it))))
-                  (error "Address is not present in map of values?!")))
-           x)
+  (map-reduce (lambda (map key val)
+                (let ((new-val (aif (map-find key map t)
+                                    (typecase val
+                                      (number (typecase (cdr it)
+                                                (number (if (= val (cdr it))
+                                                            val
+                                                            'not-const))
+                                                (symbol (cond
+                                                          ((equalp (cdr it) 'not-const)
+                                                           'not-const)
+                                                          ((equalp (cdr it) 'unknown) val)
+                                                          (t (error "Bad value for (cdr it)"))))
+                                                (t (error "Bad value for it - not symbol or number"))))
+                                      (symbol (if (equalp val 'not-const)
+                                                  'not-const
+                                                  (cdr it))))
+                                    'not-const))) ;; not in both maps, so the value is unknown
+                  (map-insert key new-val map))) ;; computing a join on two value maps
+              x
+              y)
   )
 
 (defparameter empty-s (map-empty :comp #'constcmp))
@@ -64,23 +67,26 @@ as its value."
                       (declare (ignore k))
                       (multiple-value-bind (in-set in-stack valmap) 
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
-                                                      (lcc-dataflow:make-cfg-single-ops v)
-                                                      (setmap:map-empty :comp #'string<) 
-                                                      (setmap:map-empty :comp #'string<) 
-                                                      (setmap:map-empty :comp #'string<) 
+                                                      (lcc-dataflow:make-cfg-single-ops v) ; cfg
+                                                      (setmap:map-empty :comp #'string<) ; in-sets
+                                                      (setmap:map-empty :comp #'string<) ; in-stacks
+                                                      (setmap:map-empty :comp #'string<) ; valmaps
                                         ;(setmap:set-from-list (loop for i from 0 to 8 collect 
                                         ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
+                                                      #|
                                                       (reduce (lambda (x y)
                                                                 (setmap:map-insert (car y) (cdr y) x)
                                                                 )
                                                               (loop for i from 0 to 128 collect (cons i 'unknown))
-                                                              :initial-value empty-s))
+                                                              :initial-value empty-s)) |#
+                                                      empty-s) ;; empty-set (may not be needed soon)
                         (declare (ignore valmap))
                         (list in-set in-stack)))
-                    funs)
-    )
+                    funs))
   )
 
+
+;; a note: lsize is currently unused and can be removed during cleaning
 (defgeneric gen (op stack valmap lsize)
   (:documentation "Get the gen set for this op")
   )
@@ -90,12 +96,14 @@ as its value."
   )
 
 (defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
-    (list (third genkill)
+    (list (third genkill) ;; stack
           (set-union (first genkill)
                      (set-diff in-set
-                               (second genkill)))
-          (fourth genkill)))
+                               (second genkill))) ;; (gen U (in - kill))
+          (fourth genkill))) ;; valmap
   )
 
 (defun get-gen-kill (bb instack valmap lsize)
@@ -392,246 +400,144 @@ as its value."
     ;;    :stck (cons (cdr (map-find (car stack) valmap)) (cdr stack)))
     )
 
+(defmacro arithmetic-shift (fn op1 op2)
+  `(cons (typecase ,op1
+           (integer (typecase ,op2
+                     (integer (funcall ,fn ,op1 ,op2))
+                     (t 'not-const)))
+           (t 'not-const))
+         (cddr stack)))
+
+(defmacro arithmetic-stack (fn op1 op2)
+  `(cons (typecase ,op1
+           (number (typecase ,op2
+                     (number (funcall ,fn ,op1 ,op2))
+                     (t 'not-const)))
+           (t 'not-const))
+         (cddr stack)))
+
 (def-gen-kill lshu
-    :stck (cons (let ((op1 (first stack))
-                      (op2 (second stack)))
-                  (typecase op1
-                    (integer (typecase op2
-                               (integer (ash op2 op1))
-                               (t 'not-const)))
-                    (t 'not-const)))
-                (cddr stack))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+            (arithmetic-shift #'ash op2 op1)
+            ))
 
 (def-gen-kill lshi
-    :stck (cons (let ((op1 (first stack))
-                      (op2 (second stack)))
-                  (typecase op1
-                    (integer (typecase op2
-                               (integer (ash op2 op1))
-                               (t 'not-const)))
-                    (t 'not-const)))
-                (cddr stack))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+            (arithmetic-shift #'ash op2 op1)    
+            ))
 
 (def-gen-kill rshu
-    :stck (cons (let ((op1 (first stack))
-                      (op2 (second stack)))
-                  (typecase op1
-                    (integer (typecase op2
-                               (integer (ash op2 (* -1 op1)))
-                               (t 'not-const)))
-                    (t 'not-const)))
-                (cddr stack))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+           (arithmetic-shift #'ash op2 (aif op1 (* -1 op1) 'not-const))
+           ))
 
 (def-gen-kill rshi
-    :stck (cons (let ((op1 (first stack))
-                      (op2 (second stack)))
-                  (typecase op1
-                    (integer (typecase op2
-                               (integer (ash op2 (* -1 op1)))
-                               (t 'not-const)))
-                    (t 'not-const)))
-                (cddr stack))
-    )
-
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+            (arithmetic-shift #'ash op2 (aif op1 (* -1 op1) 'not-const))
+            ))
 
 (def-gen-kill addu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (+ o1 o2))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+           (arithmetic-stack #'+ op1 op2)
+           ))
 
 (def-gen-kill addi
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (+ o1 o2))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'+ op1 op2)
+           ))
 
 (def-gen-kill subu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (- o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'- op2 op1)
+           ))
 
 (def-gen-kill subi
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (- o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'- op2 op1)
+    ))
 
 (def-gen-kill mulu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (* o1 o2))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+            (arithmetic-stack #'* op2 op1)   
+  ))
 
 (def-gen-kill muli
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (* o1 o2))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+            (arithmetic-stack #'* op2 op1)
+            ))
 
 (def-gen-kill divu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (/ o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+            (arithmetic-stack #'/ op2 op1) 
+            ))
 
 (def-gen-kill divi
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (/ o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'/ op2 op1)
+    ))
 
 (def-gen-kill modu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (mod o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'mod op2 op1)
+           ))
 
 (def-gen-kill modi
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (mod o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'mod op2 op1)
+    ))
 
 (def-gen-kill boru
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logior o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'logior op2 op1)
+    ))
 
 (def-gen-kill bori
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logior o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'logior op2 op1)
+))
 
 (def-gen-kill bandu
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logand o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'logand op2 op1)
+))
 
 (def-gen-kill bandi
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logand o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'logand op2 op1)
+  ))
 
 (def-gen-kill bxoru
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logxor o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+               (op2 (second stack)))
+           (arithmetic-stack #'logxor op2 op1)
+ ))
 
 (def-gen-kill bxori
-    :stck (let ((o1 (first stack))
-                (o2 (second stack)))
-            (cons
-             (typecase o1
-               (number (typecase o2
-                         (number (logxor o2 o1))
-                         (symbol 'not-const)))
-               (symbol 'not-const))
-             (cddr stack)))
-    )
+    :stck (let ((op1 (first stack))
+                (op2 (second stack)))
+            (arithmetic-stack #'logxor op2 op1)
+    ))
 
 (def-gen-kill bcomu
-    :stck (let ((o1 (first stack))
-                )
+    :stck (let ((o1 (first stack)))
             (cons
              (typecase o1
                (number (lognot o1))
@@ -640,8 +546,7 @@ as its value."
     )
 
 (def-gen-kill bcomi
-    :stck (let ((o1 (first stack))
-                )
+    :stck (let ((o1 (first stack)))
             (cons
              (typecase o1
                (number (lognot o1))
@@ -653,7 +558,7 @@ as its value."
     :stck (let ((o1 (first stack)))
             (cons
              (typecase o1
-               (number (* -1  1))
+               (number (* -1 o1))
                (symbol 'not-const))
              (cddr stack)))
     )
