@@ -23,10 +23,10 @@
   (typecase x
     (number (typecase y
               (number (< x y))
-              (symbol (if (equalp y 'unknown)
+              (symbol (if (equalp y 'not-const) ;unknown)
                           t
                           nil))))
-    (symbol (if (equalp x 'unknown)
+    (symbol (if (equalp x 'not-const) ;'unknown)
                 nil
                 t)))
   )
@@ -43,7 +43,7 @@
                                                 (symbol (cond
                                                           ((equalp (cdr it) 'not-const)
                                                            'not-const)
-                                                          ((equalp (cdr it) 'unknown) val)
+                                                          ;;((equalp (cdr it) 'unknown) val)
                                                           (t (error "Bad value for (cdr it)"))))
                                                 (t (error "Bad value for it - not symbol or number"))))
                                       (symbol (if (equalp val 'not-const)
