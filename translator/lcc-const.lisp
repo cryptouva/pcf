@@ -96,7 +96,7 @@ as its value."
   )
 
 (defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
     (list (third genkill) ;; stack
@@ -191,19 +191,21 @@ as its value."
     )
 
 (def-gen-kill calli
-    :stck (cons 'not-const (cdr stack))
+    :stck (cons 'not-const (cdr stack)) ;; pop off location of the call, make room for the return value
     :gen nil
     :kill nil
     )
 
 (def-gen-kill callv
-    :stck (cdr stack)
+    :stck (cdr stack) ;; pop off the location of the call
     :gen nil
     :kill nil
     )
 
+;; note: ret is still unimplemented
+
 (def-gen-kill jumpv
-    :stck (cdr stack)
+    :stck (cdr stack) ;; pop off location of the jump
     )
 
 (def-gen-kill addrgp
@@ -403,8 +405,8 @@ as its value."
 (defmacro arithmetic-shift (fn op1 op2)
   `(cons (typecase ,op1
            (integer (typecase ,op2
-                     (integer (funcall ,fn ,op1 ,op2))
-                     (t 'not-const)))
+                      (integer (funcall ,fn ,op1 ,op2))
+                      (t 'not-const)))
            (t 'not-const))
          (cddr stack)))
 
@@ -431,13 +433,13 @@ as its value."
 (def-gen-kill rshu
     :stck (let ((op1 (first stack))
                 (op2 (second stack)))
-           (arithmetic-shift #'ash op2 (aif op1 (* -1 op1) 'not-const))
+           (arithmetic-shift #'ash op2 (aif (numberp op1) (* -1 op1) 'not-const))
            ))
 
 (def-gen-kill rshi
     :stck (let ((op1 (first stack))
                (op2 (second stack)))
-            (arithmetic-shift #'ash op2 (aif op1 (* -1 op1) 'not-const))
+            (arithmetic-shift #'ash op2 (aif (numberp op1) (* -1 op1) 'not-const))
             ))
 
 (def-gen-kill addu
@@ -541,7 +543,8 @@ as its value."
             (cons
              (typecase o1
                (number (lognot o1))
-               (symbol 'not-const))
+               (symbol 'not-const)
+               (t (error "unknown item on stack")))
              (cddr stack)))
     )
 
@@ -550,7 +553,8 @@ as its value."
             (cons
              (typecase o1
                (number (lognot o1))
-               (symbol 'not-const))
+               (symbol 'not-const)
+               (t (error "unknown item on stack")))
              (cddr stack)))
     )
 
