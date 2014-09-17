@@ -552,7 +552,7 @@ as its value."
     :stck (let ((o1 (first stack)))
             (cons
              (typecase o1
-               (number (lognot o1))
+               (integer (lognot o1))
                (symbol 'not-const)
                (t (error "unknown item on stack")))
              (cddr stack)))
