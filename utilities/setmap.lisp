@@ -243,6 +243,7 @@
 
 (defun map-remove (x mp)
   "Remove the element with key \"x\" from the map \"mp\""
+  (declare (optimize (debug 3)(speed 0)))
   (let ((comp (avl-set-comp mp))
         )
     (make-avl-set :tree

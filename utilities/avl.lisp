@@ -156,7 +156,8 @@
                        (avl-tree-insert-unique x (avl-right lst) :comp comp)))
          )
         ;; To allow maps to be updated, we create a node with this input value
-        (t (avl-cons x
+        (t 
+         (avl-cons x
                      (avl-left lst)
                      (avl-right lst)))
         )
@@ -165,8 +166,11 @@
 
 (defun avl-tree-remove-min (lst)
   "Find the leftmost node of the tree and remove it"
+  (declare (optimize (debug 3)(speed 0)))
   (if (null (avl-left lst))
-      (values (avl-data lst) nil)
+      (values (avl-data lst) (if (avl-right lst)
+                                 (avl-right lst)
+                                 nil))
       (multiple-value-bind (rval rlst) (avl-tree-remove-min (avl-left lst))
         (values rval (avl-cons
                       (avl-data lst)
@@ -180,6 +184,7 @@
 
 (defun avl-tree-remove (x lst &key (comp #'<))
   "Remove a value from an AVL tree"
+  (declare (optimize (debug 3)(speed 0)))
   (if (null lst)
       (error 'value-not-in-tree)
       (cond
@@ -196,17 +201,10 @@
         (t 
          (if (avl-right lst)
              (multiple-value-bind (rgsm rglst) (avl-tree-remove-min (avl-right lst))
-	       (avl-balance (avl-cons rgsm
-                                      (avl-left lst)
-                                      rglst)
-                            )
-               )
-             (avl-left lst)
-             )
-         )
-        )
-      )
-  )
+               (avl-balance (avl-cons rgsm
+                                        (avl-left lst)
+                                        rglst)))
+             (avl-left lst))))))
 
 (defun avl-tree-search (x lst &key (comp #'<))
   "Search an AVL tree for x, return true if x is in the tree"

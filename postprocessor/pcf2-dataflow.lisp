@@ -539,19 +539,21 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
-  (break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
     (let ((remove-back (reduce (lambda(cfg* pred)
                                  (declare (optimize (debug 3) (speed 0)))
-                                 (break)
+                                 ;;(break)
                                  (let* ((predblck (map-val pred cfg*))
                                         (predsuccs (get-block-succs predblck)))
-                                   (map-insert pred (block-with-succs (append (remove blckid predsuccs) succs) predblck) cfg*)))
+                                   (map-insert pred
+                                               (block-with-succs (append (remove blckid predsuccs) succs) predblck)
+                                               cfg*)))
                                preds
                                :initial-value cfg)))
       (let ((remove-forward (reduce (lambda(cfg* succ)
+                                      (declare (optimize (debug 3)(speed 0)))
                                       (let* ((succblck (map-val succ cfg*))
                                              (succpreds (get-block-preds succblck)))
                                         (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
@@ -564,22 +566,33 @@
   ;; gates that are unnecessary may be eliminated here!
   ;; rules:
   ;; if the block is a gate with a constant in its output, replace the gate with a const 
-  ;; if the output of the gate is faint, remove it entirel
+  ;; if the output of the gate is faint, remove it entirely
+  ;; remember that blocks in the original cfg may not be the same as those we find later
   (declare (optimize (debug 3) (speed 0)))
   (map-reduce (lambda (cfg* blockid blck)
-                (let ((op (get-block-op blck)))
-                  (typecase op
-                    (gate (with-slots (dest op1 op2) op
-                            (if (not (set-member dest (get-block-faints blck)))
-                                (remove-block-from-cfg blck cfg*);; remove this op from the cfg
-                                (aif (map-val dest (get-block-consts blck) t)
-                                     (map-insert blockid
-                                                 (block-with-op (list (make-instance 'const :dest dest :op1 it)) blck)
-                                                 cfg*)
-                                     cfg*))))
-                    (otherwise cfg*))))
+                (declare (ignore blck))
+                (aif (map-val blockid cfg* t) 
+                     (let* ((blk it)
+                            (op (get-block-op blk)))
+                       (format t "looking at ~A~% ~A~%" blockid blk)
+                       (typecase op
+                         (gate (with-slots (dest op1 op2) op
+                                 (if (not (set-member dest (get-block-faints blk)))
+                                     (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                     (aif (map-val dest (get-block-consts blk) t)
+                                          (map-insert blockid
+                                                      (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                      cfg*)
+                                          (map-insert blockid blk cfg*)))))
+                         #|(const (with-slots (dest) op
+                                  (if (not (set-member dest (get-block-faints blk)))
+                                      (remove-block-from-cfg blk cfg*)
+                                      cfg*)))|#
+                         (otherwise (map-insert blockid blk cfg*))))
+                     cfg*))
               cfg
               cfg))
+
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
