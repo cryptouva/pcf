@@ -4,7 +4,8 @@
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
   (:export const-flow-fn
            const-confluence-op
-           const-weaker-fn)
+           const-weaker-fn
+           not-const)
   )
 
 (in-package :pcf2-const)
@@ -60,7 +61,7 @@
                 (aif (map-val key map2 t)
                      (if (eq it val)
                          map-accum ;; already have the element
-                         (map-insert key 'not-const map-accum)) ;; element duplicates not equivalent
+                         (map-insert key 'pcf2-dataflow:not-const map-accum)) ;; element duplicates not equivalent
                      (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
               map1
               map2))
@@ -250,7 +251,7 @@
     :dep-gen (labels ((all-list-found (map lst)
                         (if (null lst)
                             t
-                            (and (not (equalp 'not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
+                            (and (not (equalp 'pcf2-dataflow:not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
                (with-slots (dest op1) op
                  (if (all-list-found flow-data op1)
                      (let ((val (loop for i in op1
@@ -269,14 +270,14 @@
 
 (defmacro map-extract-val (var data)
   `(aif (map-val ,var ,data t)
-        (if (equalp 'not-const it) nil it)
+        (if (equalp 'pcf2-dataflow:not-const it) nil it)
         0)
   )
 
 (defmacro or-defined (op1 op2 data)
   `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
   
-;;  `(or (not (equalp ,op1 'not-const)) (not (equalp ,op2 'not-const))))
+;;  `(or (not (equalp ,op1 'pcf2-dataflow:not-const)) (not (equalp ,op2 'pcf2-dataflow:not-const))))
 
 (defmacro and-defined (op1 op2 data)
   `(and (map-extract-val ,op1 ,data)
@@ -300,7 +301,7 @@
                                          ((equalp truth-table #*0001) (logand o1 o2))
                                          ((equalp truth-table #*1100) (flip-bit o1))
                                          ((equalp truth-table #*0111) (logior o1 o2))
-                                         ((equalp truth-table #*0110) (logxor o1 o2))
+                                         ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
                                          ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
                                          (t 
                                           (print truth-table)
@@ -311,12 +312,12 @@
                             (case truth-table
                               (#*0001 (if (zerop it)
                                           (map-singleton dest 0)
-                                          (map-singleton dest 'not-const)))
-                              (#*0111 (if (zerop it)
-                                          (map-singleton dest 'not-const)
+                                          (map-singleton dest 'pcf2-dataflow:not-const)))
+                              (#*0111 (if (equalp 1 it)
+                                          (map-singleton dest 'pcf2-dataflow:not-const)
                                           (map-singleton dest 1)))
-                              (otherwise (map-singleton dest 'not-const))))))
-                     (map-singleton dest 'not-const))))
+                              (otherwise (map-singleton dest 'pcf2-dataflow:not-const))))))
+                     (map-singleton dest 'pcf2-dataflow:not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -334,7 +335,7 @@
                (let ((o1 (map-extract-val op1 flow-data))
                      (o2 (map-extract-val op2 flow-data)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-dataflow:not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -344,7 +345,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-dataflow:not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -354,7 +355,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-dataflow:not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -365,12 +366,12 @@
                      (let ((o1 (map-extract-val op1 flow-data)))
                        (if o1
                            (map-singleton dest o1)
-                           (map-singleton dest 'not-const)))
+                           (map-singleton dest 'pcf2-dataflow:not-const)))
                      (reduce (lambda (map var)
                                (let ((data (map-extract-val var flow-data)))
                                  (if data
                                      (map-insert var data map)
-                                     (map-insert var 'not-const map))))
+                                     (map-insert var 'pcf2-dataflow:not-const map))))
                              (loop for i from op1 to (+ op1 op2) collect i)
                              :initial-value (map-empty))))
     :dep-kill (with-slots (dest op1 op2) op
@@ -394,13 +395,13 @@
   `(if (equal ,length 1)
        (aif (map-extract-val ,dest-address flow-data)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
             (map-singleton ,dest-address it) 
-            (map-singleton ,dest-address 'not-const))
+            (map-singleton ,dest-address 'pcf2-dataflow:not-const))
        (first (reduce (lambda (state oldwire)
                         (let ((map (first state))
                               (newwire (car (second state))))
                           (aif (map-extract-val oldwire flow-data)
                                (list (map-insert newwire it map) (cdr (second state)))
-                               (list (map-insert newwire 'not-const map) (cdr (second state))))))
+                               (list (map-insert newwire 'pcf2-dataflow:not-const map) (cdr (second state))))))
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
                       :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
@@ -449,7 +450,7 @@
     :const-gen (with-slots (newbase fname) op
                  (if (set-member fname input-functions)
                      (reduce (lambda (map x)
-                               (map-insert x 'not-const map))
+                               (map-insert x 'pcf2-dataflow:not-const map))
                              (loop for i from newbase to (+ 32 newbase) collect i)
                              :initial-value (map-empty))
                      (empty-gen)))

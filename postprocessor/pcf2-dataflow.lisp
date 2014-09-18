@@ -23,7 +23,8 @@
            flow-backward
            *lattice-top*
            optimize-circuit
-           not-const)
+           not-const
+           )
   )
 (in-package :pcf2-dataflow)
 
@@ -540,6 +541,7 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
+  (break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
@@ -579,19 +581,21 @@
                        ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
-                                 (if (not (and (set-member op1 faints) (set-member op2 faints)))
+                                 (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
                                      (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                      (aif (map-val dest (get-block-consts blk) t)
                                           (if (not (equalp it 'not-const))
-                                              (map-insert blockid
-                                                          (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                          cfg*)
+                                              (progn
+                                                (break)
+                                                (map-insert blockid
+                                                            (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                            cfg*))
                                               cfg*)
                                           cfg*))))
                          #|(const (with-slots (dest) op
-                                  (if (not (set-member dest (get-block-faints blk)))
-                                      (remove-block-from-cfg blk cfg*)
-                                      cfg*)))|#
+                         (if (not (set-member dest (get-block-faints blk)))
+                         (remove-block-from-cfg blk cfg*)
+                         cfg*)))|#
                          (otherwise (map-insert blockid blk cfg*))))
                      cfg*))
               cfg
