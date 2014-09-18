@@ -507,7 +507,7 @@
   (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg)))))
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (format t "block id: ~A~%" (get-block-id cur-node))
+  ;;(format t "block id: ~A~%" (get-block-id cur-node))
   ;; (format t "block: ~A~%" cur-node)
   (let ((new-flow (funcall flow-fn cur-node cfg)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
@@ -576,7 +576,7 @@
                      (let* ((blk it)
                             (op (get-block-op blk))
                             (faints (get-block-faints blk)))
-                       (format t "looking at ~A~% ~A~%" blockid blk)
+                       ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
                                  (if (not (and (set-member op1 faints) (set-member op2 faints)))
