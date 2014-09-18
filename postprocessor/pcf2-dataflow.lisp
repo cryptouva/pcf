@@ -573,17 +573,21 @@
                 (declare (ignore blck))
                 (aif (map-val blockid cfg* t) 
                      (let* ((blk it)
-                            (op (get-block-op blk)))
+                            (op (get-block-op blk))
+                            (faints (get-block-faints blk)))
                        (format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
-                                 (if (not (set-member dest (get-block-faints blk)))
+                                 (if (not (and (set-member op1 faints) (set-member op2 faints)))
+                                     ;;cfg*
                                      (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                      (aif (map-val dest (get-block-consts blk) t)
-                                          (map-insert blockid
-                                                      (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                      cfg*)
-                                          (map-insert blockid blk cfg*)))))
+                                          (if (not (equalp it 'pcf2-const:not-const))
+                                              (map-insert blockid
+                                                          (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                          cfg*)
+                                              cfg*)
+                                          cfg*))))
                          #|(const (with-slots (dest) op
                                   (if (not (set-member dest (get-block-faints blk)))
                                       (remove-block-from-cfg blk cfg*)
@@ -592,7 +596,6 @@
                      cfg*))
               cfg
               cfg))
-
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)

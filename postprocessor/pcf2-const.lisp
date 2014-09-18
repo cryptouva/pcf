@@ -4,7 +4,8 @@
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
   (:export const-flow-fn
            const-confluence-op
-           const-weaker-fn)
+           const-weaker-fn
+           not-const)
   )
 
 (in-package :pcf2-const)
@@ -50,8 +51,10 @@
 
 ;;; **because read(x) is a way for us to input non-consts, we move <x,bottom-hat> from ConstGen to ConstKill
 
-;; TODO: all unassigned wires are 0, so we can remove 0s from our own dataflow (for memory concerns) and start adding 'unknown (we should add 'unknown even if we don't remove the 0s for memory). However, this would lead to bad coupling
+;; all unassigned wires are 0, so if something is not found in the consts then it is implicitly 0 (otherwise it will be an integer or not-const)
 
+
+(defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
 (defun map-union-without-conflicts (map1 map2)
   (map-reduce (lambda (map-accum key val)
@@ -226,7 +229,6 @@
 
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
-               ; (break)
                (aif (map-val op1 flow-data t)
                     (let ((bin-list (to-n-bit-binary-list it (length dest))))
                       (first (reduce (lambda (state bit)
@@ -267,14 +269,19 @@
     )
 
 (defmacro map-extract-val (var data)
-  `(aif (map-val ,var ,data t) (if (equalp 'not-const it) nil it) 0)
+  `(aif (map-val ,var ,data t)
+        (if (equalp 'not-const it) nil it)
+        0)
   )
 
-(defmacro or-defined (op1 op2)
-  `(or (not (equalp ,op1 'not-const)) (not (equalp ,op2 'not-const))))
+(defmacro or-defined (op1 op2 data)
+  `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
+  
+;;  `(or (not (equalp ,op1 'not-const)) (not (equalp ,op2 'not-const))))
 
-(defmacro and-defined (op1 op2)
-  `(and (not (equalp ,op1 'not-const)) (not (equalp ,op2 'not-const))))
+(defmacro and-defined (op1 op2 data)
+  `(and (map-extract-val ,op1 ,data)
+        (map-extract-val ,op2 ,data)))
 
 (defun flip-bit (o1)
   (if (zerop o1)
@@ -286,9 +293,10 @@
     :dep-gen (with-slots (dest op1 op2 truth-table) op
                (let ((o1 (map-extract-val op1 flow-data))
                      (o2 (map-extract-val op2 flow-data)))
-                 (if (or-defined o1 o2)
+                 (if (or-defined op1 op2 flow-data)
                      (cond 
-                       ((and-defined o1 o2) ;; if both are constant, we can precompute the gate
+                       ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
+                        ;;(break)
                         (let ((out-val (cond
                                          ((equalp truth-table #*0001) (logand o1 o2))
                                          ((equalp truth-table #*1100) (flip-bit o1))
@@ -299,7 +307,8 @@
                                           (print truth-table)
                                           (error "unknown truth table in gate")))))
                           (map-singleton dest out-val)))
-                       (t (with-not-nil-from o1 o2
+                       (t (with-not-nil-from (map-extract-val op1 flow-data) (map-extract-val op2 flow-data)
+                            ;;(break)
                             (case truth-table
                               (#*0001 (if (zerop it)
                                           (map-singleton dest 0)
@@ -326,7 +335,7 @@
                (let ((o1 (map-extract-val op1 flow-data))
                      (o2 (map-extract-val op2 flow-data)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2) (+ o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -336,7 +345,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2) (- o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -346,7 +355,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2) (* o1 o2) 'not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -436,7 +445,20 @@
 
 (def-gen-kill initbase) ;; no consts
 (def-gen-kill clear) ;; no consts
-(def-gen-kill call) ;; no consts
+
+(def-gen-kill call
+    :const-gen (with-slots (newbase fname) op
+                 (if (set-member fname input-functions)
+                     (reduce (lambda (map x)
+                               (map-insert x 'not-const map))
+                             (loop for i from newbase to (+ 32 newbase) collect i)
+                             :initial-value (map-empty))
+                     (empty-gen)))
+    :dep-kill (with-slots (newbase fname) op
+                (set-from-list
+                 (loop for i from newbase to (+ 32 newbase) collect i)))
+    )
+
 (def-gen-kill ret) ;; no consts
 (def-gen-kill branch) ;; no consts
 (def-gen-kill label) ;; no consts
