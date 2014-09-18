@@ -22,7 +22,8 @@
            flow-forward
            flow-backward
            *lattice-top*
-           optimize-circuit)
+           optimize-circuit
+           not-const)
   )
 (in-package :pcf2-dataflow)
 
@@ -579,10 +580,9 @@
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
                                  (if (not (and (set-member op1 faints) (set-member op2 faints)))
-                                     ;;cfg*
                                      (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                      (aif (map-val dest (get-block-consts blk) t)
-                                          (if (not (equalp it 'pcf2-const:not-const))
+                                          (if (not (equalp it 'not-const))
                                               (map-insert blockid
                                                           (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
                                                           cfg*)

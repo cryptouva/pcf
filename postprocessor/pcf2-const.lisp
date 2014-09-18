@@ -4,8 +4,7 @@
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
   (:export const-flow-fn
            const-confluence-op
-           const-weaker-fn
-           not-const)
+           const-weaker-fn)
   )
 
 (in-package :pcf2-const)
