@@ -541,7 +541,7 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
@@ -585,17 +585,11 @@
                                      (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                      (aif (map-val dest (get-block-consts blk) t)
                                           (if (not (equalp it 'not-const))
-                                              (progn
-                                                (break)
-                                                (map-insert blockid
-                                                            (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                            cfg*))
+                                              (map-insert blockid
+                                                          (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                          cfg*)
                                               cfg*)
                                           cfg*))))
-                         #|(const (with-slots (dest) op
-                         (if (not (set-member dest (get-block-faints blk)))
-                         (remove-block-from-cfg blk cfg*)
-                         cfg*)))|#
                          (otherwise (map-insert blockid blk cfg*))))
                      cfg*))
               cfg
