@@ -8,7 +8,6 @@
            flow-forward
            flow-backward
            optimize-circuit
-           not-const
            wire-use-map
            )
   )
@@ -353,7 +352,6 @@
                 (declare (ignore blockid))
                 (let ((wires (compute-used-wires (get-block-op blck))))
                   ;; we don't have to ignore this, but better for decoupling if we use the accessor on the block itself
-                  (print wires)
                   (reduce (lambda (mp wire)
                             (aif (map-val wire mp t)
                                  (map-insert wire (cons (car it) (get-block-id blck)) mp) ;; was found, preserve first and get new last
@@ -415,7 +413,7 @@
                                  (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
                                      (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                      (aif (map-val dest (get-block-consts blk) t)
-                                          (if (not (equalp it 'not-const))
+                                          (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
                                               (map-insert blockid
                                                           (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
                                                           cfg*)

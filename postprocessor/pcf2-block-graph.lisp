@@ -28,6 +28,7 @@
            graph-insert
            cfg-with-bottom
            cfg-with-map
+           pcf-not-const
            )
   )
 (in-package :pcf2-block-graph)

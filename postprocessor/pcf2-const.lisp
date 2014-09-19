@@ -5,7 +5,7 @@
   (:export const-flow-fn
            const-confluence-op
            const-weaker-fn
-           not-const)
+           )
   )
 
 (in-package :pcf2-const)
@@ -51,7 +51,7 @@
 
 ;;; **because read(x) is a way for us to input non-consts, we move <x,bottom-hat> from ConstGen to ConstKill
 
-;; all unassigned wires are 0, so if something is not found in the consts then it is implicitly 0 (otherwise it will be an integer or not-const)
+;; all unassigned wires are 0, so if something is not found in the consts then it is implicitly 0 (otherwise it will be an integer or pcf2-block-graph:pcf-not-const)
 
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
@@ -60,7 +60,7 @@
                 (aif (map-val key map2 t)
                      (if (eq it val)
                          map-accum ;; already have the element
-                         (map-insert key 'pcf2-dataflow:not-const map-accum)) ;; element duplicates not equivalent
+                         (map-insert key 'pcf2-block-graph:pcf-not-const map-accum)) ;; element duplicates not equivalent
                      (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
               map1
               map2))
@@ -250,7 +250,7 @@
     :dep-gen (labels ((all-list-found (map lst)
                         (if (null lst)
                             t
-                            (and (not (equalp 'pcf2-dataflow:not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
+                            (and (not (equalp 'pcf2-block-graph:pcf-not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
                (with-slots (dest op1) op
                  (if (all-list-found flow-data op1)
                      (let ((val (loop for i in op1
@@ -269,14 +269,14 @@
 
 (defmacro map-extract-val (var data)
   `(aif (map-val ,var ,data t)
-        (if (equalp 'pcf2-dataflow:not-const it) nil it)
+        (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
         0)
   )
 
 (defmacro or-defined (op1 op2 data)
   `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
   
-;;  `(or (not (equalp ,op1 'pcf2-dataflow:not-const)) (not (equalp ,op2 'pcf2-dataflow:not-const))))
+;;  `(or (not (equalp ,op1 'pcf2-block-graph:pcf-not-const)) (not (equalp ,op2 'pcf2-block-graph:pcf-not-const))))
 
 (defmacro and-defined (op1 op2 data)
   `(and (map-extract-val ,op1 ,data)
@@ -312,12 +312,12 @@
                             (case truth-table
                               (#*0001 (if (zerop it)
                                           (map-singleton dest 0)
-                                          (map-singleton dest 'pcf2-dataflow:not-const)))
+                                          (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
                               (#*0111 (if (equalp 1 it)
-                                          (map-singleton dest 'pcf2-dataflow:not-const)
+                                          (map-singleton dest 'pcf2-block-graph:pcf-not-const)
                                           (map-singleton dest 1)))
-                              (otherwise (map-singleton dest 'pcf2-dataflow:not-const))))))
-                     (map-singleton dest 'pcf2-dataflow:not-const))))
+                              (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
+                     (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -335,7 +335,7 @@
                (let ((o1 (map-extract-val op1 flow-data))
                      (o2 (map-extract-val op2 flow-data)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-dataflow:not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-block-graph:pcf-not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -345,7 +345,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-dataflow:not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-block-graph:pcf-not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -355,7 +355,7 @@
                (let ((o1 (map-val op1 flow-data t))
                      (o2 (map-val op2 flow-data t)))
                  (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-dataflow:not-const))))
+                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-block-graph:pcf-not-const))))
     :dep-kill (with-slots (dest) op
                 (singleton-if-found))
     )
@@ -366,12 +366,12 @@
                      (let ((o1 (map-extract-val op1 flow-data)))
                        (if o1
                            (map-singleton dest o1)
-                           (map-singleton dest 'pcf2-dataflow:not-const)))
+                           (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
                      (reduce (lambda (map var)
                                (let ((data (map-extract-val var flow-data)))
                                  (if data
                                      (map-insert var data map)
-                                     (map-insert var 'pcf2-dataflow:not-const map))))
+                                     (map-insert var 'pcf2-block-graph:pcf-not-const map))))
                              (loop for i from op1 to (+ op1 op2) collect i)
                              :initial-value (map-empty))))
     :dep-kill (with-slots (dest op1 op2) op
@@ -395,13 +395,13 @@
   `(if (equal ,length 1)
        (aif (map-extract-val ,dest-address flow-data)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
             (map-singleton ,dest-address it) 
-            (map-singleton ,dest-address 'pcf2-dataflow:not-const))
+            (map-singleton ,dest-address 'pcf2-block-graph:pcf-not-const))
        (first (reduce (lambda (state oldwire)
                         (let ((map (first state))
                               (newwire (car (second state))))
                           (aif (map-extract-val oldwire flow-data)
                                (list (map-insert newwire it map) (cdr (second state)))
-                               (list (map-insert newwire 'pcf2-dataflow:not-const map) (cdr (second state))))))
+                               (list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
                       :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
@@ -444,15 +444,15 @@
                       (kill-for-indirection op1 addr op2)))))
 
 (def-gen-kill initbase
-    ;;take this opportunity to set wire 0 as not-const
-    :const-gen (map-singleton 0 'pcf2-dataflow:not-const)
+    ;;take this opportunity to set wire 0 as pcf2-block-graph:pcf-not-const
+    :const-gen (map-singleton 0 'pcf2-block-graph:pcf-not-const)
 )
 
 (def-gen-kill call
     :const-gen (with-slots (newbase fname) op
                  (if (set-member fname input-functions)
                      (reduce (lambda (map x)
-                               (map-insert x 'pcf2-dataflow:not-const map))
+                               (map-insert x 'pcf2-block-graph:pcf-not-const map))
                              (loop for i from newbase to (+ 32 newbase) collect i)
                              :initial-value (map-empty))
                      (empty-gen)))
