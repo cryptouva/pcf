@@ -1,4 +1,4 @@
-#!/usr/local/bin/sbcl --script
+#!/usr/bin/sbcl --script
 (require :asdf)
 
 (declaim (sb-ext:muffle-conditions style-warning)
