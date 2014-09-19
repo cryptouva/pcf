@@ -1,27 +1,12 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-use-map)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-use-map)
   (:export make-pcf-cfg
-           pcf-basic-block
-           get-cfg-top
-           get-label-map
-           get-next-blocks
-           get-prev-blocks
-           get-block-op
-           get-block-succs
-           get-block-preds
-           get-block-faints
-           get-block-consts
-           get-block-id
-           get-block-by-id
-           block-with-faints
-           block-with-consts
            flow-forward-test
            flow-backward-test
            flow-forward
            flow-backward
-           *lattice-top*
            optimize-circuit
            not-const
            wire-use-map
@@ -34,184 +19,11 @@
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-(defparameter *lattice-top* -1)
-;;;
-;;; the pcf-basic-block struct 
-;;; and supporting macros
-;;;
-
-(defstruct (pcf-graph
-             (:print-function
-              (lambda (struct stream depth)
-                (declare (ignore depth))
-                (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
-                (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct)))))
-  (cfg (map-empty :comp #'<) :type avl-set)
-  (bottom nil)
-  )
-
-(defun get-graph-map (cfg)
-  (pcf-graph-cfg cfg)
-  )
-
-(defun get-graph-bottom (cfg)
-  (pcf-graph-bottom cfg)
-  )
-
-(defmacro graph-insert (key val cfg)
-  `(make-pcf-graph
-    :cfg (map-insert ,key ,val (get-graph-map ,cfg))
-    :bottom (get-graph-bottom ,cfg)
-    ))                  
-
-(defmacro new-cfg (&key (cfg `(map-empty :comp #'<)) (bottom nil))
-  `(make-pcf-graph
-    :cfg ,cfg
-    :bottom ,bottom)
-  )
-
-(defmacro cfg-with-bottom (&key cfg bottom)
-  `(make-pcf-graph
-    :cfg (get-graph-map ,cfg)
-    :bottom ,bottom))
-
-(defmacro cfg-with-map (&key cfg map)
-  `(make-pcf-graph
-    :cfg ,map
-    :bottom (get-graph-bottom ,cfg)))
-
-(defstruct (pcf-basic-block
-             (:print-function
-              (lambda (struct stream depth)
-                (declare (ignore depth))
-                (format stream "~&PCF2 basic block ~A:~%" (get-block-id struct))
-                (format stream "Op: ~A~%" (get-block-op struct))
-                (format stream "Preds: ~A~%" (get-block-preds struct))
-                (format stream "Succs: ~A~%" (get-block-succs struct))
-                (format stream "Faint-Out: ~A~%" (get-block-faints struct))
-                ;;(format stream "Consts: ~A~%" (get-block-consts struct))
-                )
-              )
-             )
-  (id)
-  (op nil :type list)
-  (preds nil :type list)
-  (succs nil :type list)
-  ;; (out-set (empty-set) :type avl-set)
-  (data (list (map-empty) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
-  (:documentation "This represents a basic block in the control flow graph.")
-  )
 
 
-(defun get-block-id (blck)
-  (pcf-basic-block-id blck))
+(defun get-idx-by-label (targ lbls)
+  (cdr (map-find targ lbls)))
 
-(defun get-block-preds (blck)
-  (pcf-basic-block-preds blck))
-
-(defun get-block-succs (blck)
-  (pcf-basic-block-succs blck))
-
-(defun get-block-op-list (blck)
-  (pcf-basic-block-op blck))
-  
-(defun get-block-op (blck)
-  (car (get-block-op-list blck)))
-
-(defun get-block-data (blck)
-  (pcf-basic-block-data blck))
-
-(defun get-block-faints (blck)
-  (second (pcf-basic-block-data blck)))
-
-(defun get-block-consts (blck)
-  (first (pcf-basic-block-data blck)))
-
-(defmacro get-idx-by-label (targ lbls)
-  `(cdr (map-find ,targ ,lbls)))
-
-(defmacro get-block-by-id (id blocks)
-  `(cdr (map-find ,id (get-graph-map ,blocks))))
-
-(defmacro new-block (&key id op)
-  `(make-pcf-basic-block
-   :id ,id
-   :op (list ,op)))
-
-;; op is an opcode, bb is the block itself
-(defmacro add-op (op bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (cons ,op (get-block-op-list ,bb))
-               :preds (get-block-preds ,bb)
-               :succs (get-block-succs ,bb)
-               :data (get-block-data ,bb)
-               )))
-     ,@body))
-
-;; prd is an index, bb is the block itself
-(defmacro add-pred (prd bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds (cons ,prd (get-block-preds ,bb))
-               :succs (get-block-succs ,bb)
-               :data (get-block-data ,bb)
-               )))
-     ,@body))
-
-;; succ is an index, bb is the block itself
-(defmacro add-succ (succ bb &body body)
-  `(let ((,bb (make-pcf-basic-block
-               :id (get-block-id ,bb)
-               :op (get-block-op-list ,bb)
-               :preds (get-block-preds ,bb)
-               :succs (cons ,succ (get-block-succs ,bb))
-               :data (get-block-data ,bb)
-               )))
-     ,@body))
-
-(defun block-with-op (new-op bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  new-op
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list (get-block-consts bb) (get-block-faints bb))))
-
-(defun block-with-preds (preds bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  (get-block-op-list bb)
-               :preds preds
-               :succs (get-block-succs bb)
-               :data (list (get-block-consts bb) (get-block-faints bb))))
-
-(defun block-with-succs (succs bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs succs
-               :data (list (get-block-consts bb) (get-block-faints bb))))
-
-(defun block-with-faints (new-faint bb)
-  (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list (get-block-consts bb) new-faint)
-               ))
-
-(defun block-with-consts (new-consts bb)
-  (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list new-consts (get-block-faints bb))
-               ))
 
 ;; id should be an integer
 ;; val should be a block
@@ -272,12 +84,6 @@
 (definstr initbase
   (initbase-instr))
 
-#|
-;; the following defmethod shouldn't really be necessary because it's covered by two other defmethods, but this is here for clarity
-(defmethod cfg-basic-block (next-op (cur-op initbase) blocks lbls fns idx callstack)
-  (initbase-instr))
-|#
-
 (defmacro ret-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
     (close-add-block)))
@@ -326,6 +132,8 @@
          (ret (ret-instr))
          (t (add-standard-block)))))))
 
+
+
 ;;;
 ;;; constructing and operating on the cfg
 ;;;
@@ -335,17 +143,18 @@
   (declare (ignore cfg))
   0)
 
-;  (get-idx-by-label "pcfentry" cfg) cfg)
 
 (defun get-cfg-bottom (cfg)
   ;; need the index of the very last node in the cfg, which is the return from "main"
   (get-graph-bottom cfg)
   )
 
+
 (defun get-prev-blocks (block cfg)
   (mapc
    (lambda (b) (get-block-by-id b cfg))
    (get-block-preds block)))
+
 
 (defun get-next-blocks (block cfg)
   (mapc

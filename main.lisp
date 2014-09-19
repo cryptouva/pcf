@@ -11,6 +11,7 @@
                                :common-lisp
                                :skew-list
                                :lcc-dataflow
+                               :pcf2-block-graph
 			       :pcf2-dataflow
                                :pcf2-faintgate
                                :pcf2-const

@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
   (:export faint-flow-fn
            faint-confluence-op
            faint-weaker-fn)

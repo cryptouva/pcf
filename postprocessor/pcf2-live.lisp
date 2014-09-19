@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-live
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-dataflow)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
   (:export live-flow-fn
            live-confluence-op
            live-weaker-fn)
@@ -60,8 +60,8 @@
   ;;(declare (optimize (speed 0) (debug 3)))
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
-     (set-diff in-flow (kill (get-block-op blck) blck in-flow))
-     (gen (get-block-op blck) blck in-flow))))
+     (set-diff in-flow (kill (get-block-op blck)))
+     (gen (get-block-op blck)))))
 
 (defgeneric gen (op)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -80,7 +80,7 @@
      (declare (optimize (debug 3)(speed 0)))
      (aif (locally ,@body)
           it
-          gen-kill-standard)))
+          (gen-kill-standard))))
 
 (defmacro def-kill (type &body body)
   `(defmethod kill ((op ,type))
@@ -187,8 +187,8 @@
            (if (set-member fname output-functions)
                (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                (empty-set)))
-    ;; definition of wires from (- newbase 32) to (- newbase 1)
-    
+
+    ;; definition of wires from (- newbase 32) to (- newbase 1)    
     :kill (with-slots (newbase fname) op
             (if (set-member fname input-functions)
                 (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
