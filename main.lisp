@@ -25,7 +25,8 @@
                      test-get-ops-from-cfg
                      faint-analyze-cfg
                      const-analyze-cfg
-                     test-analyze-cfg)
+                     test-analyze-cfg
+                     compute-wire-uses)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
@@ -60,6 +61,10 @@
  
 (defun pcf-cfg (ops)
   (make-pcf-cfg ops))
+
+(defun compute-wire-uses (ops)
+  (wire-use-map ops)
+  )
 
 (defun faint-analyze-cfg (ops)
   (flow-backward-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))

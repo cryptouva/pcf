@@ -53,7 +53,6 @@
 
 ;; all unassigned wires are 0, so if something is not found in the consts then it is implicitly 0 (otherwise it will be an integer or not-const)
 
-
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
 (defun map-union-without-conflicts (map1 map2)
@@ -290,6 +289,7 @@
 
 (def-gen-kill gate
     ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
+    ;; we also precompute gate values where we know them beforehand
     :dep-gen (with-slots (dest op1 op2 truth-table) op
                (let ((o1 (map-extract-val op1 flow-data))
                      (o2 (map-extract-val op2 flow-data)))
@@ -443,8 +443,10 @@
                     (let ((addr (map-val dest flow-data)))
                       (kill-for-indirection op1 addr op2)))))
 
-(def-gen-kill initbase) ;; no consts
-(def-gen-kill clear) ;; no consts
+(def-gen-kill initbase
+    ;;take this opportunity to set wire 0 as not-const
+    :const-gen (map-singleton 0 'pcf2-dataflow:not-const)
+)
 
 (def-gen-kill call
     :const-gen (with-slots (newbase fname) op
@@ -459,6 +461,8 @@
                  (loop for i from newbase to (+ 32 newbase) collect i)))
     )
 
-(def-gen-kill ret) ;; no consts
 (def-gen-kill branch) ;; no consts
+
+(def-gen-kill ret) ;; no consts
 (def-gen-kill label) ;; no consts
+(def-gen-kill clear) ;; no consts

@@ -1,7 +1,7 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :utils)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-use-map)
   (:export make-pcf-cfg
            pcf-basic-block
            get-cfg-top
@@ -24,6 +24,7 @@
            *lattice-top*
            optimize-circuit
            not-const
+           wire-use-map
            )
   )
 (in-package :pcf2-dataflow)
@@ -295,7 +296,6 @@
                 (add-succ (get-idx-by-label fname lbls) newblock
                     (close-add-block))))))))
 
-
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
      (let ((newblock (new-block :id idx :op cur-op)))
@@ -535,6 +535,28 @@
             (worklist (cdr worklist)))
         (multiple-value-bind (cfg* more-work) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
           (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work))))))
+
+
+(defun find-wire-uses (cfg)
+  ;; the idea here is to compute the first and last uses of all the wires in the map.
+  ;; we represent this as a map from wireid -> (cons first-use last-use)
+  (map-reduce (lambda (map blockid blck)
+                (declare (ignore blockid))
+                (let ((wires (compute-used-wires (get-block-op blck))))
+                  ;; we don't have to ignore this, but better for decoupling if we use the accessor on the block itself
+                  (print wires)
+                  (reduce (lambda (mp wire)
+                            (aif (map-val wire mp t)
+                                 (map-insert wire (cons (car it) (get-block-id blck)) mp) ;; was found, preserve first and get new last
+                                 (map-insert wire (cons (get-block-id blck) (get-block-id blck)) mp))) ;; not found, this is first use. insert blockid for first and last
+                          wires
+                          :initial-value map)))
+              (get-graph-map cfg)
+              (map-empty)))
+
+
+(defun wire-use-map (ops)
+  (find-wire-uses (make-pcf-cfg ops)))
 
 
 (defun remove-block-from-cfg (blck cfg)

@@ -50,6 +50,8 @@
 ;;; so instead, **WE SWITCH THE DEFINITIONS OF GEN AND KILL** (their const and dep versions follow respectively)
 ;;; now, Top is {}, bottom is {Var}, and the confluence operator is set-union
 
+;; A note: because wire 0 is the global condition wire, it should always be live. we use the "ret" instruction to designate it as live because we know it will always be the last instruction (and therefore the first to be analyzed for faintness)
+
 (defparameter faint-confluence-operator #'set-union)  ;;#'set-inter)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
@@ -198,7 +200,7 @@
 
 
 (def-gen-kill const
-    ;; if x = const, add x to gen
+    ;; if x = const, kill x because it has been defined
     :const-kill (with-slots (dest) op
                   (singleton dest)))
 
@@ -249,15 +251,12 @@
                    (empty-set)))
     :const-kill (with-slots (op1 op2 dest) op
                   (if (and (> dest op1) (< dest (+ op1 op2)))
-                      (empty-set)
+                      (error "trying to copy onto self")
                       (if (equalp 1 op2)
                           (singleton dest)
                           (set-from-list
                            (loop for i from dest to (+ dest op2) collect i)))))
     )
-
-(def-gen-kill initbase)
-(def-gen-kill clear)
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
@@ -295,9 +294,9 @@
                (let ((addr (map-val dest (get-block-consts blck))))
                  (gen-for-indirection op1 addr op2)))
     :dep-kill (with-slots (dest op2) op
-                  (let ((addr (map-val dest (get-block-consts blck))))
-                    (kill-for-indirection addr op2)))
-)
+                (let ((addr (map-val dest (get-block-consts blck))))
+                  (kill-for-indirection addr op2)))
+    )
 
 (def-gen-kill call
     :const-gen (with-slots (newbase fname) op
@@ -310,6 +309,17 @@
                       (empty-set)))
 )
 
-(def-gen-kill ret)
-(def-gen-kill branch)
+(def-gen-kill ret
+    ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
+    :const-gen (singleton 0)
+)
+
+(def-gen-kill branch
+    ;; we can assume that all branch wires introduce their condition wire to the set of not-faints. this preserves control flow from the original program
+    :const-gen (with-slots (cnd) op
+                 (singleton cnd))
+    )
+
 (def-gen-kill label)
+(def-gen-kill initbase)
+(def-gen-kill clear)

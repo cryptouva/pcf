@@ -43,7 +43,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (avl-tree-map (lambda (x) (format stream "~A " x)) (avl-set-tree struct) :comp (avl-set-comp struct))
+                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct) :comp (avl-set-comp struct))
                 (format stream "}")
                 )
               )

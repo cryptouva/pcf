@@ -42,9 +42,10 @@
 			)
 	       (:module postprocessor
 			:components (
-				     (:file "pcf2-dataflow")
+				     (:file "pcf2-dataflow" :depends-on ("pcf2-use-map"))
 				     (:file "pcf2-faintgate" :depends-on ("pcf2-dataflow"))
                                      (:file "pcf2-const" :depends-on ("pcf2-dataflow"))
+                                     (:file "pcf2-use-map")
                                      ;;(:file "pcf2-gateanalysis")
                                      ;;(:file "pcf2-deadgate")
                                      )
