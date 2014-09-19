@@ -346,7 +346,8 @@
       cfg ; done
       (let* ((cur-node-id (car worklist))
              (worklist (cdr worklist))
-             (new-work-set (set-remove worklist-set cur-node-id))) 
+             (new-work-set 
+              (set-remove worklist-set cur-node-id)))
         (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
           (let ((more-work (reduce (lambda (wlist candidate)
                                      (if (set-member candidate new-work-set)
@@ -354,7 +355,7 @@
                                          (append wlist (list candidate))))
                                    worklist*
                                    :initial-value worklist))
-                (more-work-set (set-union new-work-set (set-from-list worklist*))))
+                (more-work-set (set-union (set-from-list worklist*) new-work-set)))
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set))))))
 #|
        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
