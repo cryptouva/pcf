@@ -20,18 +20,16 @@
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
 
 
-(defun get-idx-by-label (targ lbls)
-  (cdr (map-find targ lbls)))
-
-
 ;; id should be an integer
 ;; val should be a block
 ;; blocks should be the map of blocks
 (defmacro insert-block (id val blocks &body body)
-  ;;  `(let ((,blocks (map-insert (write-to-string ,id) ,val ,blocks)))
-  ;;     ,@body))
   `(let ((,blocks (graph-insert ,id ,val ,blocks)))
      ,@body))
+
+(defun get-idx-by-label (targ lbls)
+  (cdr (map-find targ lbls)))
+
 
 ;;;
 ;;;
@@ -131,34 +129,6 @@
          (ret (ret-instr))
          (t (add-standard-block)))))))
 
-
-
-;;;
-;;; constructing and operating on the cfg
-;;;
-
-
-(defun get-cfg-top (cfg)
-  (declare (ignore cfg))
-  0)
-
-
-(defun get-cfg-bottom (cfg)
-  ;; need the index of the very last node in the cfg, which is the return from "main"
-  (get-graph-bottom cfg)
-  )
-
-
-(defun get-prev-blocks (block cfg)
-  (mapc
-   (lambda (b) (get-block-by-id b cfg))
-   (get-block-preds block)))
-
-
-(defun get-next-blocks (block cfg)
-  (mapc
-   (lambda (b) (get-block-by-id b cfg))
-   (get-block-succs block)))
 
 
 (defun get-label-and-fn-map (ops)
@@ -289,6 +259,15 @@
       preds
       )))
 
+
+;;; the overall order of flow operations (once the cfg is constructed) should be as follows:
+;;; 1. usage map
+;;; 2. live-variable
+;;; 3. const
+;;; 4. faint-variable
+;;; (although one and two are interchangeable, usage-map is simpler to perform 
+
+
 ;; when flowing,
 ;; each node carries info about its own data
 ;; and updates its information using predecessors' inputs
@@ -301,53 +280,97 @@
 
 ;; need to construct some functions for comparing datas with those that are just "top". Any confluence operation with "top" (conf x top) = x
 
-(defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (let ((cfg (make-pcf-cfg ops)))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg)))))
 
-(defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (map-keys (get-graph-map cfg))))
+;; a couple of functions to test forward and backward flows
+
+(defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+  (let* ((cfg (make-pcf-cfg ops))
+         (worklist (map-keys (get-graph-map cfg))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
 
 (defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (let ((cfg (make-pcf-cfg ops)))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg))))))
+  (let* ((cfg (make-pcf-cfg ops))
+         (worklist (reverse (map-keys (get-graph-map cfg)))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+
+;; the actual flow-forward and flow-backward functions (could be replaced with macros and a single flow function, but not necessary
 
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (reverse (map-keys (get-graph-map cfg)))))
+  (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+
+(defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+  (let ((worklist (map-keys (get-graph-map cfg))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+
+;; functions for the implementation of the worklist algorithm
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  ;;(format t "block id: ~A~%" (get-block-id cur-node))
-  ;; (format t "block: ~A~%" cur-node)
+  (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
-      ;; (format t "new out: ~A~%" new-flow)
+      (let ((vals (reduce (lambda (state neighbor-id)
+                            (let* ((cfg (first state))
+                                   (worklist (second state))
+                                   (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
+                                   (compare-flow (funcall join-fn new-flow neighbor-flow)))
+                              (if (funcall weaker-fn compare-flow neighbor-flow)
+                                  (list (insert-block
+                                            neighbor-id
+                                            (funcall set-data-fn compare-flow (get-block-by-id neighbor-id cfg)) 
+                                            cfg
+                                          cfg)
+                                        (append worklist (list neighbor-id)))
+                                  state)))
+                          (funcall get-neighbor-fn cur-node)
+                          :initial-value (list cfg nil))))
+        (values (first vals) (second vals))))))
+#|    
+  (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (values cfg
               (reduce (lambda (worklist neighbor-id)
-                        ;; (format t "new flow (again): ~A~%" new-flow)
                         (let* ((neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                          ;; (format t "neighbor flow: ~A~%" neighbor-flow)
-                          ;; (format t "compare-flow: ~A~%" compare-flow)
                           (if (funcall weaker-fn compare-flow neighbor-flow)
                               (append worklist (list neighbor-id))
                               worklist)))
                       (funcall get-neighbor-fn cur-node)
                       :initial-value nil)))))
+|#
 
 
-(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist)
-  ;; (declare (optimize (debug 3)(speed 0)))
+(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set)
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
   (if (null worklist)
       cfg ; done
-      (let ((cur-node-id (car worklist))
-            (worklist (cdr worklist)))
-        (multiple-value-bind (cfg* more-work) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-          (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work))))))
+      (let* ((cur-node-id (car worklist))
+             (worklist (cdr worklist))
+             (new-work-set (set-remove worklist-set cur-node-id))) 
+        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+          (let ((more-work (reduce (lambda (wlist candidate)
+                                     (if (set-member candidate new-work-set)
+                                         wlist
+                                         (append wlist (list candidate))))
+                                   worklist*
+                                   :initial-value worklist))
+                (more-work-set (set-union new-work-set (set-from-list worklist*))))
+            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set))))))
+#|
+       (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+          (let ((more-work (reduce (lambda (wlist candidate)
+                                     (if (member candidate worklist)
+                                         worklist
+                                         (append wlist (list candidate))))
+                                   worklist*
+                                   :initial-value nil)))
+            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work)))))))
+|#
 
 
 (defun find-wire-uses (cfg)
   ;; the idea here is to compute the first and last uses of all the wires in the map.
-  ;; we represent this as a map from wireid -> (cons first-use last-use)
+  ;; we represent this as a map from wireid -> (cons first-use last-use). returns a map of these.
   (map-reduce (lambda (map blockid blck)
                 (declare (ignore blockid))
                 (let ((wires (compute-used-wires (get-block-op blck))))
@@ -365,6 +388,9 @@
 (defun wire-use-map (ops)
   (find-wire-uses (make-pcf-cfg ops)))
 
+
+
+;; functions for eliminating gates (and potentially other pcf2 ops) from the cfg as a result of the analysis we've performed
 
 (defun remove-block-from-cfg (blck cfg)
   ;; remove this block from its preds' succs and its succs' preds
@@ -431,6 +457,8 @@
               cfg
               nil))
 
+
+;; the big cahoona
 (defun optimize-circuit (cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )

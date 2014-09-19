@@ -182,22 +182,24 @@
       )
   )
 
-(defun avl-tree-remove (x lst &key (comp #'<))
+(defun avl-tree-remove (x lst &key (comp #'<) (allow-no-result nil))
   "Remove a value from an AVL tree"
   (declare (optimize (debug 3)(speed 0)))
   (if (null lst)
-      (error 'value-not-in-tree)
+      (if allow-no-result
+          nil
+          (error 'value-not-in-tree))
       (cond
         ((funcall comp x (avl-data lst))
          (avl-balance (avl-cons
                        (avl-data lst)
-                       (avl-tree-remove x (avl-left lst) :comp comp)
+                       (avl-tree-remove x (avl-left lst) :comp comp :allow-no-result allow-no-result)
                        (avl-right lst))))
         ((funcall comp (avl-data lst) x)
          (avl-balance (avl-cons
                        (avl-data lst)
                        (avl-left lst)
-                       (avl-tree-remove x (avl-right lst) :comp comp))))
+                       (avl-tree-remove x (avl-right lst) :comp comp :allow-no-result allow-no-result))))
         (t 
          (if (avl-right lst)
              (multiple-value-bind (rgsm rglst) (avl-tree-remove-min (avl-right lst))

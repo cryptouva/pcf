@@ -15,6 +15,7 @@
 			       :pcf2-dataflow
                                :pcf2-faintgate
                                :pcf2-const
+                               :pcf2-live
                                )
             (:export test-interp
                      pcf-cfg
@@ -26,6 +27,7 @@
                      test-get-ops-from-cfg
                      faint-analyze-cfg
                      const-analyze-cfg
+                     live-analyze-cfg
                      test-analyze-cfg
                      compute-wire-uses)
             (:import-from :lcc-bc read-instructions)
@@ -66,6 +68,9 @@
 (defun compute-wire-uses (ops)
   (wire-use-map ops)
   )
+
+(defun live-analyze-cfg (ops)
+  (flow-backward-test ops #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives))
 
 (defun faint-analyze-cfg (ops)
   (flow-backward-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))

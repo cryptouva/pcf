@@ -7,6 +7,7 @@
             (:export set-member
                      singleton
                      set-insert
+                     set-remove
                      set-diff
                      set-union
                      set-inter
@@ -43,7 +44,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (avl-tree-map (lambda (x) (format stream "~A~%" x)) (avl-set-tree struct) :comp (avl-set-comp struct))
+                (avl-tree-map (lambda (x) (format stream "~A " x)) (avl-set-tree struct) :comp (avl-set-comp struct))
                 (format stream "}")
                 )
               )
@@ -131,10 +132,18 @@
 (defun set-insert (set x)
   (let ((comp (avl-set-comp set)))
     (make-avl-set :tree
-                  (avl-tree-insert x (avl-set-tree set) :comp comp)
+                  (avl-tree-insert-unique x (avl-set-tree set) :comp comp)
                   :comp comp))
   ;; (set-union set (singleton x :comp (avl-set-comp set)))
   )
+
+(defun set-remove (set x &optional (allow-no-result t))
+  "Remove key \"x\" from the set"
+  (declare (optimize (debug 3)(speed 0)))
+   (let ((comp (avl-set-comp set)))
+     (make-avl-set :tree
+                   (avl-tree-remove x (avl-set-tree set) :comp comp :allow-no-result allow-no-result)
+                   :comp comp)))
 
 (defun set-from-list (lst &key (comp #'<))
   "Create a set that contains the elements of \"lst\""

@@ -13,6 +13,7 @@
            get-block-lives
            get-block-id
            get-block-by-id
+           block-with-lives
            block-with-faints
            block-with-consts
            block-with-op
@@ -89,6 +90,7 @@
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Faint-Out: ~A~%" (get-block-faints struct))
                 ;;(format stream "Consts: ~A~%" (get-block-consts struct))
+                (format stream "Live-Out: ~A~%" (get-block-lives struct))
                 )
               )
              )
