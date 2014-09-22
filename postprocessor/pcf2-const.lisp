@@ -309,6 +309,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
+                   #|
                    (if (or-defined op1 op2 flow-data)
                        (cond 
                          ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
@@ -334,7 +335,8 @@
                                             (map-singleton dest 'pcf2-block-graph:pcf-not-const)
                                             (map-singleton dest 1)))
                                 (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
-                       (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
+                   |#
+                   (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
                   (singleton-if-found)))
@@ -490,7 +492,10 @@
                    (loop for i from newbase to (+ 32 newbase) collect i))))
     )
 
-(def-gen-kill branch) ;; no consts
+(def-gen-kill branch
+    :const-gen (with-slots (cnd) op
+                 (with-true-address cnd
+                   (map-singleton cnd 'pcf2-block-graph:pcf-not-const))))
 
 (def-gen-kill ret) ;; no consts
 (def-gen-kill label) ;; no consts -- might have to set base
