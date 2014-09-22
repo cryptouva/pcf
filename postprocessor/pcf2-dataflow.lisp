@@ -313,7 +313,7 @@
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
   (declare (optimize (debug 3)(speed 0)))
-  ;;(format t "~A~%" cur-node)
+  (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
@@ -322,16 +322,20 @@
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
                               (if (funcall weaker-fn compare-flow neighbor-flow)
+                                  (list (first state) (append worklist (list neighbor-id)))
+#|
                                   (list (insert-block
                                             neighbor-id
                                             (funcall set-data-fn compare-flow (get-block-by-id neighbor-id cfg)) 
                                             cfg
                                           cfg)
                                         (append worklist (list neighbor-id)))
+|#
                                   state)))
                           (funcall get-neighbor-fn cur-node)
                           :initial-value (list cfg nil))))
-        (values (first vals) (second vals))))))
+        (values (first vals) (second vals)))))
+)
 #|    
   (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (values cfg
