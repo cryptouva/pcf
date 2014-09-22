@@ -74,7 +74,7 @@
 
 (defmacro initbase-instr ()
   `(with-slots (base) cur-op
-     (let ((newblock (new-block :id idx :op cur-op :base base))
+     (let ((newblock (new-block :id idx :op cur-op :base (car base-stack)))
            (base-stack (list base)))
        ;; this one's successor is ALWAYS main
        (add-succ (get-idx-by-label "main" lbls) newblock
@@ -84,7 +84,7 @@
   (initbase-instr))
 
 (defmacro ret-instr ()
-  `(let ((newblock (new-block :id idx :op cur-op)))
+  `(let ((newblock (new-block :id idx :op cur-op :base (car base-stack))))
      (close-add-block)))
 ;; successors are added after the initial cfg is built using the call/ret maps
 
@@ -96,14 +96,14 @@
     (cond
       ((set-member fname *specialfunctions*)
        (add-standard-block))
-      (t (let ((newblock (new-block :id idx :op cur-op)))
+      (t (let ((newblock (new-block :id idx :op cur-op :base (car base-stack))))
            (add-succ (1+ idx) newblock
                (add-succ (get-idx-by-label fname lbls) newblock
                    (close-add-block))))))))
 
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
-     (let ((newblock (new-block :id idx :op cur-op)))
+     (let ((newblock (new-block :id idx :op cur-op :base (car base-stack))))
        (add-succ (1+ idx) newblock
            (add-succ (get-idx-by-label targ lbls) newblock
                (close-add-block))))))
@@ -119,7 +119,7 @@
        (typecase cur-op
          (initbase (initbase-instr))
          (t
-          (let ((newblock (new-block :id idx :op cur-op)))
+          (let ((newblock (new-block :id idx :op cur-op :base (car base-stack))))
             (format t "~A~%" newblock)
             (format t "~A~%" next-op)
             (close-add-block))))) 
@@ -474,6 +474,6 @@
 
 ;; the big cahoona
 (defun optimize-circuit (cfg)
-  (print cfg)
+  ;;(print cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )
