@@ -237,6 +237,12 @@
   (to-binary num (- bits 1))))
 
 
+(defmacro map-extract-val (var data)
+  `(aif (map-val ,var ,data t)
+        (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
+        0)
+  )
+
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
                (with-true-address-list dest
@@ -296,12 +302,6 @@
                       (singleton dest)
                       (empty-kill))))
     )
-
-(defmacro map-extract-val (var data)
-  `(aif (map-val ,var ,data t)
-        (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
-        0)
-  )
 
 (defmacro or-defined (op1 op2 data)
   `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
