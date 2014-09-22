@@ -351,7 +351,7 @@
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (null worklist)
       cfg ; done
