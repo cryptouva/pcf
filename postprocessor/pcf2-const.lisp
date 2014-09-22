@@ -370,7 +370,7 @@
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
                    (format t "o1: ~A o2: ~A~%" o1 o2) ;; can only add on constants
-                   (map-singleton dest (if (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-block-graph:pcf-not-const)))))
+                   (map-singleton dest (if (and o1 o2) (+ o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
                   (singleton-if-found)))
@@ -379,10 +379,10 @@
 (def-gen-kill sub
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1 op2)
-                 (let ((o1 (map-val op1 flow-data t))
-                       (o2 (map-val op2 flow-data t)))
+                 (let ((o1 (map-extract-val op1 flow-data))
+                       (o2 (map-extract-val op2 flow-data)))
                    (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                   (map-singleton dest (if (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
+                   (map-singleton dest (if (and o1 o2) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
                   (singleton-if-found)))
@@ -391,10 +391,10 @@
 (def-gen-kill mul
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1 op2)
-                 (let ((o1 (map-val op1 flow-data t))
-                       (o2 (map-val op2 flow-data t)))
+                 (let ((o1 (map-extract-val op1 flow-data))
+                       (o2 (map-extract-val op2 flow-data)))
                    (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                   (map-singleton dest (if (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-block-graph:pcf-not-const)))))
+                   (map-singleton dest (if (and o1 o2) (* o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
                   (singleton-if-found)))
