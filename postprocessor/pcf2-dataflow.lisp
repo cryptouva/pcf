@@ -30,14 +30,13 @@
 (defun get-idx-by-label (targ lbls)
   (cdr (map-find targ lbls)))
 
-
 ;;;
 ;;;
 ;;; cfg-basic-block functions that instruct how to behave when building the cfg and encountering all of the possible ops
 ;;;
 ;;;
 
-(defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack)
+(defgeneric cfg-basic-block (next-op cur-op blocks lbls fns idx callstack base-stack)
   (:documentation "update the entities in the cfg for each op that we encounter from ops")
   ;; blocks is a map of all idx to basic blocks
   ;; lbls is a map of all of the label names to idxs
@@ -47,25 +46,26 @@
 
 ;; this one catches all the stuff i don't define. it performs a standard operation.
 (defmacro add-standard-block () ; next-op cur-op blocks lbls fns idx
-  `(let ((newblock (new-block :id idx :op cur-op)))
+  `(let ((newblock (new-block :id idx :op cur-op :base (car base-stack))))
      (add-succ (1+ idx) newblock
-         (close-add-block))))
+       (close-add-block))))
 
 (defmacro close-add-block ()
   `(insert-block idx newblock blocks
-                 (list next-op
-                       blocks
-                       lbls
-                       fns
-                       (1+ idx)
-                       callstack)))
+     (list next-op
+           blocks
+           lbls
+           fns
+           (1+ idx)
+           callstack
+           base-stack)))
 
-(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack)
+(defmethod cfg-basic-block (next-op (cur-op instruction) blocks lbls fns idx callstack base-stack)
   (add-standard-block))
 
 (defmacro definstr (type &body body)
   "PCF instruction processing methods are defined with this macro.  It is a convenience macro that ensures that the method takes the right number of arguments."
-  `(defmethod cfg-basic-block ((next-op instruction) (cur-op ,type) blocks lbls fns idx callstack)
+  `(defmethod cfg-basic-block ((next-op instruction) (cur-op ,type) blocks lbls fns idx callstack base-stack)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -73,17 +73,19 @@
           )))
 
 (defmacro initbase-instr ()
-  `(let ((newblock (new-block :id idx :op cur-op)))
-     ;; this one's successor is ALWAYS main
-     (add-succ (get-idx-by-label "main" lbls) newblock
-         (close-add-block))))
+  `(with-slots (base) cur-op
+     (let ((newblock (new-block :id idx :op cur-op :base base))
+           (base-stack (list base)))
+       ;; this one's successor is ALWAYS main
+       (add-succ (get-idx-by-label "main" lbls) newblock
+         (close-add-block)))))
 
 (definstr initbase
   (initbase-instr))
 
 (defmacro ret-instr ()
   `(let ((newblock (new-block :id idx :op cur-op)))
-    (close-add-block)))
+     (close-add-block)))
 ;; successors are added after the initial cfg is built using the call/ret maps
 
 (definstr ret
@@ -95,9 +97,9 @@
       ((set-member fname *specialfunctions*)
        (add-standard-block))
       (t (let ((newblock (new-block :id idx :op cur-op)))
-            (add-succ (1+ idx) newblock
-                (add-succ (get-idx-by-label fname lbls) newblock
-                    (close-add-block))))))))
+           (add-succ (1+ idx) newblock
+               (add-succ (get-idx-by-label fname lbls) newblock
+                   (close-add-block))))))))
 
 (defmacro branch-instr ()
   `(with-slots (targ) cur-op
@@ -109,7 +111,7 @@
 (definstr branch
   (branch-instr))
 
-(defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack)
+(defmethod cfg-basic-block ((next-op label) (cur-op instruction) blocks lbls fns idx callstack base-stack)
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (str) next-op
     (cond
@@ -137,48 +139,48 @@
   ;; ret-addrs will contain the return addresses of all of the functions {(fname)->(return-address)}
   ;; call-addrs will contain addresses where each function is called { (addr)->(fname)}
   (reduce #'(lambda(y op)
-                     (declare (optimize (debug 3) (speed 0)))
-                     (let ((lbls (first y))
-			   (fns (second y))
-                           (idx (third y))
-                           (ret-addrs (fourth y))
-                           (callstack (fifth y))
-                           (call-addrs (sixth y)))
-                       (typecase op
-                         (label 
-                          (with-slots (str) op
-                            (if (or (equalp (subseq str 0 1) "$")
-                                    (equalp str "pcfentry")) ;; main can be included here because it returns;
-                                (list 
-                                 (map-insert str idx lbls)
-                                 fns
-                                 (+ 1 idx)
-                                 ret-addrs
-                                 callstack
-                                 call-addrs) ;; we have a regular label
-                                (list
-                                 (map-insert str idx lbls)
-                                 fns
-                                 (+ 1 idx)
-                                 ret-addrs ;; some function whose ret address should be known
-                                 (cons str callstack)
-                                 call-addrs ))))
-			 (call (with-slots (fname) op
-				 (list lbls
-                                       (set-insert fns fname)
-                                       (+ 1 idx)
-                                       ret-addrs
-                                       callstack
-                                       (if (set-member fname *specialfunctions*)
-                                           call-addrs
-                                           (map-insert idx fname call-addrs)))))
-                         (ret (list lbls
-                                    fns
-                                    (+ 1 idx)
-                                    (map-insert (car callstack) idx ret-addrs)
-                                    (cdr callstack)
-                                    call-addrs))
-                         (t (list lbls fns (+ 1 idx) ret-addrs callstack call-addrs)))))
+              (declare (optimize (debug 3) (speed 0)))
+              (let ((lbls (first y))
+                    (fns (second y))
+                    (idx (third y))
+                    (ret-addrs (fourth y))
+                    (callstack (fifth y))
+                    (call-addrs (sixth y)))
+                (typecase op
+                  (label 
+                   (with-slots (str) op
+                     (if (or (equalp (subseq str 0 1) "$")
+                             (equalp str "pcfentry")) ;; main can be included here because it returns;
+                         (list 
+                          (map-insert str idx lbls)
+                          fns
+                          (+ 1 idx)
+                          ret-addrs
+                          callstack
+                          call-addrs) ;; we have a regular label
+                         (list
+                          (map-insert str idx lbls)
+                          fns
+                          (+ 1 idx)
+                          ret-addrs ;; some function whose ret address should be known
+                          (cons str callstack)
+                          call-addrs ))))
+                  (call (with-slots (fname) op
+                          (list lbls
+                                (set-insert fns fname)
+                                (+ 1 idx)
+                                ret-addrs
+                                callstack
+                                (if (set-member fname *specialfunctions*)
+                                    call-addrs
+                                    (map-insert idx fname call-addrs)))))
+                  (ret (list lbls
+                             fns
+                             (+ 1 idx)
+                             (map-insert (car callstack) idx ret-addrs)
+                             (cdr callstack)
+                             call-addrs))
+                  (t (list lbls fns (+ 1 idx) ret-addrs callstack call-addrs)))))
           ops
           :initial-value (list (map-empty :comp #'string<)
                                (empty-set :comp #'string<)
@@ -239,16 +241,20 @@
                         (apply #'cfg-basic-block (cons y x)))
                     restops
                     :initial-value (list op1
-					 (new-cfg) ;(map-empty :comp #'string<) 
-					 (first lbl-fn-map)
-					 (second lbl-fn-map)
-					 0
-                                         nil)))
+					 (new-cfg) ; blocks 
+					 (first lbl-fn-map) ;; lbls
+					 (second lbl-fn-map) ;; fns
+					 0 ;;idx
+                                         nil ;; callstack
+                                         nil ;; base-stack
+                                         )))
            (blocks (second reduce-forward))
            (forward-cfg
             (insert-block 
                 (fifth reduce-forward) ;id
-                (new-block :id (fifth reduce-forward) :op (first reduce-forward))
+                (new-block :id (fifth reduce-forward)
+                           :op (first reduce-forward)
+                           :base (seventh reduce-forward))
                 blocks
               blocks))
            (cfg-bottom (cfg-with-bottom :cfg forward-cfg :bottom (fifth reduce-forward)))
@@ -306,7 +312,8 @@
 ;; functions for the implementation of the worklist algorithm
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-  (format t "~A~%" (get-block-id cur-node))
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(format t "~A~%" cur-node)
   (let ((new-flow (funcall flow-fn cur-node cfg)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
@@ -420,6 +427,10 @@
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
       
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
@@ -433,19 +444,21 @@
                 (aif (map-val blockid cfg* t) 
                      (let* ((blk it)
                             (op (get-block-op blk))
+                            (base (get-block-base blk))
                             (faints (get-block-faints blk)))
                        ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
-                                 (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
-                                     (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                     (aif (map-val dest (get-block-consts blk) t)
-                                          (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
-                                              (map-insert blockid
-                                                          (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                          cfg*)
-                                              cfg*)
-                                          cfg*))))
+                                 (with-true-addresses (dest op1 op2)
+                                   (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
+                                       (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                       (aif (map-val dest (get-block-consts blk) t)
+                                            (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
+                                                (map-insert blockid
+                                                            (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                            cfg*)
+                                                cfg*)
+                                            cfg*)))))
                          (otherwise (map-insert blockid blk cfg*))))
                      cfg*))
               cfg
@@ -461,5 +474,6 @@
 
 ;; the big cahoona
 (defun optimize-circuit (cfg)
+  (print cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )

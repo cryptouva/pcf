@@ -146,7 +146,11 @@ to some extent."
           )
       (assert (>= (ninth rvl) 1))
       (format *error-output* "~&Initial base pointer: ~D~%" (ninth rvl))
-      (cons (cons (make-instance 'label :str "pcfentry") (cons (make-instance 'initbase :base (ninth rvl)) (reverse (third rvl)))) (rest rvl))
+      (cons
+       (cons (make-instance 'label :str "pcfentry")
+             (cons (make-instance 'initbase :base (ninth rvl)) 
+                   (reverse (third rvl))))
+       (rest rvl))
       )
     )
   )
@@ -350,8 +354,7 @@ number of arguments."
                                          mux-dest
                                          (mux-item-cnd-wire x)
                                          tmp1
-                                         tmp2
-                                         )
+                                         tmp2)
                                         (list (make-instance 'indir-copy 
 							     :dest (the integer (mux-item-address x))
 							     :op1 (car mux-dest)
@@ -359,19 +362,16 @@ number of arguments."
 				      st)))
                           (let ((,cnd-sym (peek-queue targets)))
                             (branch-target-mux-list ,cnd-sym))
-                          nil
-                          )))
-		       (let ((targets 
-			      (let ((,cnd-sym (peek-queue targets)))
-				(update-queue-min targets
-						  (make-branch-target
-						   :label (branch-target-label ,cnd-sym)
-						   :cnd-wire (branch-target-cnd-wire ,cnd-sym)
-						   :glob-cnd (branch-target-glob-cnd ,cnd-sym)
-						   :mux-list (map-empty)
-						   )))))
-			 ,backward-body
-			 ))))))
+                          nil)))
+             (let ((targets 
+                    (let ((,cnd-sym (peek-queue targets)))
+                      (update-queue-min targets
+                                        (make-branch-target
+                                         :label (branch-target-label ,cnd-sym)
+                                         :cnd-wire (branch-target-cnd-wire ,cnd-sym)
+                                         :glob-cnd (branch-target-glob-cnd ,cnd-sym)
+                                         :mux-list (map-empty))))))
+               ,backward-body))))))
 
 ;;;
 ;;; END BRANCHING
@@ -1625,7 +1625,8 @@ number of arguments."
                                 )
                            )
                           (progn (print (+ wires i)) nil)
-                          (list (make-instance 'call :newbase (+ i wires) :fname (first fname)))
+                          (list (make-instance 'call :newbase (+ i wires) :fname (first fname))
+                                )
                           )
                    (let ((arglist nil)
                          (wires (+ i wires))
