@@ -427,6 +427,10 @@
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
       
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
@@ -440,19 +444,21 @@
                 (aif (map-val blockid cfg* t) 
                      (let* ((blk it)
                             (op (get-block-op blk))
+                            (base (get-block-base blk))
                             (faints (get-block-faints blk)))
                        ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
-                                 (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
-                                     (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                     (aif (map-val dest (get-block-consts blk) t)
-                                          (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
-                                              (map-insert blockid
-                                                          (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                          cfg*)
-                                              cfg*)
-                                          cfg*))))
+                                 (with-true-addresses (dest op1 op2)
+                                   (if (not (and (set-member op1 faints) (set-member op2 faints))) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
+                                       (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                       (aif (map-val dest (get-block-consts blk) t)
+                                            (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
+                                                (map-insert blockid
+                                                            (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
+                                                            cfg*)
+                                                cfg*)
+                                            cfg*)))))
                          (otherwise (map-insert blockid blk cfg*))))
                      cfg*))
               cfg
@@ -468,5 +474,6 @@
 
 ;; the big cahoona
 (defun optimize-circuit (cfg)
+  (print cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )

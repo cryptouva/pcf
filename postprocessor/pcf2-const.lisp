@@ -293,8 +293,6 @@
 (defmacro or-defined (op1 op2 data)
   `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
 
-;;  `(or (not (equalp ,op1 'pcf2-block-graph:pcf-not-const)) (not (equalp ,op2 'pcf2-block-graph:pcf-not-const))))
-
 (defmacro and-defined (op1 op2 data)
   `(and (map-extract-val ,op1 ,data)
         (map-extract-val ,op2 ,data)))
@@ -472,9 +470,9 @@
     ;;take this opportunity to set wire 0 as pcf2-block-graph:pcf-not-const
     :const-gen (with-slots (base) op
                  (with-true-address base
-                   (map-insert base 0
+                   (map-insert base 0 ;; the 0th wire in the frame will always point at global condition wire
                                (map-singleton 0 'pcf2-block-graph:pcf-not-const))))
-)
+    )
 
 (def-gen-kill call
     ;; should newbase be subject to with-true-address?

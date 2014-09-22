@@ -361,7 +361,8 @@
 (def-gen-kill branch
     ;; we can assume that all branch wires introduce their condition wire to the set of not-faints. this preserves control flow from the original program
     :const-gen (with-slots (cnd) op
-                 (singleton cnd))
+                 (with-true-address cnd
+                   (singleton cnd)))
     )
 
 (def-gen-kill label)
