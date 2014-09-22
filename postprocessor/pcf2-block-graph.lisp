@@ -13,6 +13,7 @@
            get-block-lives
            get-block-id
            get-block-by-id
+           get-block-base
            block-with-lives
            block-with-faints
            block-with-consts
@@ -88,6 +89,7 @@
                 (format stream "Op: ~A~%" (get-block-op struct))
                 (format stream "Preds: ~A~%" (get-block-preds struct))
                 (format stream "Succs: ~A~%" (get-block-succs struct))
+                (format stream "Base: ~A~%" (get-block-base struct))
                 (format stream "Faint-Out: ~A~%" (get-block-faints struct))
                 ;;(format stream "Consts: ~A~%" (get-block-consts struct))
                 (format stream "Live-Out: ~A~%" (get-block-lives struct))
@@ -96,6 +98,7 @@
              )
   (id)
   (op nil :type list)
+  (base)
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
@@ -112,6 +115,9 @@
 
 (defun get-block-succs (blck)
   (pcf-basic-block-succs blck))
+
+(defun get-block-base (blck)
+  (pcf-basic-block-base blck))
 
 (defun get-block-op-list (blck)
   (pcf-basic-block-op blck))
@@ -134,68 +140,84 @@
 (defun get-block-by-id (id blocks)
   (cdr (map-find id (get-graph-map blocks))))
 
-(defun new-block (&key id op)
+(defun new-block (&key id op (base nil))
   (make-pcf-basic-block
    :id id
+   :base base
    :op (list op)))
 
+(defun block-with-base (new-base bb)
+   (make-pcf-basic-block
+    :id (get-block-id bb)
+    :op  (get-block-op-list bb)
+    :base new-base
+    :preds (get-block-preds bb)
+    :succs (get-block-succs bb)
+    :data (get-block-data bb)))
 
 (defun block-with-op (new-op bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  new-op
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (get-block-data bb)))
+  (make-pcf-basic-block
+   :id (get-block-id bb)
+   :op  new-op
+   :base (get-block-base bb)    
+   :preds (get-block-preds bb)
+   :succs (get-block-succs bb)
+   :data (get-block-data bb)))
 
 (defun block-with-preds (preds bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  (get-block-op-list bb)
-               :preds preds
-               :succs (get-block-succs bb)
-               :data (get-block-data bb)))
+  (make-pcf-basic-block
+   :id (get-block-id bb)
+   :op  (get-block-op-list bb)
+   :base (get-block-base bb)
+   :preds preds
+   :succs (get-block-succs bb)
+   :data (get-block-data bb)))
 
 (defun block-with-succs (succs bb)
-   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op  (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs succs
-               :data (get-block-data bb)))
+  (make-pcf-basic-block
+   :id (get-block-id bb)
+   :op  (get-block-op-list bb)
+   :base (get-block-base bb)
+   :preds (get-block-preds bb)
+   :succs succs
+   :data (get-block-data bb)))
 
 (defun block-with-faints (new-faint bb)
   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list (get-block-consts bb) new-faint (get-block-lives bb))
-               ))
+   :id (get-block-id bb)
+   :op (get-block-op-list bb)
+   :base (get-block-base bb)
+   :preds (get-block-preds bb)
+   :succs (get-block-succs bb)
+   :data (list (get-block-consts bb) new-faint (get-block-lives bb))
+   ))
 
 (defun block-with-lives (new-lives bb)
   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list (get-block-consts bb) (get-block-faints bb) new-lives)
-               ))
+   :id (get-block-id bb)
+   :op (get-block-op-list bb)
+   :base (get-block-base bb)
+   :preds (get-block-preds bb)
+   :succs (get-block-succs bb)
+   :data (list (get-block-consts bb) (get-block-faints bb) new-lives)
+   ))
 
 (defun block-with-consts (new-consts bb)
   (make-pcf-basic-block
-               :id (get-block-id bb)
-               :op (get-block-op-list bb)
-               :preds (get-block-preds bb)
-               :succs (get-block-succs bb)
-               :data (list new-consts (get-block-faints bb) (get-block-lives bb))
-               ))
+   :id (get-block-id bb)
+   :op (get-block-op-list bb)
+   :base (get-block-base bb)
+   :preds (get-block-preds bb)
+   :succs (get-block-succs bb)
+   :data (list new-consts (get-block-faints bb) (get-block-lives bb))
+   ))
 
 ;; op is an opcode, bb is the block itself
 (defmacro add-op (op bb &body body)
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
                :op (cons ,op (get-block-op-list ,bb))
+               :base (get-block-base ,bb)
                :preds (get-block-preds ,bb)
                :succs (get-block-succs ,bb)
                :data (get-block-data ,bb)
@@ -207,6 +229,7 @@
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
                :op (get-block-op-list ,bb)
+               :base (get-block-base ,bb)
                :preds (cons ,prd (get-block-preds ,bb))
                :succs (get-block-succs ,bb)
                :data (get-block-data ,bb)
@@ -218,6 +241,7 @@
   `(let ((,bb (make-pcf-basic-block
                :id (get-block-id ,bb)
                :op (get-block-op-list ,bb)
+               :base (get-block-base ,bb)
                :preds (get-block-preds ,bb)
                :succs (cons ,succ (get-block-succs ,bb))
                :data (get-block-data ,bb)

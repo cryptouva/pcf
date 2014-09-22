@@ -67,8 +67,6 @@
 
 (defparameter confluence-operator #'map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of map-inter
 
-(defmacro top-set ()
-  `(map-empty))
 #|
 (defun map-intersect (map1 map2)
   (map-reduce (lambda (map-accum key val)
@@ -109,8 +107,8 @@
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
     (map-union-without-conflicts
-     (map-remove-key-set in-flow (kill (get-block-op blck) in-flow))
-     (gen (get-block-op blck) in-flow))))
+     (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
+     (gen (get-block-op blck) blck in-flow))))
 
 (defun const-weaker-fn (set1 set2)
   ;; set 1 is weaker than (safely estimates) set 2 if set 1 is a subset of set2
@@ -126,38 +124,38 @@
    (get-block-preds blck)
    :initial-value (get-block-consts blck)))
 
-(defgeneric gen (op flow-data)
+(defgeneric gen (op blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op flow-data)
+(defgeneric kill (op blck flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
-(defgeneric const-gen (op)
+(defgeneric const-gen (op blck)
   (:documentation "this function describes how to compute the constant gen part of the flow function for each op")
 )
 
-(defgeneric dep-gen (op flow-data)
+(defgeneric dep-gen (op blck flow-data)
   (:documentation "this function describes how to compute the dependent gen part of the flow function for each op")
 )
 
-(defgeneric const-kill (op)
+(defgeneric const-kill (op blck)
   (:documentation "this function describes how to compute the constant kill part of the flow function for each op")
 )
 
-(defgeneric dep-kill (op flow-data)
+(defgeneric dep-kill (op blck flow-data)
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op flow-data)
+(defmethod gen (op blck flow-data)
   ;; gen = const_gen union dep_gen
-  (const-confluence-op (const-gen op) (dep-gen op flow-data)))
+  (const-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) flow-data)))
 
-(defmethod kill (op flow-data)
+(defmethod kill (op blck flow-data)
   ;; kill = const-kill union gep_kill
   ;;(break)
-  (const-confluence-op (const-kill op) (dep-kill op flow-data)))
+  (const-confluence-op (const-kill op (get-block-base blck)) (dep-kill op (get-block-base blck) flow-data)))
   
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
@@ -167,28 +165,28 @@
   `(empty-set))
 
 (defmacro def-const-gen (type &body body)
-  `(defmethod const-gen ((op ,type))
+  `(defmethod const-gen ((op ,type) base)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (empty-gen))))
 
 (defmacro def-dep-gen (type &body body)
-  `(defmethod dep-gen ((op ,type) flow-data)
+  `(defmethod dep-gen ((op ,type) base flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (empty-gen))))
 
 (defmacro def-const-kill (type &body body)
-  `(defmethod const-kill ((op ,type))
+  `(defmethod const-kill ((op ,type) base)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
           (empty-kill))))
 
 (defmacro def-dep-kill (type &body body)
-  `(defmethod dep-kill ((op ,type) flow-data)
+  `(defmethod dep-kill ((op ,type) base flow-data)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -218,6 +216,19 @@
        (singleton dest)
        (empty-kill)))
 
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
+
+(defmacro with-true-address (sym &body body)
+  `(let ((,sym (+ ,sym base)))
+     ,@body))
+
+(defmacro with-true-address-list (lst &body body)
+  `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
+     ,@body))
+
 (defun to-n-bit-binary-list (num bits)
   (labels ((to-binary (n depth)
              (if (eq depth 0)
@@ -228,22 +239,25 @@
 
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
-               (aif (map-val op1 flow-data t)
-                    (let ((bin-list (to-n-bit-binary-list it (length dest))))
-                      (first (reduce (lambda (state bit)
-                                       (let ((map (first state))
-                                             (wire (car (second state)))) ;; this is the first from the list of bits
-                                         (list (map-insert wire bit map) (cdr (second state))))) ;; cdr second state is the rest of the bits
-                                     bin-list ;; reduce over the whole list
-                                     :initial-value (list (map-empty) dest))))
-                    (error "bits called on non-const")))
+               (with-true-address-list dest
+                 (with-true-address op1
+                   (aif (map-val op1 flow-data t)
+                        (let ((bin-list (to-n-bit-binary-list it (length dest))))
+                          (first (reduce (lambda (state bit)
+                                           (let ((map (first state))
+                                                 (wire (car (second state)))) ;; this is the first from the list of bits
+                                             (list (map-insert wire bit map) (cdr (second state))))) ;; cdr second state is the rest of the bits
+                                         bin-list ;; reduce over the whole list
+                                         :initial-value (list (map-empty) dest))))
+                        (error "bits called on non-const")))))
     :dep-kill (with-slots (dest) op
-                (reduce (lambda (set wire)
-                          (if (map-val wire flow-data t)
-                              (set-insert set wire)
-                              set))
-                        dest
-                        :initial-value (empty-set)))
+                (with-true-address-list dest
+                  (reduce (lambda (set wire)
+                            (if (map-val wire flow-data t)
+                                (set-insert set wire)
+                                set))
+                          dest
+                          :initial-value (empty-set))))
     )
 
 (def-gen-kill join
@@ -252,19 +266,22 @@
                             t
                             (and (not (equalp 'pcf2-block-graph:pcf-not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
                (with-slots (dest op1) op
-                 (if (all-list-found flow-data op1)
-                     (let ((val (loop for i in op1
-                                   for count from 0 to (- (length op1) 1)
-                                   with x = (aif (map-val i flow-data) it 0)
-                                   summing (* x (expt 2 count)) into dec-var
-                                   finally (return dec-var)
-                                     )))
-                       (map-singleton dest val))
-                     (empty-gen))))
+                 (with-true-address dest
+                   (with-true-address-list op1
+                     (if (all-list-found flow-data op1)
+                         (let ((val (loop for i in op1
+                                       for count from 0 to (- (length op1) 1)
+                                       with x = (aif (map-val i flow-data) it 0)
+                                       summing (* x (expt 2 count)) into dec-var
+                                       finally (return dec-var)
+                                         )))
+                           (map-singleton dest val))
+                         (empty-gen))))))
     :dep-kill (with-slots (dest) op
-                (if (map-val dest flow-data t)
-                     (singleton dest)
-                     (empty-kill)))
+                (with-true-address dest
+                  (if (map-val dest flow-data t)
+                      (singleton dest)
+                      (empty-kill))))
     )
 
 (defmacro map-extract-val (var data)
@@ -275,7 +292,7 @@
 
 (defmacro or-defined (op1 op2 data)
   `(or (map-extract-val ,op1 ,data) (map-extract-val ,op2 ,data)))
-  
+
 ;;  `(or (not (equalp ,op1 'pcf2-block-graph:pcf-not-const)) (not (equalp ,op2 'pcf2-block-graph:pcf-not-const))))
 
 (defmacro and-defined (op1 op2 data)
@@ -291,77 +308,88 @@
     ;; this is where we propagate ANDs with 0, ORs with 1, and NOTs on a const
     ;; we also precompute gate values where we know them beforehand
     :dep-gen (with-slots (dest op1 op2 truth-table) op
-               (let ((o1 (map-extract-val op1 flow-data))
-                     (o2 (map-extract-val op2 flow-data)))
-                 (if (or-defined op1 op2 flow-data)
-                     (cond 
-                       ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
-                        ;;(break)
-                        (let ((out-val (cond
-                                         ((equalp truth-table #*0001) (logand o1 o2))
-                                         ((equalp truth-table #*1100) (flip-bit o1))
-                                         ((equalp truth-table #*0111) (logior o1 o2))
-                                         ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
-                                         ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
-                                         (t 
-                                          (print truth-table)
-                                          (error "unknown truth table in gate")))))
-                          (map-singleton dest out-val)))
-                       (t (with-not-nil-from (map-extract-val op1 flow-data) (map-extract-val op2 flow-data)
-                            ;;(break)
-                            (case truth-table
-                              (#*0001 (if (zerop it)
-                                          (map-singleton dest 0)
-                                          (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
-                              (#*0111 (if (equalp 1 it)
-                                          (map-singleton dest 'pcf2-block-graph:pcf-not-const)
-                                          (map-singleton dest 1)))
-                              (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
-                     (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
+               (with-true-addresses (dest op1 op2)
+                 (let ((o1 (map-extract-val op1 flow-data))
+                       (o2 (map-extract-val op2 flow-data)))
+                   (if (or-defined op1 op2 flow-data)
+                       (cond 
+                         ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
+                          ;;(break)
+                          (let ((out-val (cond
+                                           ((equalp truth-table #*0001) (logand o1 o2))
+                                           ((equalp truth-table #*1100) (flip-bit o1))
+                                           ((equalp truth-table #*0111) (logior o1 o2))
+                                           ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
+                                           ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
+                                           (t 
+                                            (print truth-table)
+                                            (error "unknown truth table in gate")))))
+
+                            (map-singleton dest out-val)))
+                         (t (with-not-nil-from (map-extract-val op1 flow-data) (map-extract-val op2 flow-data)
+                              ;;(break)
+                              (case truth-table
+                                (#*0001 (if (zerop it)
+                                            (map-singleton dest 0)
+                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
+                                (#*0111 (if (equalp 1 it)
+                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)
+                                            (map-singleton dest 1)))
+                                (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
+                       (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
-                (singleton-if-found))
+                (with-true-address dest
+                  (singleton-if-found)))
     )
 
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op
-                 ;(break)
-                 (map-singleton dest op1))
+                 (with-true-addresses (dest op1)
+                   (map-singleton dest op1)))
     :dep-kill (with-slots (dest) op
-                (singleton-if-found))
+                (with-true-address dest
+                  (singleton-if-found)))
     )
 
 (def-gen-kill add
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((o1 (map-extract-val op1 flow-data))
-                     (o2 (map-extract-val op2 flow-data)))
-                 (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-block-graph:pcf-not-const))))
+               (with-true-addresses (dest op1 op2)
+                 (let ((o1 (map-extract-val op1 flow-data))
+                       (o2 (map-extract-val op2 flow-data)))
+                   (format t "o1: ~A o2: ~A~%" o1 o2) ;; can only add on constants
+                   (map-singleton dest (aif (and-defined o1 o2 flow-data) (+ o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
-                (singleton-if-found))
+                (with-true-address dest
+                  (singleton-if-found)))
     )
 
 (def-gen-kill sub
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((o1 (map-val op1 flow-data t))
-                     (o2 (map-val op2 flow-data t)))
-                 (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-block-graph:pcf-not-const))))
+               (with-true-addresses (dest op1 op2)
+                 (let ((o1 (map-val op1 flow-data t))
+                       (o2 (map-val op2 flow-data t)))
+                   (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                   (map-singleton dest (aif (and-defined o1 o2 flow-data) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
-                (singleton-if-found))
+                (with-true-address dest
+                  (singleton-if-found)))
     )
 
 (def-gen-kill mul
     :dep-gen (with-slots (dest op1 op2) op
-               (let ((o1 (map-val op1 flow-data t))
-                     (o2 (map-val op2 flow-data t)))
-                 (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                 (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-block-graph:pcf-not-const))))
+               (with-true-addresses (dest op1 op2)
+                 (let ((o1 (map-val op1 flow-data t))
+                       (o2 (map-val op2 flow-data t)))
+                   (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                   (map-singleton dest (aif (and-defined o1 o2 flow-data) (* o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
-                (singleton-if-found))
+                (with-true-address dest
+                  (singleton-if-found)))
     )
 
 (def-gen-kill copy
     :dep-gen (with-slots (dest op1 op2) op
+               (with-true-addresses (dest op1)  
                  (if (equal op2 1)
                      (let ((o1 (map-extract-val op1 flow-data)))
                        (if o1
@@ -373,20 +401,21 @@
                                      (map-insert var data map)
                                      (map-insert var 'pcf2-block-graph:pcf-not-const map))))
                              (loop for i from op1 to (+ op1 op2) collect i)
-                             :initial-value (map-empty))))
+                             :initial-value (map-empty)))))
     :dep-kill (with-slots (dest op1 op2) op
-                (if (equal 1 op2)
-                    (if (map-val dest flow-data t)
-                        (singleton dest)
-                        (empty-kill))
-                    (reduce (lambda (set var)
-                              (let ((data (map-val var flow-data t)))
-                                (if data
-                                    (set-insert set var)
-                                    set)))
-                            (loop for i from op1 to (+ op1 op2) collect i)
-                            :initial-value (empty-set))))
-)
+                (with-true-addresses (dest op1)
+                  (if (equal 1 op2)
+                      (if (map-val dest flow-data t)
+                          (singleton dest)
+                          (empty-kill))
+                      (reduce (lambda (set var)
+                                (let ((data (map-val var flow-data t)))
+                                  (if data
+                                      (set-insert set var)
+                                      set)))
+                              (loop for i from op1 to (+ op1 op2) collect i)
+                              :initial-value (empty-set)))))
+    )
 
 
 (def-gen-kill mkptr) ;; no consts
@@ -421,48 +450,50 @@
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
-               (if (and (zerop op1)(equal op2 1))
-                   (empty-gen) ;; sometimes we use the global condition wire here, as in asgn-mux
-                   (let ((addr (map-val op1 flow-data)))
-                     (gen-for-indirection addr dest op2))))
+               (with-true-addresses (dest op1)
+                 (let ((addr (map-extract-val op1 flow-data)))
+                   (gen-for-indirection addr dest op2))))
     :dep-kill (with-slots (dest op1 op2) op
-                (if (and (zerop op1 )(equal op2 1))
-                    (singleton dest) ;; accounts for asgn-mux, as above
-                    (let ((addr (map-val op1 flow-data)))
-                      (kill-for-indirection addr dest op2)))))
+                (with-true-addresses (dest op1)
+                  (let ((addr (map-extract-val op1 flow-data)))
+                    (kill-for-indirection addr dest op2)))))
 
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
-               (if (and (zerop dest)(equal op2 1))
-                   (empty-gen) ;; asgn-mux with glob
-                   (let ((addr (map-val dest flow-data)))
-                     (gen-for-indirection op1 addr op2))))
+               (with-true-addresses (dest op1)
+                 (let ((addr (map-extract-val dest flow-data)))
+                   (gen-for-indirection op1 addr op2))))
     :dep-kill (with-slots (dest op1 op2) op
-                (if (and (zerop dest)(equal op2 1))
-                    (singleton op1)
-                    (let ((addr (map-val dest flow-data)))
-                      (kill-for-indirection op1 addr op2)))))
+                (with-true-addresses (dest op1)
+                  (let ((addr (map-extract-val dest flow-data)))
+                    (kill-for-indirection op1 addr op2)))))
 
 (def-gen-kill initbase
     ;;take this opportunity to set wire 0 as pcf2-block-graph:pcf-not-const
-    :const-gen (map-singleton 0 'pcf2-block-graph:pcf-not-const)
+    :const-gen (with-slots (base) op
+                 (with-true-address base
+                   (map-insert base 0
+                               (map-singleton 0 'pcf2-block-graph:pcf-not-const))))
 )
 
 (def-gen-kill call
+    ;; should newbase be subject to with-true-address?
     :const-gen (with-slots (newbase fname) op
-                 (if (set-member fname input-functions)
-                     (reduce (lambda (map x)
-                               (map-insert x 'pcf2-block-graph:pcf-not-const map))
-                             (loop for i from newbase to (+ 32 newbase) collect i)
-                             :initial-value (map-empty))
-                     (empty-gen)))
+                 (with-true-address newbase
+                   (if (set-member fname input-functions)
+                       (reduce (lambda (map x)
+                                 (map-insert x 'pcf2-block-graph:pcf-not-const map))
+                               (loop for i from newbase to (+ 32 newbase) collect i)
+                               :initial-value (map-empty))
+                       (empty-gen))))
     :dep-kill (with-slots (newbase fname) op
-                (set-from-list
-                 (loop for i from newbase to (+ 32 newbase) collect i)))
+                (with-true-address newbase
+                  (set-from-list
+                   (loop for i from newbase to (+ 32 newbase) collect i))))
     )
 
 (def-gen-kill branch) ;; no consts
 
 (def-gen-kill ret) ;; no consts
-(def-gen-kill label) ;; no consts
-(def-gen-kill clear) ;; no consts
+(def-gen-kill label) ;; no consts -- might have to set base
+(def-gen-kill clear) ;; no consts -- yet. when interprocedural analysis is added, this will be important.
