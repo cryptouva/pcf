@@ -264,17 +264,30 @@
     :dep-gen (labels ((all-list-found (map lst)
                         (if (null lst)
                             t
-                            (and (not (equalp 'pcf2-block-graph:pcf-not-const (map-val (car lst) map t))) (all-list-found map (cdr lst))))))
+                            (and (not (null (map-extract-val (car lst) map)))
+                                 (all-list-found map (cdr lst))))))
                (with-slots (dest op1) op
                  (with-true-address dest
                    (with-true-address-list op1
                      (if (all-list-found flow-data op1)
-                         (let ((val (loop for i in op1
+                         (let ((val (first (reduce 
+                                            (lambda (state wire)
+                                              (list
+                                               (+ (first state)
+                                                  (* (map-extract-val wire flow-data)
+                                                     (expt 2 (second state))))
+                                               (+ (second state) 1)))
+                                            op1
+                                            :initial-value (list 0 0)))))
+#|
+                                (loop
+                                       for wire in op1
                                        for count from 0 to (- (length op1) 1)
-                                       with x = (aif (map-val i flow-data) it 0)
+                                       do (format t "~A~%" wire)
+                                       with x = (map-extract-val wire flow-data)
                                        summing (* x (expt 2 count)) into dec-var
-                                       finally (return dec-var)
-                                         )))
+                                       finally (return dec-var) )))
+                           |#
                            (map-singleton dest val))
                          (empty-gen))))))
     :dep-kill (with-slots (dest) op
