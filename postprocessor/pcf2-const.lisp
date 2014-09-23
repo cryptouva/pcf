@@ -329,7 +329,7 @@
                          ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
                           ;;(break)
                           (let ((out-val
-                                 #|
+                                 
                                  (cond
                                    ((equalp truth-table #*0001) (logand o1 o2))
                                    ((equalp truth-table #*1100) (flip-bit o1))
@@ -339,10 +339,10 @@
                                    (t 
                                     (print truth-table)
                                     (error "unknown truth table in gate")
-                                 |#
-                                 'pcf2-block-graph:pcf-not-const
-                                  ;;))))
-                                  ))
+                                 
+                                    ;;'pcf2-block-graph:pcf-not-const
+                                    ))))
+                                  
                             (map-singleton dest out-val)))
                          (t (with-not-nil-from (map-extract-val op1 flow-data) (map-extract-val op2 flow-data)
                               ;;(break)
