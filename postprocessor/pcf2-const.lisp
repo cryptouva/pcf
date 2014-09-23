@@ -323,7 +323,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
-                   #|
+                   
                    (if (or-defined op1 op2 flow-data)
                        (cond 
                          ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
@@ -349,8 +349,7 @@
                                             (map-singleton dest 'pcf2-block-graph:pcf-not-const)
                                             (map-singleton dest 1)))
                                 (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
-                   |#
-                   (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
+                       (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
                   (singleton-if-found)))
