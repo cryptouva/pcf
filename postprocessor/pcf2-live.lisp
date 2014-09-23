@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-live
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export live-flow-fn
            live-confluence-op
            live-weaker-fn)
@@ -33,6 +33,7 @@
 (defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
+
 (defmacro top-set ()
   `(empty-set))
   ;;`(set-insert (empty-set) *lattice-top*))
@@ -56,18 +57,20 @@
        (set-subset set2 set1)
   ))
 
-(defun live-flow-fn (blck cfg)
-  ;;(declare (optimize (speed 0) (debug 3)))
+(defun live-flow-fn (blck cfg use-map)
+  (declare (optimize (speed 0) (debug 3))
+           (ignore use-map))
+  ;;  (break)
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
-     (set-diff in-flow (kill (get-block-op blck)))
-     (gen (get-block-op blck)))))
+     (set-diff in-flow (kill (get-block-op blck) blck (get-block-base blck)))
+     (gen (get-block-op blck) blck (get-block-base blck)))))
 
-(defgeneric gen (op)
+(defgeneric gen (op blck base)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op)
+(defgeneric kill (op blck base)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -76,14 +79,14 @@
   `(empty-set))
 
 (defmacro def-gen (type &body body)
-  `(defmethod gen ((op ,type))
+  `(defmethod gen ((op ,type) blck base)
      (declare (optimize (debug 3)(speed 0)))
      (aif (locally ,@body)
           it
           (gen-kill-standard))))
 
 (defmacro def-kill (type &body body)
-  `(defmethod kill ((op ,type))
+  `(defmethod kill ((op ,type) blck base)
      (declare (optimize (debug 3) (speed 0)))
      (aif (locally ,@body)
           it
@@ -97,114 +100,147 @@
      (def-kill ,type ,kill)))
 
 
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
+
+(defmacro with-true-address (sym &body body)
+  `(let ((,sym (+ ,sym base)))
+     ,@body))
+
+(defmacro with-true-address-list (lst &body body)
+  `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
+     ,@body))
+
+
 (def-gen-kill join
     ;; the list of wires being joined are encountering a use
     :gen (with-slots (op1) op
-           (set-from-list op1)
-           )
+           (with-true-address-list op1
+             (set-from-list op1)))
     ;; the desintation wire is encourtering a definition
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill bits
     ;; the source wire is encountering a use
     :gen (with-slots (op1) op
-           (singleton op1))
+           (with-true-address op1
+             (singleton op1)))
     ;; the destination wires are being defined
     :kill (with-slots (dest) op
-            (set-from-list dest)))
+            (with-true-address-list dest
+              (set-from-list dest))))
 
 (def-gen-kill const
     ;; the destination wire is encountering a definition
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill gate
     ;; the input wires are encountering a use
     :gen (with-slots (op1 op2) op
-           (set-from-list (list op1 op2)))
+           (with-true-addresses (op1 op2)
+             (set-from-list (list op1 op2))))
     ;; the destination wire is being defined
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill add
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
-           (set-from-list (list op1 op2)))
+           (with-true-addresses (op1 op2)
+             (set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill sub
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
-           (set-from-list (list op1 op2)))
+           (with-true-addresses (op1 op2)
+             (set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill mul
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
-           (set-from-list (list op1 op2)))
+           (with-true-addresses (op1 op2)
+             (set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
-            (singleton dest)))
+            (with-true-address dest
+              (singleton dest))))
 
 (def-gen-kill copy
     :gen (with-slots (op1 op2) op
+           (with-true-address op1
              (if (equal op2 1)
                  (singleton op1)
-                 (set-from-list (loop for i from op1 to (+ op1 op2) collect i))))
+                 (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))))
     :kill (with-slots (dest op2) op
+            (with-true-address dest
               (if (equal op2 1)
                   (singleton dest)
-                  (set-from-list (loop for i from dest to (+ dest op2) collect i)))))
+                  (set-from-list (loop for i from dest to (+ dest op2) collect i))))))
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
 
 (def-gen-kill mkptr
-;; has no effect; the loaded constant will take care of this for us.
-)
+    ;; has no effect; the loaded constant will take care of this for us.
+    )
 
 (def-gen-kill copy-indir
     ;; no gen here because we can't dereference.
     ;; definition of wires from dest to dest + op2
     :kill (with-slots (dest op2) op
-            (set-from-list (loop for i from dest to (+ dest op2) collect i))))
+            (with-true-address dest
+              (set-from-list (loop for i from dest to (+ dest op2) collect i)))))
 
 (def-gen-kill indir-copy
     ;; use of wires from op1 to op1 + op2
     :gen (with-slots (op1 op2) op
-           (set-from-list (loop for i from op1 to (+ op1 op2) collect i))) 
+           (with-true-address op1
+             (set-from-list (loop for i from op1 to (+ op1 op2) collect i))))
     ;; no kill here because we can't dereference
     )
 
 (def-gen-kill call
     ;; use of wires from (- newbase 32) to (- newbase 1)
     :gen (with-slots (newbase fname) op
-           (if (set-member fname output-functions)
-               (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-               (empty-set)))
-
+           (with-true-address newbase
+             (if (set-member fname output-functions)
+                 (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                 (empty-set))))
+    
     ;; definition of wires from (- newbase 32) to (- newbase 1)    
     :kill (with-slots (newbase fname) op
-            (if (set-member fname input-functions)
-                (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                (empty-set)))
+            (with-true-address newbase
+              (if (set-member fname input-functions)
+                  (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                  (empty-set))))
     )
 
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
     :gen (singleton 0)
-)
+    )
 
 
 (def-gen-kill branch
     :gen (with-slots (cnd) op
-           (singleton cnd))
+           (with-true-address cnd
+             (singleton cnd)))
     )
 
 (def-gen-kill initbase)

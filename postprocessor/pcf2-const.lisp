@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform constant-propagation analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-const
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export const-flow-fn
            const-confluence-op
            const-weaker-fn
@@ -103,12 +103,16 @@
   ;; if either set is "top," return the other set
   (funcall confluence-operator set1 set2))
 
-(defun const-flow-fn (blck cfg)
+(defun const-flow-fn (blck cfg use-map)
+  ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around.
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
-    (map-union-without-conflicts
-     (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
-     (gen (get-block-op blck) blck in-flow))))
+    (let ((flow (map-union-without-conflicts
+                 (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
+                 (gen (get-block-op blck) blck in-flow))))
+      (if (zerop (mod (get-block-id blck) 500))
+          (eliminate-extra-consts flow blck use-map)
+          flow))))
 
 (defun const-weaker-fn (set1 set2)
   ;; set 1 is weaker than (safely estimates) set 2 if set 1 is a subset of set2
@@ -204,17 +208,6 @@
 ;; gen sets are represented as maps of variable -> value
 ;; kill sets are represented as sets of variables since their values aren't necessary for the kill
 
-(defmacro with-not-nil-from (a b &body body)
-  `(let ((it (if ,a ,a ,b)))
-     ,@body ))
-
-(defmacro loginot (a)
-  `(if (eq ,a 1) 1 0))
-
-(defmacro singleton-if-found ()
-  `(if (map-val dest flow-data t)
-       (singleton dest)
-       (empty-kill)))
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
@@ -229,6 +222,20 @@
   `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
      ,@body))
 
+
+(defmacro with-not-nil-from (a b &body body)
+  `(let ((it (if ,a ,a ,b)))
+     ,@body ))
+
+(defmacro loginot (a)
+  `(if (eq ,a 1) 1 0))
+
+(defmacro singleton-if-found ()
+  `(if (map-val dest flow-data t)
+       (singleton dest)
+       (empty-kill)))
+
+
 (defun to-n-bit-binary-list (num bits)
   (labels ((to-binary (n depth)
              (if (eq depth 0)
@@ -236,12 +243,6 @@
                  (append (list (mod n 2)) (to-binary (floor (/ n 2)) (- depth 1))))))
   (to-binary num (- bits 1))))
 
-
-(defmacro map-extract-val (var data)
-  `(aif (map-val ,var ,data t)
-        (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
-        0)
-  )
 
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
