@@ -110,7 +110,7 @@
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
-      (if (zerop (mod (get-block-id blck) 500))
+      (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-consts flow blck use-map)
           flow))))
 

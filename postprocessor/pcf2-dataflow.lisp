@@ -485,6 +485,6 @@
 
 ;; the big cahoona
 (defun optimize-circuit (cfg)
-  ;;(print cfg)
+  (print cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )

@@ -37,20 +37,26 @@
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
     (map-reduce (lambda (map key val)
-                  (if (and (not (set-member key lives))
-                           (> blckid (cdr (map-val key use-map)))) ;; use-map is (first . last )
-                      map
-                      (map-insert key val map)))
-              flow
-              (map-empty))))
+                  (let ((key-use (map-val key use-map t)))
+                    (if key-use
+                        (if (and (not (set-member key lives))
+                                 (> blckid (cdr key-use))) ;; use-map is (first . last )
+                            map ;; eliminate
+                            (map-insert key val map)) ;; not done with it yet
+                        (map-insert key val map)))) ;; don't know when it's used, must retain
+                flow
+                (map-empty))))
 
 (defun eliminate-extra-faints (flow blck use-map)
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
     (set-reduce (lambda (set key)
-                  (if (and (not (set-member key lives))
-                           (< blckid (car (map-val key use-map)))) ;; use-map is (first . last )
-                      set
-                      (set-insert set key)))
+                  (let ((key-use (map-val key use-map t)))
+                    (if key-use
+                        (if (and (not (set-member key lives))
+                                 (< blckid (car key-use))) ;; use-map is (first . last )
+                            set ;; eliminate
+                            (set-insert set key)) ;; not done with it yet
+                        (set-insert set key)))) ;; don't know when it's used, must retain
                 flow
                 (empty-set))))
