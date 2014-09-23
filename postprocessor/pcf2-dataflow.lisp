@@ -1,7 +1,7 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-use-map)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
            flow-forward-test
            flow-backward-test
@@ -9,6 +9,7 @@
            flow-backward
            optimize-circuit
            wire-use-map
+           find-wire-uses
            )
   )
 (in-package :pcf2-dataflow)
@@ -289,32 +290,32 @@
 
 ;; a couple of functions to test forward and backward flows
 
-(defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+(defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let* ((cfg (make-pcf-cfg ops))
          (worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
-(defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+(defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let* ((cfg (make-pcf-cfg ops))
          (worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
 ;; the actual flow-forward and flow-backward functions (could be replaced with macros and a single flow function, but not necessary
 
-(defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+(defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
-(defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+(defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist))))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
 ;; functions for the implementation of the worklist algorithm
 
-(defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+(defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
-  (let ((new-flow (funcall flow-fn cur-node cfg)))
+  (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
@@ -350,7 +351,7 @@
 |#
 
 
-(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set)
+(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
   ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (null worklist)
@@ -359,7 +360,7 @@
              (worklist (cdr worklist))
              (new-work-set 
               (set-remove worklist-set cur-node-id)))
-        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
+        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
           (let ((more-work (reduce (lambda (wlist candidate)
                                      (if (set-member candidate new-work-set)
                                          wlist
@@ -367,7 +368,7 @@
                                    worklist*
                                    :initial-value worklist))
                 (more-work-set (set-union (set-from-list worklist*) new-work-set)))
-            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set))))))
+            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
 #|
        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
           (let ((more-work (reduce (lambda (wlist candidate)
@@ -379,13 +380,25 @@
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work)))))))
 |#
 
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
+
+(defmacro with-true-address (sym &body body)
+  `(let ((,sym (+ ,sym base)))
+     ,@body))
+
+(defmacro with-true-address-list (lst &body body)
+  `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
+     ,@body))
 
 (defun find-wire-uses (cfg)
   ;; the idea here is to compute the first and last uses of all the wires in the map.
   ;; we represent this as a map from wireid -> (cons first-use last-use). returns a map of these.
   (map-reduce (lambda (map blockid blck)
                 (declare (ignore blockid))
-                (let ((wires (compute-used-wires (get-block-op blck))))
+                (let ((wires (compute-used-wires (get-block-op blck) (get-block-base blck) blck)))
                   ;; we don't have to ignore this, but better for decoupling if we use the accessor on the block itself
                   (reduce (lambda (mp wire)
                             (aif (map-val wire mp t)
@@ -396,10 +409,8 @@
               (get-graph-map cfg)
               (map-empty)))
 
-
 (defun wire-use-map (ops)
   (find-wire-uses (make-pcf-cfg ops)))
-
 
 
 ;; functions for eliminating gates (and potentially other pcf2 ops) from the cfg as a result of the analysis we've performed
@@ -430,11 +441,7 @@
                                     succs
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
-      
-(defmacro with-true-addresses ((&rest syms) &body body)
-  `(let ,(loop for sym in syms
-            collect `(,sym (+ ,sym (aif base it 0))))
-     ,@body))
+
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!

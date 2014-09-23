@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
+  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export faint-flow-fn
            faint-confluence-op
            faint-weaker-fn)
@@ -78,14 +78,16 @@
        (set-subset set2 set1)
   ))
 
-(defun faint-flow-fn (blck cfg)
+(defun faint-flow-fn (blck cfg use-map)
   (declare (optimize (speed 0) (debug 3)))
-  (let* ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
-    (faint-confluence-op
-     ;; set-union should have the larger set come second
-     (gen (get-block-op blck) blck in-flow)
-     (set-diff in-flow (kill (get-block-op blck) blck in-flow))
-     )))
+  (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
+    (let ((flow (faint-confluence-op
+                 ;; set-union should have the larger set come second
+                 (gen (get-block-op blck) blck in-flow)
+                 (set-diff in-flow (kill (get-block-op blck) blck in-flow)))))
+      (if (zerop (mod (get-block-id blck) 500))
+          (eliminate-extra-faints flow blck use-map)
+          flow))))
 
 (defgeneric gen (op blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -168,11 +170,6 @@
      (def-dep-kill ,type ,dep-kill)
   ))
 
-(defmacro map-extract-val (var data)
-  `(aif (map-val ,var ,data t)
-        (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
-        0)
-  )
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
@@ -327,7 +324,7 @@
     :const-kill (with-slots (dest op2) op
                   (with-true-address dest
                     (kill-for-indirection dest op2)))
-)
+    )
 
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
