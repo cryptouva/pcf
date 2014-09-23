@@ -85,7 +85,7 @@
                  ;; set-union should have the larger set come second
                  (gen (get-block-op blck) blck in-flow)
                  (set-diff in-flow (kill (get-block-op blck) blck in-flow)))))
-      (if (zerop (mod (get-block-id blck) 500))
+      (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))
 
