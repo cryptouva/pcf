@@ -90,18 +90,18 @@
 
 ;; the following two don't do any pointer indirection because we have no constant propagation data to help us. We do the best we can be using the non-indirection information we know for eliminating information and not eliminating wires that have gone unrecognized because of indirection. The implementation of eliminating information, however, is elsewhere.
 (def-use-block indir-copy 
-  (with-slots (op1 op2) op
-    (with-true-address op1
+  (with-slots (op1 op2 dest) op
+    (with-true-addresses (op1 dest)
       (if (equal op2 1)
-          (list op1)
-          (loop for i from op1 to (+ op1 op2) collect i)))))
+          (list op1 dest)
+          (append (list dest) (loop for i from op1 to (+ op1 op2) collect i))))))
 
 (def-use-block copy-indir
-  (with-slots (dest op2) op
-    (with-true-address dest
+  (with-slots (dest op1 op2) op
+    (with-true-addresses (dest op1)
       (if (equal op2 1)
-          (list dest)
-          (loop for i from dest to (+ dest op2) collect i)))))
+          (list dest op1)
+          (append (list op1) (loop for i from dest to (+ dest op2) collect i))))))
 
 (def-use-block branch
   (with-slots (cnd) op
