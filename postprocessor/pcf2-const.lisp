@@ -330,14 +330,14 @@
                           ;;(break)
                           (let ((out-val (cond
                                            ((equalp truth-table #*0001) (logand o1 o2))
-                                           ;;((equalp truth-table #*1100) (flip-bit o1))
+                                           ((equalp truth-table #*1100) (flip-bit o1))
                                            ((equalp truth-table #*0111) (logior o1 o2))
-                                           ;;((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
-                                           ;;((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
+                                           ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
+                                           ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
                                            (t 
-                                            ;;(print truth-table)
-                                            ;;(error "unknown truth table in gate")
-                                            'pcf2-block-graph:pcf-not-const
+                                            (print truth-table)
+                                            (error "unknown truth table in gate")
+                                            ;;'pcf2-block-graph:pcf-not-const
                                             ))))
 
                             (map-singleton dest out-val)))
