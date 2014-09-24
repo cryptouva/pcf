@@ -100,7 +100,7 @@
                                  )
               )
             )
-        (run-opcodes state)
+        (print (run-opcodes state))
         )
     (set-watch ()
       (format t "~&Enter watched address:~%")

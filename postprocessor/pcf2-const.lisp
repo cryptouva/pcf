@@ -328,10 +328,10 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
-                   
                    (if (or-defined op1 op2 flow-data)
                        (cond 
                          ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
+                          ;;(break)
                           (assert (or (equal o1 0)(equal o1 1)))
                           (assert (or (equal o2 0)(equal o2 1)))
                           (let ((out-val     
@@ -450,7 +450,8 @@
        (first (reduce (lambda (state oldwire)
                         (let ((map (first state))
                               (newwire (car (second state))))
-                          (aif (map-extract-val oldwire flow-data)
+                          (if (equal newwire 3) (break))
+                          (aif (map-val oldwire flow-data t)
                                (list (map-insert newwire it map) (cdr (second state)))
                                (list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
