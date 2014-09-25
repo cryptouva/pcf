@@ -294,7 +294,7 @@
     )
 
 ;; the following instructions need to know more about the previous ones
-;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
+;; it is unlikely that the indirection instructions will ever really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
 
 (def-gen-kill mkptr
 ;; has no effect; the loaded constant will take care of this for us.

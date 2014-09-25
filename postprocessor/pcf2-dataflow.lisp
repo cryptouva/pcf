@@ -470,7 +470,15 @@
                                                             cfg*)
                                                 cfg*)
                                             cfg*)))))
-                         (otherwise (map-insert blockid blk cfg*))))
+                         #|
+                         (const (with-slots (dest) op
+                                  (with-true-addresses (dest)
+                                    (if (not (set-member dest faints))
+                                        (remove-block-from-cfg blk cfg*)
+                                        cfg*)))) |#
+                         (otherwise 
+                          cfg*)))
+                ;;(map-insert blockid blk cfg*))))
                      cfg*))
               cfg
               cfg))
@@ -485,6 +493,6 @@
 
 ;; the big cahoona
 (defun optimize-circuit (cfg)
-  (print cfg)
+  ;;(print cfg)
   (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
 )
