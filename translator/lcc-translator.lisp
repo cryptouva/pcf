@@ -1747,7 +1747,12 @@ number of arguments."
 
 ;; Below we offset the addresses by 1 because the base of the stack
 ;; frame will always have a pointer to the global condition wire in
-;; position 0
+;; local position 0
+;; but because in some circuits, absolute address 1 will be the base
+;; of the stack and dereferencing a pointer to 1 will overwrite our
+;; pointer to the global condition wire, we need to be even a little
+;; cleverer and additionally offset by baseinit, the local stack
+;; offset
 (definstr addrlp ; address of a local (pointer)
   (with-slots (s-args) op
     (let ((addr (let ((nums (string-tokenizer:tokenize (second s-args) #\+))
@@ -1762,7 +1767,7 @@ number of arguments."
           )
       (push-stack stack 1 (list wires)
         (add-instrs (list 
-                     (make-instance 'const :dest wires :op1 (+ 1 (* *byte-width* addr)))
+                     (make-instance 'const :dest wires :op1 (+ 1 baseinit (* *byte-width* addr)))
                      (make-instance 'mkptr :dest wires)
                      )
           (let ((wires (1+ wires))
