@@ -278,11 +278,24 @@
     ;; if dest is live (not faint), then whatever it copies will also be useful
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 dest)
-                 (if (set-member dest flow-data)
+                 (if (equalp op2 1)
+                     (if (set-member dest flow-data)
+                         (singleton op1)
+                         (empty-set))
+                     (first (reduce (lambda (state oldwire)
+                               (let ((set (first state))
+                                     (new-wire (car (second state)))
+                                     (restwires (cdr (second state))))
+                                 (if (set-member new-wire flow-data)
+                                     (list (set-insert set oldwire) restwires)
+                                     (list set restwires))))
+                             (loop for i from op1 to (+ op1 op2) collect i)
+                             :initial-value (list (empty-set) (loop for i from dest to (+ dest op2) collect i)))))))
+    #|(if (set-member dest flow-data)
                      (if (equalp op2 1)
                          (singleton op1)
                          (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))
-                     (empty-set))))
+                     (empty-set)))) |#
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 dest)
                     (if (and (> dest op1) (< dest (+ op1 op2)))
