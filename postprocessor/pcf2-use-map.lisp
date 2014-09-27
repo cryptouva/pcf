@@ -109,7 +109,8 @@
       (list cnd))))
 
 (def-use-block initbase
-  (list *global-condition-wire*)) ;; the global condition wire should be initialized _immediately_ as used.
+  (with-slots (base) op
+    (list *global-condition-wire* base))) ;; the global condition wire should be initialized _immediately_ as used.
 
 (def-use-block mkptr
   (with-slots (dest) op

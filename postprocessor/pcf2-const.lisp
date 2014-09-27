@@ -109,8 +109,8 @@
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
-;;      (if (zerop (mod (get-block-id blck) 100))
-  ;;        (eliminate-extra-consts flow blck use-map)
+      ;;(if (zerop (mod (get-block-id blck) 100))
+      ;;(eliminate-extra-consts flow blck use-map)
           flow)))
 ;;)
 
@@ -334,7 +334,7 @@
                           ;;(break)
                           (assert (or (equal o1 0)(equal o1 1)))
                           (assert (or (equal o2 0)(equal o2 1)))
-                          (let ((out-val     
+                          (let ((out-val
                                  (cond
                                    ((equalp truth-table #*0001) (logand o1 o2))
                                    ((equalp truth-table #*1100) (flip-bit o1))
@@ -345,9 +345,8 @@
                                     (print truth-table)
                                     (error "unknown truth table in gate")
                                  
-                                    ;;'pcf2-block-graph:pcf-not-const
-                                    ))))
-                                  
+                                 ))))
+                                 ;;'pcf2-block-graph:pcf-not-const))
                             (map-singleton dest out-val)))
                          (t (with-not-nil-from o1 o2
                               ;;(break)
@@ -359,6 +358,7 @@
                                             (map-singleton dest 1)
                                             (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
                                 (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
+                       ;;(map-singleton dest 'pcf2-block-graph:pcf-not-const))))
                        (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
@@ -447,6 +447,7 @@
 (def-gen-kill mkptr
 ;;    :const-gen (progn (break)(empty-gen)) ;; no consts
 )
+
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
        (aif (map-extract-val ,dest-address flow-data)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
@@ -459,7 +460,8 @@
                           (aif (map-val oldwire flow-data t)
                                (list (map-insert newwire it map) (cdr (second state)))
                                (list (map-insert newwire 0 map) (cdr (second state))))))
-                      ;;(error "could not find value of copy wire")))) 
+                               ;;(list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
+                               ;;(error "could not find value of copy wire")))) 
 ;;(list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
                       :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
@@ -469,14 +471,23 @@
        (if (map-find ,dest-address flow-data t) ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
            (singleton ,dest-address)
            (empty-kill))
+        (reduce (lambda (set var)
+                  (let ((data (map-extract-val var flow-data)))
+                    (if data
+                        (set-insert set var)
+                        set)))
+                (loop for i from ,dest-address to (+ ,dest-address ,length) collect i)
+                :initial-value (empty-set))))
+#|
        (first (reduce (lambda (state oldwire)
                         (let ((set (first state))
                               (newwire (car (second state))))
-                          (aif (map-extract-val oldwire flow-data)
+                          (if (map-val oldwire flow-data t)
                                (list (set-insert set newwire) (cdr (second state)))
                                (list set (cdr (second state)))))) ;; not excused from kill, but there's nothing there to kill
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
                       :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
+|#
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
