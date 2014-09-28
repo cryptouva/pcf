@@ -224,7 +224,7 @@
 (def-gen-kill const
     ;; if x = const, kill x because it has been defined
     :const-kill (with-slots (dest) op
-                  (with-true-address dest
+                  (with-true-addresses (dest)
                     (singleton dest))))
 
 (def-gen-kill gate
