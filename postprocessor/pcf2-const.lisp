@@ -329,36 +329,41 @@
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
                    (if (or-defined op1 op2 flow-data)
-                       (cond 
-                         ((and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
-                          ;;(break)
-                          (assert (or (equal o1 0)(equal o1 1)))
-                          (assert (or (equal o2 0)(equal o2 1)))
-                          (let ((out-val
-                                 (cond
-                                   ((equalp truth-table #*0001) (logand o1 o2))
-                                   ((equalp truth-table #*1100) (flip-bit o1))
-                                   ((equalp truth-table #*0111) (logior o1 o2))
-                                   ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
-                                   ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
-                                   (t 
-                                    (print truth-table)
-                                    (error "unknown truth table in gate")
-                                 
-                                 ))))
-                                 ;;'pcf2-block-graph:pcf-not-const))
-                            (map-singleton dest out-val)))
-                         (t (with-not-nil-from o1 o2
-                              ;;(break)
-                              (case truth-table
-                                (#*0001 (if (zerop it)
-                                            (map-singleton dest 0)
-                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
-                                (#*0111 (if (equalp 1 it)
-                                            (map-singleton dest 1)
-                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
-                                (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
-                       ;;(map-singleton dest 'pcf2-block-graph:pcf-not-const))))
+                       (if (and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
+                           (progn
+                             (assert (or (equal o1 0)(equal o1 1)))
+                             (assert (or (equal o2 0)(equal o2 1)))
+                             (let ((out-val
+                                    (cond
+                                      ((equalp truth-table #*0001) (logand o1 o2))
+                                      ((equalp truth-table #*1100) (flip-bit o1))
+                                      ((equalp truth-table #*0111) (logior o1 o2))
+                                      ((equalp truth-table #*0110) (assert (not (equalp op1 op2))) (logxor o1 o2))
+                                      ((equalp truth-table #*1001) (flip-bit (logxor o1 o2)))
+                                      (t 
+                                       (print truth-table)
+                                       (error "unknown truth table in gate")))))
+                               (map-singleton dest out-val)))
+                           (cond
+                             ((equalp truth-table #*0001)
+                              (if (or (equal 0 o1) (equal 0 o2))
+                                  (map-singleton dest 0)
+                                  (cond
+                                    ((equal o1 1)
+                                     (map-singleton dest (aif o2 it 'pcf2-block-graph:pcf-not-const))) ;; whatever o2 is
+                                    ((equal o2 1)
+                                     (map-singleton dest (aif o1 it 'pcf2-block-graph:pcf-not-const))) ;; whatever o1 is
+                                    (t (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
+                             ((equalp truth-table #*0111)
+                              (if (or (equal o1 1)(equal o2 1))
+                                  (map-singleton dest 1)
+                                  (cond
+                                    ((equal 0 o1)
+                                     (map-singleton dest (aif o2 it 'pcf2-block-graph:pcf-not-const)))
+                                    ((equal 0 o2)
+                                     (map-singleton dest (aif o1 it 'pcf2-block-graph:pcf-not-const)))
+                                    (t (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
+                             (t (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
                        (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest

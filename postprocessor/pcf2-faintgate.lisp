@@ -224,18 +224,18 @@
 (def-gen-kill const
     ;; if x = const, kill x because it has been defined
     :const-kill (with-slots (dest) op
-                  (with-true-address dest
+                  (with-true-addresses (dest)
                     (singleton dest))))
 
 (def-gen-kill gate
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (let ((dest-const (map-extract-val dest (get-block-consts blck))))
-                   (if (set-member dest flow-data)
-                       (if dest-const 
-                            (empty-set)
-                            (set-from-list (list op1 op2)))
-                       (empty-set)))))
+                 (if (set-member dest flow-data)
+                     (aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
+                          (if (equalp it 'pcf2-block-graph:pcf-not-const)
+                              (set-from-list (list op1 op2))
+                              (empty-set))
+                          (empty-set)))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))

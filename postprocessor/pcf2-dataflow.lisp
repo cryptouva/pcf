@@ -442,6 +442,14 @@
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
 
+(defmacro block-with-copy (destination source)
+  `(map-insert blockid 
+               (block-with-op (list (make-instance 'copy :dest ,destination :op1 ,source :op2 1)) blk)
+               cfg*))
+
+(defmacro is-not-const (wire)
+  `(equalp ,wire 'pcf2-block-graph:pcf-not-const))
+
 
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
@@ -457,30 +465,57 @@
                             (op (get-block-op blk))
                             (base (get-block-base blk))
                             (faints (get-block-faints blk))
-                            (lives (get-block-lives blk)))
+                            (lives (get-block-lives blk))
+                            (consts (get-block-consts blk)))
                        ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
-                         (gate (with-slots (dest op1 op2) op
+                         (gate (with-slots (dest op1 op2 truth-table) op
                                  (let ((pre-dest dest)
                                        (pre-op1 op1)
                                        (pre-op2 op2))
                                    (with-true-addresses (dest op1 op2)
-                                     (if (not (and (set-member op1 faints)
-                                                   (set-member op2 faints)
-                                                   ;;(set-member op1 lives)
-                                                   ;;(set-member op2 lives)
-                                                   )) ;; this logic is faint gate in reverse; if the gate IS live, both of its inputs must be also
-                                         (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                         (aif (map-val dest (get-block-consts blk) t)
-                                              (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
-                                                  (map-insert blockid
-                                                              (block-with-op (list (make-instance 'const :dest pre-dest :op1 it)) blk)
-                                                              cfg*)
-                                                  cfg*)
-                                              cfg*))))))
-                         (otherwise 
-                          cfg*)))
-                ;;(map-insert blockid blk cfg*))))
+                                     (let ((op1-val (map-val op1 consts t))
+                                           (op2-val (map-val op2 consts t)))
+                                       ;; if an output is live, both of its inputs will be live
+                                       (if (not (and (set-member op1 faints)
+                                                     (set-member op2 faints)))
+                                           (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                           (aif (map-val dest consts t)
+                                                (if (not (is-not-const it))
+                                                    ;; constant gate, simply replace with const
+                                                    (map-insert blockid
+                                                                (block-with-op (list (make-instance 'const :dest pre-dest :op1 it)) blk)
+                                                                cfg*)
+                                                    ;; gate is not const, but it might be OR w/ 0 or AND w/1,
+                                                    ;; in which case we can replace it with a simply copy
+                                                    (if (or (not (is-not-const op1-val))
+                                                            (not (is-not-const op2-val)))
+                                                        (cond
+                                                          ((equalp truth-table #*0001) ;; x AND 1 = x, replace gate with copy 
+                                                           (cond
+                                                             ((equal op1-val 1)
+                                                              (block-with-copy pre-dest pre-op2))
+                                                             ((equal op2-val 1)
+                                                              (block-with-copy pre-dest pre-op1))
+                                                             (t cfg*)))
+                                                          ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
+                                                           (cond
+                                                             ((equal op1-val 0)
+                                                              (block-with-copy pre-dest pre-op2))
+                                                             ((equal op2-val 0)
+                                                              (block-with-copy pre-dest pre-op1))
+                                                             (t cfg*)))
+                                                          ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
+                                                           (cond
+                                                             ((equal op1-val 0)
+                                                              (block-with-copy pre-dest pre-op2))
+                                                             ((equal op2-val 0)
+                                                              (block-with-copy pre-dest pre-op1))
+                                                             (t cfg*)))
+                                                          (t cfg*))
+                                                        cfg*))
+                                                cfg*)))))))
+                         (otherwise cfg*)))
                      cfg*))
               cfg
               cfg))
