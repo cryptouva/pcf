@@ -358,9 +358,9 @@
                               (if (or (equal o1 1)(equal o2 1))
                                   (map-singleton dest 1)
                                   (cond
-                                    ((zerop o1)
+                                    ((equal 0 o1)
                                      (map-singleton dest (aif o2 it 'pcf2-block-graph:pcf-not-const)))
-                                    ((zerop o2)
+                                    ((equal 0 o2)
                                      (map-singleton dest (aif o1 it 'pcf2-block-graph:pcf-not-const)))
                                     (t (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
                              (t (map-singleton dest 'pcf2-block-graph:pcf-not-const))))
