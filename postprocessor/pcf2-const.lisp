@@ -350,14 +350,16 @@
                             (map-singleton dest out-val)))
                          (t (with-not-nil-from o1 o2
                               ;;(break)
-                              (case truth-table
-                                (#*0001 (if (zerop it)
-                                            (map-singleton dest 0)
-                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
-                                (#*0111 (if (equalp 1 it)
-                                            (map-singleton dest 1)
-                                            (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
-                                (otherwise (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
+                              (cond
+                                ((equalp truth-table #*0001)
+                                 (if (zerop it)
+                                     (map-singleton dest 0)
+                                     (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
+                                ((equalp truth-table #*0111)
+                                 (if (equalp 1 it)
+                                     (map-singleton dest 1)
+                                     (map-singleton dest 'pcf2-block-graph:pcf-not-const)))
+                                (t (map-singleton dest 'pcf2-block-graph:pcf-not-const))))))
                        ;;(map-singleton dest 'pcf2-block-graph:pcf-not-const))))
                        (map-singleton dest 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
