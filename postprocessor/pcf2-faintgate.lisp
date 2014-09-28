@@ -230,9 +230,12 @@
 (def-gen-kill gate
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (if (set-member dest flow-data)
-                     (set-from-list (list op1 op2))
-                     (empty-set))))
+                 (let ((dest-const (map-extract-val dest (get-block-consts blck))))
+                   (if (set-member dest flow-data)
+                       (if dest-const 
+                            (empty-set)
+                            (set-from-list (list op1 op2)))
+                       (empty-set)))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
