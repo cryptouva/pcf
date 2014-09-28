@@ -505,6 +505,13 @@
                                                              ((equal op2-val 0)
                                                               (block-with-copy pre-dest pre-op1))
                                                              (t cfg*)))
+                                                          ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
+                                                           (cond
+                                                             ((equal op1-val 0)
+                                                              (block-with-copy pre-dest pre-op2))
+                                                             ((equal op2-val 0)
+                                                              (block-with-copy pre-dest pre-op1))
+                                                             (t cfg*)))
                                                           (t cfg*))
                                                         cfg*))
                                                 cfg*)))))))
