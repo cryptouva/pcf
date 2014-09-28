@@ -461,32 +461,36 @@
                        ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2) op
-                                 (with-true-addresses (dest op1 op2)
-                                   (if (not (and (set-member op1 faints)
-                                                 (set-member op2 faints)
-                                                 (set-member op1 lives)
-                                                 (set-member op2 lives)
-                                                 )) ;; this logic is faint gate in reverse; if the gate were not live, both of its inputs would be also
-                                       (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                       (aif (map-val dest (get-block-consts blk) t)
-                                            (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
-                                                (map-insert blockid
-                                                            (block-with-op (list (make-instance 'const :dest dest :op1 it)) blk)
-                                                            cfg*)
-                                                cfg*)
-                                            cfg*)))))
-                         #|
-                         (const (with-slots (dest) op
-                                  (with-true-addresses (dest)
-                                    (if (not (set-member dest faints))
-                                        (remove-block-from-cfg blk cfg*)
-                                        cfg*)))) |#
+                                 (let ((pre-dest dest)
+                                       (pre-op1 op1)
+                                       (pre-op2 op2))
+                                   (with-true-addresses (dest op1 op2)
+                                     (if (not (and (set-member op1 faints)
+                                                   (set-member op2 faints)
+                                                   ;;(set-member op1 lives)
+                                                   ;;(set-member op2 lives)
+                                                   )) ;; this logic is faint gate in reverse; if the gate IS live, both of its inputs must be also
+                                         (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                         (aif (map-val dest (get-block-consts blk) t)
+                                              (if (not (equalp it 'pcf2-block-graph:pcf-not-const))
+                                                  (map-insert blockid
+                                                              (block-with-op (list (make-instance 'const :dest pre-dest :op1 it)) blk)
+                                                              cfg*)
+                                                  cfg*)
+                                              cfg*))))))
                          (otherwise 
                           cfg*)))
                 ;;(map-insert blockid blk cfg*))))
                      cfg*))
               cfg
               cfg))
+
+                         #|
+                         (const (with-slots (dest) op
+                                  (with-true-addresses (dest)
+                                    (if (not (set-member dest faints))
+                                        (remove-block-from-cfg blk cfg*)
+                                        cfg*)))) |#
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
