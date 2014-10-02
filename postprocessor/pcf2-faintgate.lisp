@@ -368,7 +368,7 @@
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
- ;;   :const-gen (singleton 0)
+    :const-gen (singleton 0)
 )
 
 (def-gen-kill branch

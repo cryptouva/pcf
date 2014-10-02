@@ -467,7 +467,6 @@
                             (faints (get-block-faints blk))
                             (lives (get-block-lives blk))
                             (consts (get-block-consts blk)))
-                       ;;(format t "looking at ~A~% ~A~%" blockid blk)
                        (typecase op
                          (gate (with-slots (dest op1 op2 truth-table) op
                                  (let ((pre-dest dest)
@@ -480,6 +479,7 @@
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
                                            (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                           ;;cfg*))))))
                                            (aif (map-val dest consts t)
                                                 (if (not (is-not-const it))
                                                     ;; constant gate, simply replace with const
@@ -497,7 +497,7 @@
                                                               (block-with-copy pre-dest pre-op2))
                                                              ((equal op2-val 1)
                                                               (block-with-copy pre-dest pre-op1))
-                                                             (t cfg*)))
+                                                          (t cfg*)))
                                                           ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
                                                            (cond
                                                              ((equal op1-val 0)
@@ -506,6 +506,7 @@
                                                               (block-with-copy pre-dest pre-op1))
                                                              (t cfg*)))
                                                           ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
+                                                           ;;(break)
                                                            (cond
                                                              ((equal op1-val 0)
                                                               (block-with-copy pre-dest pre-op2))
@@ -514,13 +515,19 @@
                                                              (t cfg*)))
                                                           (t cfg*))
                                                         cfg*))
+                                                    ;;cfg*)
                                                 cfg*)))))))
+                         (copy-indir
+                          (with-slots (dest op1 op2) op
+                              (with-true-addresses (dest op1 op2)
+                                (break)
+                                cfg*)))
                          (otherwise cfg*)))
                      cfg*))
               cfg
               cfg))
 
-                         #|
+#|
                          (const (with-slots (dest) op
                                   (with-true-addresses (dest)
                                     (if (not (set-member dest faints))

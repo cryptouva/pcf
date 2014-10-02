@@ -249,7 +249,7 @@
 (def-gen-kill bits
     :dep-gen (with-slots (dest op1) op
                (with-true-address-list dest
-                 (with-true-address op1
+                 (with-true-addresses (op1)
                    (aif (map-extract-val op1 flow-data)
                         (let ((bin-list (to-n-bit-binary-list it (length dest))))
                           (first (reduce (lambda (state bit)
@@ -346,7 +346,7 @@
                                (map-singleton dest out-val)))
                            (cond
                              ((equalp truth-table #*0001)
-                              (if (or (equal 0 o1) (equal 0 o2))
+                              (if (or (equal o1 0) (equal o2 0))
                                   (map-singleton dest 0)
                                   (cond
                                     ((equal o1 1)
@@ -502,6 +502,7 @@
     :dep-kill (with-slots (dest op1 op2) op
                 (with-true-addresses (dest op1)
                   (let ((addr (map-val op1 flow-data)))
+                    ;;(break)
                     (kill-for-indirection addr dest op2)))))
 
 (def-gen-kill indir-copy
@@ -512,6 +513,7 @@
     :dep-kill (with-slots (dest op1 op2) op
                 (with-true-addresses (dest op1)
                   (let ((addr (map-val dest flow-data)))
+                    ;;(break)
                     (kill-for-indirection op1 addr op2)))))
 
 (def-gen-kill initbase
