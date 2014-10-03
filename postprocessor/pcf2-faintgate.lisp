@@ -185,41 +185,33 @@
      ,@body))
 
 (def-gen-kill join
-    ;; if any of the wires are live, then the join should be live
+    ;; if the output wire is live, then all of the inputs should be
     :dep-gen (with-slots (dest op1) op
                (with-true-address dest
                  (with-true-address-list op1
-                   (let ((opwires (set-from-list op1)))
-                     (if (set-equalp (empty-set) (set-inter opwires flow-data))
-                         (empty-set)
-                         (singleton dest))))))
+                   (if (set-member dest flow-data)
+                       (set-from-list op1)
+                       (empty-set)))))
 
-    ;; if the dest is a member of the bits to join, then don't kill it; else, do since this is its definition
-    :const-kill (with-slots (dest op1) op
+    ;; kill at the bits in op1
+    :const-kill (with-slots (op1) op
                   (with-true-address-list op1
-                    (with-true-address dest
-                      (if (member dest op1)
-                          (empty-set)
-                          (singleton dest)))))
+                    (set-from-list op1)))
     )
     
 (def-gen-kill bits
-    ;; if the wire is live, then the outputs should be
+    ;; if any of the output wires is live, then the input wire should be.
     :dep-gen (with-slots (dest op1) op
                (with-true-address-list dest
                  (with-true-address op1
-                   (if (set-member op1 flow-data)
-                       (set-from-list dest)
-                       (empty-set)))))
+                   (let ((destwires (set-from-list dest)))
+                     (if (equalp (empty-set) (set-inter destwires flow-data))
+                         (empty-set)
+                         (singleton op1))))))
     ;; if the op is a member of the dests, then don't kill it
     :const-kill (with-slots (dest op1) op
-                  (with-true-address-list dest
-                    (with-true-address op1
-                      (if (member op1 dest)
-                          (empty-set)
-                          (singleton op1)))))
-    )
-
+                  (with-true-address op1
+                    (singleton op1))))
 
 (def-gen-kill const
     ;; if x = const, kill x because it has been defined
@@ -324,7 +316,7 @@
        (if (set-member ,destination flow-data)
             (singleton ,source)
             (empty-set))
-       (set-from-list (loop for i from 0 to ,length
+       (set-from-list (loop for i from 0 to (- ,length 1)
                          when (set-member (+ i ,destination) flow-data)
                          collect (+ i ,source)))
        ))
@@ -335,7 +327,7 @@
            (singleton ,destination)
            (empty-set))
        (set-from-list 
-        (loop for i from ,destination to (+ ,length ,destination) collect i))))
+        (loop for i from ,destination to (+ ,length ,destination -1) collect i))))
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op

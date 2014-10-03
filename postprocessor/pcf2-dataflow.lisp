@@ -472,11 +472,19 @@
                                        (pre-op2 op2))
                                    (with-true-addresses (dest op1 op2)
                                      (let ((op1-val (map-val op1 consts t))
-                                           (op2-val (map-val op2 consts t)))
+                                           (op2-val (map-val op2 consts t))
+                                           (op1-f (set-member op1 faints))
+                                           (op2-f (Set-member op2 faints)))
+                                       
                                        ;; if an output is live, both of its inputs will be live
+                                       ;; (if (and (equalp pre-dest 596)(equalp pre-op1 594) (equalp pre-op2 595)) (break))
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
-                                           (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                           (progn
+                                             (if (and (equalp pre-dest 325)(equalp pre-op1 293)(equalp pre-op2 261))
+                                                 (break))
+                                             (remove-block-from-cfg blk cfg*);; remove this op from the cfg
+                                             )
                                            ;;cfg*))))))
                                            (aif (map-val dest consts t)
                                                 (if (not (is-not-const it))
@@ -520,17 +528,21 @@
                               (with-true-addresses (dest op1 op2)
                                 ;;(break)
                                 cfg*)))
+                         #|(const (with-slots (dest) op
+                                  (with-true-addresses (dest)
+                                    (if (not (set-member dest lives))
+                                        (remove-block-from-cfg blk cfg*)
+                                        cfg*))))|#
+                          #|(copy (with-slots (dest op2) op
+                                  (with-true-addresses (dest)
+                                    (if (and (equalp op2 1) (not (set-member dest lives)))
+                                        (remove-block-from-cfg blk cfg*)
+                                        cfg*))))|#
                          (otherwise cfg*)))
                      cfg*))
               cfg
               cfg))
 
-#|
-                         (const (with-slots (dest) op
-                                  (with-true-addresses (dest)
-                                    (if (not (set-member dest faints))
-                                        (remove-block-from-cfg blk cfg*)
-                                        cfg*)))) |#
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
