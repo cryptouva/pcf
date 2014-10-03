@@ -232,10 +232,13 @@
                (with-true-addresses (op1 op2 dest)
                  (if (set-member dest flow-data)
                      (aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
-                          (if (equalp it 'pcf2-block-graph:pcf-not-const)
+                          #|(if (equalp it 'pcf2-block-graph:pcf-not-const)
                               (set-from-list (list op1 op2))
-                              (empty-set))
-                          (empty-set)))))
+                              (empty-set))|#
+                     ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not
+                          (set-from-list (list op1 op2))
+                          (empty-set))
+                     (empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
@@ -328,7 +331,9 @@
 
 (defmacro kill-for-indirection (destination length)
   `(if (eq ,length 1)
-       (singleton ,destination)
+       (if (not (equal ,destination 0))
+           (singleton ,destination)
+           (empty-set))
        (set-from-list 
         (loop for i from ,destination to (+ ,length ,destination) collect i))))
 
@@ -336,6 +341,7 @@
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
                  (let ((addr (map-extract-val op1 (get-block-consts blck))))
+                   ;;(break)
                    (gen-for-indirection addr dest op2))))
     :const-kill (with-slots (dest op2) op
                   (with-true-address dest
@@ -346,6 +352,7 @@
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
                  (let ((addr (map-extract-val dest (get-block-consts blck))))
+                   ;;(break)
                    (gen-for-indirection op1 addr op2))))
     :dep-kill (with-slots (dest op2) op
                 (with-true-address dest
@@ -356,6 +363,7 @@
 (def-gen-kill call
     :const-gen (with-slots (newbase fname) op
                  (with-true-address newbase
+                   ;;(break)
                    (if (set-member fname output-functions)
                        (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                        (empty-set))))
@@ -368,7 +376,7 @@
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
- ;;   :const-gen (singleton 0)
+    :const-gen (singleton 0)
 )
 
 (def-gen-kill branch
