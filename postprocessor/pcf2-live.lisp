@@ -183,12 +183,12 @@
 (def-gen-kill copy
     :gen (with-slots (op1 op2) op
            (with-true-address op1
-             (if (equal op2 1)
+             (if (equalp op2 1)
                  (singleton op1)
                  (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))))
     :kill (with-slots (dest op2) op
             (with-true-address dest
-              (if (equal op2 1)
+              (if (equalp op2 1)
                   (singleton dest)
                   (set-from-list (loop for i from dest to (+ dest op2) collect i))))))
 

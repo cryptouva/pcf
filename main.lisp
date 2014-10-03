@@ -73,12 +73,18 @@
 (defun live-analyze-cfg (ops)
   (flow-backward-test ops #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives))
 
-(defun faint-analyze-cfg (ops)
-  (flow-backward-test ops #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints))
 
 (defun const-analyze-cfg (ops)
   (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
 |#
+
+(defun faint-analyze-cfg (ops)
+  (let* ((cfg (make-pcf-cfg ops))
+         (wiremap (find-wire-uses cfg))
+         (live-cfg (flow-backward cfg #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives wiremap))
+         (const-cfg (flow-forward live-cfg #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts wiremap))
+         (faint-cfg (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints wiremap)))
+    faint-cfg))
 
 (defun test-analyze-cfg (ops)
   (let* ((cfg (make-pcf-cfg ops))

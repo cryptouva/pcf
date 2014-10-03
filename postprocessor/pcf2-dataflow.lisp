@@ -290,14 +290,12 @@
 
 ;; a couple of functions to test forward and backward flows
 
-(defun flow-backward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (let* ((cfg (make-pcf-cfg ops))
-         (worklist (map-keys (get-graph-map cfg))))
+(defun flow-backward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
+  (let ((worklist (map-keys (get-graph-map cfg))))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
-(defun flow-forward-test (ops flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (let* ((cfg (make-pcf-cfg ops))
-         (worklist (reverse (map-keys (get-graph-map cfg)))))
+(defun flow-forward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
+  (let* ((worklist (reverse (map-keys (get-graph-map cfg)))))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
 ;; the actual flow-forward and flow-backward functions (could be replaced with macros and a single flow function, but not necessary
@@ -520,7 +518,7 @@
                          (copy-indir
                           (with-slots (dest op1 op2) op
                               (with-true-addresses (dest op1 op2)
-                                (break)
+                                ;;(break)
                                 cfg*)))
                          (otherwise cfg*)))
                      cfg*))
