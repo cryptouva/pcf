@@ -455,9 +455,9 @@
 
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
-       (aif (map-extract-val ,dest-address flow-data)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
+       (aif (map-extract-val ,source-address flow-data)  ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
             (map-singleton ,dest-address it) 
-            (map-singleton ,dest-address 'pcf2-block-graph:pcf-not-const))
+            (map-singleton ,dest-address  'pcf2-block-graph:pcf-not-const))
        (first (reduce (lambda (state oldwire)
                         (let ((map (first state))
                               (newwire (car (second state))))
@@ -467,7 +467,6 @@
                                (list (map-insert newwire 0 map) (cdr (second state))))))
                                ;;(list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                                ;;(error "could not find value of copy wire")))) 
-;;(list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                       (loop for i from ,source-address to (+ ,source-address ,length) collect i)
                       :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
 
