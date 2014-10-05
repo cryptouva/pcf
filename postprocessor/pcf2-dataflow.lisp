@@ -472,24 +472,11 @@
                                        (pre-op2 op2))
                                    (with-true-addresses (dest op1 op2)
                                      (let ((op1-val (map-val op1 consts t))
-                                           (op2-val (map-val op2 consts t))
-                                           (op1-f (set-member op1 faints))
-                                           (op2-f (Set-member op2 faints)))
-                                       
+                                           (op2-val (map-val op2 consts t)))
                                        ;; if an output is live, both of its inputs will be live
-                                       ;; (if (and (equalp pre-dest 596)(equalp pre-op1 594) (equalp pre-op2 595)) (break))
-                                       ;;(if 
-                                        ;;(or (and (equalp pre-dest 652)(equalp pre-op1 654)(equalp pre-op2 655))
-                                        ;;              (and 
-                                        ;;(equalp blockid 274)
-                                        ;;(break))
-                                        
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
-                                           (progn
-                                             (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                             )
-                                           ;;cfg*))))))
+                                           (remove-block-from-cfg blk cfg*);; remove this op from the cfg
                                            (aif (map-val dest consts t)
                                                 (if (not (is-not-const it))
                                                     ;; constant gate, simply replace with const
@@ -516,7 +503,6 @@
                                                               (block-with-copy pre-dest pre-op1))
                                                              (t cfg*)))
                                                           ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
-                                                           ;;(break)
                                                            (cond
                                                              ((equal op1-val 0)
                                                               (block-with-copy pre-dest pre-op2))
@@ -525,7 +511,6 @@
                                                              (t cfg*)))
                                                           (t cfg*))
                                                         cfg*))
-                                                    ;;cfg*)
                                                 cfg*)))))))
                          (copy-indir
                           (with-slots (dest op1 op2) op
