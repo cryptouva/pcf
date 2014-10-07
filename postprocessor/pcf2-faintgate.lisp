@@ -224,13 +224,13 @@
                (with-true-addresses (op1 op2 dest)
                  (if (set-member dest flow-data)
                      ;;(aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
-                          #|(if (equalp it 'pcf2-block-graph:pcf-not-const)
+                     #|(if (equalp it 'pcf2-block-graph:pcf-not-const)
                               (set-from-list (list op1 op2))
-                              (empty-set))
+                              (empty-set)) |#
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
-                     |#
+                     
                      (set-from-list (list op1 op2))
-                     ;;(empty-set))
+                     ;;     (empty-set))
                      (empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
@@ -288,8 +288,8 @@
                                  (if (set-member new-wire flow-data)
                                      (list (set-insert set oldwire) restwires)
                                      (list set restwires))))
-                             (loop for i from op1 to (+ op1 op2) collect i)
-                             :initial-value (list (empty-set) (loop for i from dest to (+ dest op2) collect i)))))))
+                             (loop for i from op1 to (+ op1 op2 -1) collect i)
+                             :initial-value (list (empty-set) (loop for i from dest to (+ dest op2 -1) collect i)))))))
     #|(if (set-member dest flow-data)
                      (if (equalp op2 1)
                          (singleton op1)
@@ -302,7 +302,7 @@
                         (if (equalp 1 op2)
                             (singleton dest)
                             (set-from-list
-                             (loop for i from dest to (+ dest op2) collect i))))))
+                             (loop for i from dest to (+ dest op2 -1) collect i))))))
     )
 
 ;; the following instructions need to know more about the previous ones
