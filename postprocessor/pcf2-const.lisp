@@ -58,7 +58,7 @@
 (defun map-union-without-conflicts (map1 map2)
   (map-reduce (lambda (map-accum key val)
                 (aif (map-val key map2 t)
-                     (if (eq it val)
+                     (if (equal it val)
                          map-accum ;; already have the element
                          (map-insert key 'pcf2-block-graph:pcf-not-const map-accum)) ;; element duplicates not equivalent
                      (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
@@ -106,6 +106,7 @@
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
+    ;;(if (equalp (get-block-id blck) 38) (break))
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
@@ -114,11 +115,30 @@
           flow)))
 ;;)
 
-(defun const-weaker-fn (set1 set2)
-  ;; set 1 is weaker than (safely estimates) set 2 if set 1 is a subset of set2
-  ;; and every entry in set 1 is either the same as in set2 or not-const
-  (set-subset set1 set2))
-
+(defun const-weaker-fn (map1 map2)
+  ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2
+  ;; and every entry in map 1 is either the same as in map 2 or not-const
+  ;;(set-subset set1 set2)
+  (declare (optimize (debug 3)(speed 0)))
+  (labels ((weaker-map-vals (m1 m2)
+             (map-reduce (lambda (state key m-val1)
+                           (declare (optimize (debug 3)(speed 0)))
+                           (let ((m-val2 (map-val key m2 t)))
+#|                             (if (and (not (equalp m2 (map-empty)))
+                                      (not (null (map-val 2 m2 t)))
+                                      (not (equalp m-val1 m-val2)))
+                                 (break))|#
+                             (and state
+                                  (or (equal m-val1 m-val2)
+                                      (equalp m-val1 'pcf2-block-graph:pcf-not-const)
+                                      (null m-val2)))))
+                         m1
+                         t)))
+    #|(and (weaker-map-vals map1 map2)
+         (not (weaker-map-vals map2 map1)))|#
+    (and (not (set-subset map2 map1))
+         (weaker-map-vals map1 map2))
+    ))
 
 (defun get-out-sets (blck cfg conf)
   ;;(format t "block preds: ~A~%" (get-block-preds blck))
@@ -431,8 +451,8 @@
                                    (if data
                                        (list (map-insert newwire data map) lst)
                                        (list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) lst)))))
-                               (loop for i from op1 to (+ op1 op2) collect i)
-                               :initial-value (list (map-empty) (loop for i from dest to (+ dest op2) collect i)))))))
+                               (loop for i from op1 to (+ op1 op2 -1) collect i)
+                               :initial-value (list (map-empty) (loop for i from dest to (+ dest op2 -1) collect i)))))))
     :dep-kill (with-slots (dest op2) op
                 (with-true-addresses (dest)
                   (if (equal 1 op2)
@@ -444,7 +464,7 @@
                                   (if data
                                       (set-insert set var)
                                       set)))
-                              (loop for i from dest to (+ dest op2) collect i)
+                              (loop for i from dest to (+ dest op2 -1) collect i)
                               :initial-value (empty-set)))))
     )
 
@@ -467,8 +487,8 @@
                                (list (map-insert newwire 0 map) (cdr (second state))))))
                                ;;(list (map-insert newwire 'pcf2-block-graph:pcf-not-const map) (cdr (second state))))))
                                ;;(error "could not find value of copy wire")))) 
-                      (loop for i from ,source-address to (+ ,source-address ,length) collect i)
-                      :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
+                      (loop for i from ,source-address to (+ ,source-address ,length -1) collect i)
+                      :initial-value (list (empty-gen) (loop for i from ,dest-address to (+ ,dest-address ,length -1) collect i))))))
 
 (defmacro kill-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
@@ -480,7 +500,7 @@
                     (if data
                         (set-insert set var)
                         set)))
-                (loop for i from ,dest-address to (+ ,dest-address ,length) collect i)
+                (loop for i from ,dest-address to (+ ,dest-address ,length -1) collect i)
                 :initial-value (empty-set))))
 #|
        (first (reduce (lambda (state oldwire)
@@ -513,7 +533,7 @@
                 (with-true-addresses (dest op1)
                   (let ((addr (map-val dest flow-data)))
                     ;;(break)
-                    (kill-for-indirection op1 addr op2)))))
+                         (kill-for-indirection op1 addr op2)))))
 
 (def-gen-kill initbase
     ;;take this opportunity to set wire 0 as pcf2-block-graph:pcf-not-const
@@ -528,13 +548,13 @@
                    (if (set-member fname input-functions)
                        (reduce (lambda (map x)
                                  (map-insert x 'pcf2-block-graph:pcf-not-const map))
-                               (loop for i from newbase to (+ 32 newbase) collect i)
+                               (loop for i from newbase to (+ 32 newbase -1) collect i)
                                :initial-value (map-empty))
                        (empty-gen))))
     :dep-kill (with-slots (newbase fname) op
                 (with-true-address newbase
                   (set-from-list
-                   (loop for i from newbase to (+ 32 newbase) collect i))))
+                   (loop for i from newbase to (+ 32 newbase -1) collect i))))
     )
 
 (def-gen-kill branch

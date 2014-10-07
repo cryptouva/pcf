@@ -320,6 +320,11 @@
                                    (worklist (second state))
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
+                              #|
+                              (if (equalp (get-block-id cur-node) 840) (progn
+                                                                         (print (funcall weaker-fn compare-flow neighbor-flow))
+                                                                         (break)))
+                              |#
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
 #|
@@ -474,6 +479,7 @@
                                      (let ((op1-val (map-val op1 consts t))
                                            (op2-val (map-val op2 consts t)))
                                        ;; if an output is live, both of its inputs will be live
+                                       ;;(if (and (equalp pre-dest 426) (equalp pre-op1 361) (equalp pre-op2 328)) (break))
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
                                            (remove-block-from-cfg blk cfg*);; remove this op from the cfg
@@ -528,6 +534,9 @@
                                     (if (and (equalp op2 1) (not (set-member dest lives)))
                                         (remove-block-from-cfg blk cfg*)
                                         cfg*))))|#
+                         #|(branch
+                          (progn (break)
+                                 cfg*))|#
                          (otherwise cfg*)))
                      cfg*))
               cfg
