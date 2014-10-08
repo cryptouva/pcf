@@ -102,12 +102,13 @@
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
+    ;;(if (equalp (get-block-id blck) 439) (break))
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
       ;;(if (zerop (mod (get-block-id blck) 100))
       ;;(eliminate-extra-consts flow blck use-map)
-      #|(if (equalp (get-block-op blck) 438)
+      #|(if (equalp (get-block-id blck) 438)
           (break))|#
       flow)))
 ;;)
@@ -146,7 +147,9 @@
        ;;(format t "pred out: ~A~%" pred-out)
        (funcall conf temp-out pred-out)))
    (get-block-preds blck)
-   :initial-value (get-block-consts blck)))
+   :initial-value (map-empty)
+   ;;(get-block-consts blck)
+   ))
 
 (defgeneric gen (op blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
