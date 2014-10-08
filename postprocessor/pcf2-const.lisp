@@ -56,29 +56,24 @@
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
 (defun map-union-without-conflicts (map1 map2)
-  (map-reduce (lambda (map-accum key val)
-                (aif (map-val key map2 t)
-                     (if (equal it val)
-                         map-accum ;; already have the element
-                         (map-insert key 'pcf2-block-graph:pcf-not-const map-accum)) ;; element duplicates not equivalent
-                     (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
-              map1
-              map2))
+  (let ((newmap (map-reduce (lambda (map-accum key val)
+                              (declare (optimize (debug 3)(speed 0)))
+                              #|(if (and (equal key 533)
+                                       (not (equal val 1))
+                                       (not (equal val 0)))
+                                  (break))|#
+                              (aif (map-val key map2 t)
+                                   (if (equal it val)
+                                       map-accum ;; already have the element
+                                       (map-insert key 'pcf2-block-graph:pcf-not-const map-accum)) ;; element duplicates not equivalent
+                                   (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
+                            map1
+                            map2)))
+    ;;(if (equal (map-val 533 map2 t) 3)
+      ;;  (break))
+     newmap))
 
 (defparameter confluence-operator #'map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of map-inter
-
-#|
-(defun map-intersect (map1 map2)
-  (map-reduce (lambda (map-accum key val)
-                (aif (map-val key map2 t)
-                     (if (eq it val)
-                         (map-insert key val map-accum) ;; values correspond
-                         map-accum) ;; values do not correspond
-                     map-accum ;; value not in both maps
-                ))
-              map1
-              (map-empty)))
-|#
 
 (defun map-diff (map1 map2)
   ;; map1 without the elements from map2
@@ -91,11 +86,12 @@
               map1 ;; use map1 as initial
               ))
 
+
 (defun map-remove-key-set (map set)
-  (set-reduce (lambda (map key)
-                (if (map-val key map t)
-                    (map-remove key map)
-                    map))
+  (set-reduce (lambda (newmap key)
+                (if (map-find key newmap t)
+                    (map-remove key newmap)
+                    newmap))
               set
               map))
 
@@ -106,13 +102,14 @@
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
-    ;;(if (equalp (get-block-id blck) 38) (break))
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
       ;;(if (zerop (mod (get-block-id blck) 100))
       ;;(eliminate-extra-consts flow blck use-map)
-          flow)))
+      #|(if (equalp (get-block-op blck) 438)
+          (break))|#
+      flow)))
 ;;)
 
 (defun const-weaker-fn (map1 map2)
@@ -124,9 +121,11 @@
              (map-reduce (lambda (state key m-val1)
                            (declare (optimize (debug 3)(speed 0)))
                            (let ((m-val2 (map-val key m2 t)))
-#|                             (if (and (not (equalp m2 (map-empty)))
+                             #|(if (and (not (equalp m2 (map-empty)))
                                       (not (null (map-val 2 m2 t)))
-                                      (not (equalp m-val1 m-val2)))
+                                      (not (equalp m-val1 m-val2))
+                                      (not (null m-val2))
+                                      (not (member key (list 2 3 363 364 365 502 362 265 400 464 465 496 497 498 499))))
                                  (break))|#
                              (and state
                                   (or (equal m-val1 m-val2)
@@ -134,10 +133,9 @@
                                       (null m-val2)))))
                          m1
                          t)))
-    #|(and (weaker-map-vals map1 map2)
-         (not (weaker-map-vals map2 map1)))|#
-    (and (not (set-subset map2 map1))
-         (weaker-map-vals map1 map2))
+    (and
+     (weaker-map-vals map1 map2)
+     (not (set-subset map2 map1)))
     ))
 
 (defun get-out-sets (blck cfg conf)
@@ -392,12 +390,12 @@
 
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op
-                 (with-true-address dest
+                 (with-true-addresses (dest)
                    ;;(break)
                    (map-singleton dest op1)))
     :dep-kill (with-slots (dest) op
-                (with-true-address dest
-                  (singleton-if-found)))
+                  (with-true-addresses (dest)
+                    (singleton-if-found)))
     )
 
 (def-gen-kill add
@@ -496,22 +494,12 @@
            (singleton ,dest-address)
            (empty-kill))
         (reduce (lambda (set var)
-                  (let ((data (map-extract-val var flow-data)))
+                  (let ((data (map-val var flow-data t)))
                     (if data
                         (set-insert set var)
                         set)))
                 (loop for i from ,dest-address to (+ ,dest-address ,length -1) collect i)
                 :initial-value (empty-set))))
-#|
-       (first (reduce (lambda (state oldwire)
-                        (let ((set (first state))
-                              (newwire (car (second state))))
-                          (if (map-val oldwire flow-data t)
-                               (list (set-insert set newwire) (cdr (second state)))
-                               (list set (cdr (second state)))))) ;; not excused from kill, but there's nothing there to kill
-                      (loop for i from ,source-address to (+ ,source-address ,length) collect i)
-                      :initial-value (list (empty-kill) (loop for i from ,dest-address to (+ ,dest-address ,length) collect i))))))
-|#
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
