@@ -614,6 +614,57 @@ number of arguments."
    )
   )
 
+(defmacro with-next-wires (sym n &body body)
+  ;; allocate wires programmatically
+  `(let ((,sym (subseq wirepool 0 ,n))
+         (wirepool (subseq wirepool ,n))
+     ,@body))
+)
+
+(defmacro with-next-wire (sym &body body)
+  ;; allocate wires programmatically
+  `(let ((,sym (car wirepool))
+         (wirepool (cdr wirepool))
+     ,@body))
+)
+
+(defun karatsuba (xs ys zs wirepool in-len)
+  (declare (optimize (speed 0)(debug 3)))
+  (assert (= (length xs)(length ys)(length zs)))
+  (let* (half-len (/ in-len 32))
+    (with-next-wires z2 in-len
+      (with-next-wires z1 in-len
+        (with-next-wires z0 in-len
+          (with-next-wires x0 in-len
+            (with-next-wires x1 in-len
+              (with-next-wires y0 in-len
+                (with-next-wires y1 in-len
+                  (with-next-wires z1-inter in-len
+                    (with-next-wires z-sum in-len
+                      (with-next-wires x01 in-len
+                        (with-next-wires y01 in-len
+                          (with-next-wire c-in
+                            (with-next-wire tmp1
+                              (with-next-wire tmp2
+                                (with-next-wire tmp3
+                                  ;; copy appropriate bits from xs into x1,x0; ys into y1,yo
+                                  (append (list
+                                           (make-instance 'copy :dest (first x0) :op1 (first xs) :op2 half-len)
+                                           (make-instance 'copy :dest (first x1) :op1 (car (nthcdr half-len xs)) :op2 half-len)
+                                           (make-instance 'copy :dest (first y0) :op1 (first ys) :op2 half-len)
+                                           (make-instance 'copy :dest (first y1) :op1 (car (nthcdr half-len ys)) :op2 half-len)
+                                           )
+                                          (karatsuba x1 y1 z2 wirepool half-len)
+                                          (karatsuba x0 y0 z0 wirepool half-len)
+                                          (adder-chain x0 x1 x01 c-in tmp1 tmp2 tmp3)
+                                          (adder-chain y0 y1 y01 c-in tmp1 tmp2 tmp3)
+                                          (adder-chain z2 z0 z-diff c-in tmp1 tmp2 tmp3)
+                                          (karatsuba x01 y01 z1-inter wirepool half-len) ;; is this right? should it be half-len?
+                                          (subtractor-chain z1-inter z-diff z1 c-in tmp1 tmp2 tmp3)
+                                          )
+                                  ))))))))))))))))
+    )
+
 (defun shift-and-add-multiplier (xs ys zs c-in tmp1 tmp2 tmp3 zro acc tmpr)
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
@@ -1302,6 +1353,18 @@ number of arguments."
 				 cin t2 t3 t4 t5 accum tr
 				 )
 			      (close-instr))))))))))))))))
+
+(defmacro karatsuba-multiply ()
+  `(with-slots (width) op
+     (with-temp-wires rwires width
+       (with-temp-wires wirepool 5000
+         (pop-arg stack arg1
+           (pop-arg stack arg2
+             (push-stack width rwires
+                 (add-instrs 
+                  (karatsuba arg1 arg2 rwires wirepool 32)
+                  )))))))
+)
 
 (definstr muli ; multiply signed
   (shift-add-multiply)
