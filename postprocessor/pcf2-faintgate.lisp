@@ -65,7 +65,9 @@
      (let ((succ-out (get-block-faints (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-faints blck)))
+   :initial-value (empty-set)
+   ;;(get-block-faints blck)
+   ))
 
 (defun faint-confluence-op (set1 set2)
   ;; if either set is "top," return the other set

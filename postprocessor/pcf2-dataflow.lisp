@@ -314,6 +314,7 @@
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
+    ;;(if (equalp (get-block-id cur-node) 439) (break))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
@@ -339,7 +340,7 @@
                           (funcall get-neighbor-fn cur-node)
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
-)
+  )
 #|    
   (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (values cfg

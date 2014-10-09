@@ -60,3 +60,18 @@
                         (set-insert set key)))) ;; don't know when it's used, must retain
                 flow
                 (empty-set))))
+
+
+
+#|
+(defun map-intersect (map1 map2)
+  (map-reduce (lambda (map-accum key val)
+                (aif (map-val key map2 t)
+                     (if (eq it val)
+                         (map-insert key val map-accum) ;; values correspond
+                         map-accum) ;; values do not correspond
+                     map-accum ;; value not in both maps
+                ))
+              map1
+              (map-empty)))
+|#

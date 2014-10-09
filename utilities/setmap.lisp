@@ -324,8 +324,7 @@
   "Fold the map \"mp\" over the function \"fn\"
 
 \"fn\" should have the form (lambda (state key value) ...)"
-  (declare (optimize (debug 3) (speed 0) (safety 3))
-           (type (function (t t t) t) fn)
+  (declare (type (function (t t t) t) fn)
            (type avl-set mp))
   (avl-tree-reduce (lambda (st x)
                      (funcall fn st (car x) (cdr x)))

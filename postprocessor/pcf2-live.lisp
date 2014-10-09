@@ -44,7 +44,9 @@
      (let ((succ-out (get-block-lives (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (get-block-lives blck)))
+   :initial-value (empty-set)
+   ;; (get-block-lives blck)
+   ))
 
 (defun live-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
