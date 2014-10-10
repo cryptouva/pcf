@@ -314,50 +314,23 @@
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
-    ;;(if (equalp (get-block-id cur-node) 439) (break))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
                                    (worklist (second state))
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                              #|
-                              (if (equalp (get-block-id cur-node) 840) (progn
-                                                                         (print (funcall weaker-fn compare-flow neighbor-flow))
-                                                                         (break)))
-                              |#
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
-#|
-                                  (list (insert-block
-                                            neighbor-id
-                                            (funcall set-data-fn compare-flow (get-block-by-id neighbor-id cfg)) 
-                                            cfg
-                                          cfg)
-                                        (append worklist (list neighbor-id)))
-|#
                                   state)))
                           (funcall get-neighbor-fn cur-node)
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
   )
-#|    
-  (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
-      (values cfg
-              (reduce (lambda (worklist neighbor-id)
-                        (let* ((neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
-                               (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                          (if (funcall weaker-fn compare-flow neighbor-flow)
-                              (append worklist (list neighbor-id))
-                              worklist)))
-                      (funcall get-neighbor-fn cur-node)
-                      :initial-value nil)))))
-|#
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
   ;;(declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (if (null worklist)
       cfg ; done
       (let* ((cur-node-id (car worklist))
@@ -373,16 +346,6 @@
                                    :initial-value worklist))
                 (more-work-set (set-union (set-from-list worklist*) new-work-set)))
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
-#|
-       (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-          (let ((more-work (reduce (lambda (wlist candidate)
-                                     (if (member candidate worklist)
-                                         worklist
-                                         (append wlist (list candidate))))
-                                   worklist*
-                                   :initial-value nil)))
-            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work)))))))
-|#
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
@@ -403,7 +366,6 @@
   (map-reduce (lambda (map blockid blck)
                 (declare (ignore blockid))
                 (let ((wires (compute-used-wires (get-block-op blck) (get-block-base blck) blck)))
-                  ;; we don't have to ignore this, but better for decoupling if we use the accessor on the block itself
                   (reduce (lambda (mp wire)
                             (aif (map-val wire mp t)
                                  (map-insert wire (cons (car it) (get-block-id blck)) mp) ;; was found, preserve first and get new last
@@ -423,7 +385,6 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
@@ -480,7 +441,6 @@
                                      (let ((op1-val (map-val op1 consts t))
                                            (op2-val (map-val op2 consts t)))
                                        ;; if an output is live, both of its inputs will be live
-                                       ;;(if (and (equalp pre-dest 426) (equalp pre-op1 361) (equalp pre-op2 328)) (break))
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
                                            (remove-block-from-cfg blk cfg*);; remove this op from the cfg
@@ -519,12 +479,6 @@
                                                           (t cfg*))
                                                         cfg*))
                                                 cfg*)))))))
-                         (copy-indir
-                          (with-slots (dest op1 op2) op
-                              (with-true-addresses (dest op1)
-                                ;;(if (equalp op2 1)
-                                ;;    (break))
-                                cfg*)))
                          #|(const (with-slots (dest) op
                                   (with-true-addresses (dest)
                                     (if (not (set-member dest lives))

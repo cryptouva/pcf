@@ -106,18 +106,18 @@
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
                  (gen (get-block-op blck) blck in-flow))))
-      ;;(if (zerop (mod (get-block-id blck) 100))
-      ;;(eliminate-extra-consts flow blck use-map)
+      (if (zerop (mod (get-block-id blck) 100))
+          (eliminate-extra-consts flow blck use-map)
       #|(if (equalp (get-block-id blck) 438)
           (break))|#
-      flow)))
-;;)
+          flow)))
+  )
 
 (defun const-weaker-fn (map1 map2)
   ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2
   ;; and every entry in map 1 is either the same as in map 2 or not-const
   ;;(set-subset set1 set2)
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (labels ((weaker-map-vals (m1 m2)
              (map-reduce (lambda (state key m-val1)
                            (declare (optimize (debug 3)(speed 0)))
