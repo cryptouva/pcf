@@ -2,7 +2,7 @@
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-use-map
   (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
-  (:export compute-used-wires)
+  (:export get-used-wires)
   )
 
 (in-package :pcf2-use-map)
@@ -18,10 +18,16 @@
 
 (defparameter *global-condition-wire* 0)
 
+(defun get-used-wires (base blck)
+  (reduce (lambda (state op)
+            (append state (compute-used-wires op base blck)))
+          (get-block-op-list blck)
+          :initial-value nil)
+)
+
 (defgeneric compute-used-wires (op base blck)
   (:documentation "determines which wires are used in a block. returns a map of wires in use -> block number")
 )
-
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms

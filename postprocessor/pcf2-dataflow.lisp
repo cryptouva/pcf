@@ -365,7 +365,7 @@
   ;; we represent this as a map from wireid -> (cons first-use last-use). returns a map of these.
   (map-reduce (lambda (map blockid blck)
                 (declare (ignore blockid))
-                (let ((wires (compute-used-wires (get-block-op blck) (get-block-base blck) blck)))
+                (let ((wires (get-used-wires (get-block-base blck) blck)))
                   (reduce (lambda (mp wire)
                             (aif (map-val wire mp t)
                                  (map-insert wire (cons (car it) (get-block-id blck)) mp) ;; was found, preserve first and get new last
