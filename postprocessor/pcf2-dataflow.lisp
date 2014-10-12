@@ -474,21 +474,30 @@
 
 
 (defun eliminate-extra-gates* (cfg)
-  (declare (optimize (debug 3)(speed 0)))
-  (map-reduce (lambda (cfg* blckid)
-                (let* ((blk (map-val blckid cfg*))
-                       (base (get-block-base blk))
-                       (faints (get-block-faints blk))
-                       (lives (get-block-lives blk))
-                       (consts (get-block-consts blk))
-                       (newops (reduce (lambda (oplist op)
-                                         (append oplist
-                                                 (list (transform-op op base faints lives consts))
-                                                 ))
-                                       (get-block-op-list blk)
-                                       :initial-value nil)))
-                  (map-insert blckid (block-with-op-list newops blk) cfg*)
-                  ))
+  ;;(declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (map-reduce (lambda (cfg* blckid blk)
+                ;;(declare (optimize (debug 3)(speed 0)))
+                ;;(break)
+                (declare (ignore blk))
+                (aif (map-val blckid cfg* t)
+                     (let* ((blk it)
+                            (base (get-block-base blk))
+                            (faints (get-block-faints blk))
+                            (lives (get-block-lives blk))
+                            (consts (get-block-consts blk))
+                            (newops (reduce (lambda (oplist op)
+                                              (let ((newop
+                                                     (transform-op op base faints lives consts)))
+                                                (aif newop
+                                                     (append oplist (list newop))
+                                                     oplist)))
+                                            (get-block-op-list blk)
+                                            :initial-value nil)))
+                       (if (null newops)
+                           (remove-block-from-cfg blk cfg*)
+                           (map-insert blckid (block-with-op-list newops blk) cfg*)))
+                     cfg*))
               cfg
               cfg))
 
@@ -588,5 +597,5 @@
 ;; the big cahoona
 (defun optimize-circuit (cfg)
   ;;(print cfg)
-  (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
+  (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
 )
