@@ -501,7 +501,7 @@
               cfg
               cfg))
 
-
+#|
 (defun eliminate-extra-gates (cfg)
   ;; gates that are unnecessary may be eliminated here!
   ;; rules:
@@ -584,7 +584,7 @@
                      cfg*))
               cfg
               cfg))
-
+|#
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)

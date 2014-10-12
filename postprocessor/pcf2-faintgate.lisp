@@ -86,7 +86,7 @@
     (let ((flow (faint-confluence-op
                  ;; set-union should have the larger set come second
                  (gen blck in-flow)
-                 (set-diff in-flow (kill blck in-flow)))))
+                 (set-diff-efficient in-flow (kill blck in-flow)))))
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))

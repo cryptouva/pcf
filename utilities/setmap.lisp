@@ -9,6 +9,7 @@
                      set-insert
                      set-remove
                      set-diff
+                     set-diff-efficient
                      set-union
                      set-inter
                      set-map
@@ -144,6 +145,18 @@
      (make-avl-set :tree
                    (avl-tree-remove x (avl-set-tree set) :comp comp :allow-no-result allow-no-result)
                    :comp comp)))
+
+(defun set-diff-efficient (set1 set2)
+  "Quickly remove all elements in set2 from set1, where set1 is much larger than set2"
+  (declare (type avl-set set1 set2))
+  (assert (equalp (avl-set-comp set1) (avl-set-comp set2)))
+  (set-reduce (lambda (st x)
+                (if (set-member x set1)
+                    (set-remove set1 x)
+                    st))
+                set1
+                set2)
+)
 
 (defun set-from-list (lst &key (comp #'<))
   "Create a set that contains the elements of \"lst\""
