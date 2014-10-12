@@ -18,6 +18,7 @@
            block-with-faints
            block-with-consts
            block-with-op
+           block-with-op-list
            block-with-preds
            block-with-succs
            new-block
@@ -159,6 +160,15 @@
   (make-pcf-basic-block
    :id (get-block-id bb)
    :op  new-op
+   :base (get-block-base bb)    
+   :preds (get-block-preds bb)
+   :succs (get-block-succs bb)
+   :data (get-block-data bb)))
+
+(defun block-with-op-list (new-ops bb)
+  (make-pcf-basic-block
+   :id (get-block-id bb)
+   :op  new-ops
    :base (get-block-base bb)    
    :preds (get-block-preds bb)
    :succs (get-block-succs bb)

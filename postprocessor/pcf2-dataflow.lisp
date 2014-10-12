@@ -412,8 +412,85 @@
                (block-with-op (list (make-instance 'copy :dest ,destination :op1 ,source :op2 1)) blk)
                cfg*))
 
+(defmacro block-with-copy* (destination source)
+  `(make-instance 'copy :dest ,destination :op1 ,source :op2 1))
+
 (defmacro is-not-const (wire)
   `(equalp ,wire 'pcf2-block-graph:pcf-not-const))
+
+(defgeneric transform-op (op base faints lives consts)
+  (:documentation "Describes how an op should be transformed during optimization using all available data flow information")
+  )
+
+(defmethod transform-op ((op gate) base faints lives consts)
+  (with-slots (dest op1 op2 truth-table) op
+    (let ((pre-dest dest)
+          (pre-op1 op1)
+          (pre-op2 op2))
+      (with-true-addresses (dest op1 op2)
+        (let ((op1-val (map-val op1 consts t))
+              (op2-val (map-val op2 consts t)))
+          ;; if an output is live, both of its inputs will be live
+          (if (not (and (set-member op1 faints)
+                        (set-member op2 faints)))
+              nil
+              (aif (map-val dest consts t)
+                   (if (not (is-not-const it))
+                       ;; constant gate, simply replace with const
+                       (make-instance 'const :dest pre-dest :op1 it)
+                       ;; gate is not const, but it might be OR w/ 0 or AND w/1,
+                       ;; in which case we can replace it with a simply copy
+                       (if (or (not (is-not-const op1-val))
+                               (not (is-not-const op2-val)))
+                           (cond
+                             ((equalp truth-table #*0001) ;; x AND 1 = x, replace gate with copy 
+                              (cond
+                                ((equal op1-val 1)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 1)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t (make-instance 'const :dest pre-dest :op1 0)))) ;; one of the inputs is const, but it is 0. this should have been handles above though.
+                             ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
+                              (cond
+                                ((equal op1-val 0)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 0)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t (make-instance 'const :dest pre-dest :op1 1)))) ;; one of the inputs is const, and neither is 0 (so one is 1). this should have been handled above though.
+                             ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
+                              (cond
+                                ((equal op1-val 0)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 0)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t op)))
+                             (t op))
+                           op))
+                   op)))))))
+
+(defmethod transform-op ((op instruction) base faints lives consts)
+  op
+  )
+
+
+(defun eliminate-extra-gates* (cfg)
+  (declare (optimize (debug 3)(speed 0)))
+  (map-reduce (lambda (cfg* blckid)
+                (let* ((blk (map-val blckid cfg*))
+                       (base (get-block-base blk))
+                       (faints (get-block-faints blk))
+                       (lives (get-block-lives blk))
+                       (consts (get-block-consts blk))
+                       (newops (reduce (lambda (oplist op)
+                                         (append oplist
+                                                 (list (transform-op op base faints lives consts))
+                                                 ))
+                                       (get-block-op-list blk)
+                                       :initial-value nil)))
+                  (map-insert blckid (block-with-op-list newops blk) cfg*)
+                  ))
+              cfg
+              cfg))
 
 
 (defun eliminate-extra-gates (cfg)
@@ -503,7 +580,7 @@
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
                 (declare (ignore id))
-                (cons (get-block-op blck) ops))
+                (append (get-block-op-list blck) ops))
               cfg
               nil))
 
