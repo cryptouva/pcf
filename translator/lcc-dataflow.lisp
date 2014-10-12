@@ -354,6 +354,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                (if (or (null cblock) (null (basic-block-id cblock)))
                    (list in-sets in-stacks valmaps done)
                    (let ((new-out (reduce (lambda (state pred)
+                                            (print pred)
                                             ;;(break)
                                             (let ((res (funcall flow-fn
                                                                 (aif (map-find pred in-sets t)

@@ -479,13 +479,13 @@
                                                           (t cfg*))
                                                         cfg*))
                                                 cfg*)))))))
-                         (const (with-slots (dest) op
+                         #|(const (with-slots (dest) op
                                   (with-true-addresses (dest)
                                     (if (not (or
                                               (set-member dest faints)
                                               (set-member dest lives)))
                                         (remove-block-from-cfg blk cfg*)
-                                        cfg*))))
+                                        cfg*))))|#
                           #|(copy (with-slots (dest op2) op
                                   (with-true-addresses (dest)
                                     (if (and (equalp op2 1) (not (set-member dest lives)))

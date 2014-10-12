@@ -75,6 +75,13 @@
 
 (defparameter confluence-operator #'map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of map-inter
 
+;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
+(defmacro empty-gen ()
+  `(map-empty))
+
+(defmacro empty-kill ()
+  `(empty-set))
+
 (defun map-diff (map1 map2)
   ;; map1 without the elements from map2
   (map-reduce (lambda (map key val)
@@ -104,13 +111,13 @@
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
     ;;(if (equalp (get-block-id blck) 439) (break))
     (let ((flow (map-union-without-conflicts
-                 (map-remove-key-set in-flow (kill (get-block-op blck) blck in-flow))
-                 (gen (get-block-op blck) blck in-flow))))
+                 (map-remove-key-set in-flow (kill blck in-flow))
+                 (gen blck in-flow))))
       (if (zerop (mod (get-block-id blck) 100))
-          (eliminate-extra-consts flow blck use-map)
+      (eliminate-extra-consts flow blck use-map)
       #|(if (equalp (get-block-id blck) 438)
           (break))|#
-          flow)))
+      flow)))
   )
 
 (defun const-weaker-fn (map1 map2)
@@ -151,11 +158,11 @@
    ;;(get-block-consts blck)
    ))
 
-(defgeneric gen (op blck flow-data)
+(defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op blck flow-data)
+(defgeneric kill (blck flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -175,21 +182,29 @@
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op blck flow-data)
+(defmethod gen (blck flow-data)
   ;; gen = const_gen union dep_gen
-  (const-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) flow-data)))
+  (reduce (lambda (state op)
+            (const-confluence-op state
+                                 (const-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) flow-data))))
+          (get-block-op-list blck)
+          :initial-value (empty-gen)))
+;;  (let ((op (get-block-op blck)))
+;;    (const-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) flow-data)))
+;;  )
 
-(defmethod kill (op blck flow-data)
+(defmethod kill (blck flow-data)
   ;; kill = const-kill union gep_kill
   ;;(break)
-  (const-confluence-op (const-kill op (get-block-base blck)) (dep-kill op (get-block-base blck) flow-data)))
-  
-;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
-(defmacro empty-gen ()
-  `(map-empty))
+  (reduce (lambda (state op)
+            (set-union state
+                       (set-union (const-kill op (get-block-base blck)) (dep-kill op (get-block-base blck) flow-data))))
+          (get-block-op-list blck)
+          :initial-value (empty-kill)))
+;;(let ((op (get-block-op blck)))
+;;(const-confluence-op (const-kill op (get-block-base blck)) (dep-kill op (get-block-base blck) flow-data)))
+;;  )
 
-(defmacro empty-kill ()
-  `(empty-set))
 
 (defmacro def-const-gen (type &body body)
   `(defmethod const-gen ((op ,type) base)
