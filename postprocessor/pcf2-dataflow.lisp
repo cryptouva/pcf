@@ -314,50 +314,23 @@
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
-    ;;(if (equalp (get-block-id cur-node) 439) (break))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
                                    (worklist (second state))
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                              #|
-                              (if (equalp (get-block-id cur-node) 840) (progn
-                                                                         (print (funcall weaker-fn compare-flow neighbor-flow))
-                                                                         (break)))
-                              |#
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
-#|
-                                  (list (insert-block
-                                            neighbor-id
-                                            (funcall set-data-fn compare-flow (get-block-by-id neighbor-id cfg)) 
-                                            cfg
-                                          cfg)
-                                        (append worklist (list neighbor-id)))
-|#
                                   state)))
                           (funcall get-neighbor-fn cur-node)
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
   )
-#|    
-  (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
-      (values cfg
-              (reduce (lambda (worklist neighbor-id)
-                        (let* ((neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
-                               (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                          (if (funcall weaker-fn compare-flow neighbor-flow)
-                              (append worklist (list neighbor-id))
-                              worklist)))
-                      (funcall get-neighbor-fn cur-node)
-                      :initial-value nil)))))
-|#
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
   ;;(declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (if (null worklist)
       cfg ; done
       (let* ((cur-node-id (car worklist))
@@ -373,16 +346,6 @@
                                    :initial-value worklist))
                 (more-work-set (set-union (set-from-list worklist*) new-work-set)))
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
-#|
-       (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn)
-          (let ((more-work (reduce (lambda (wlist candidate)
-                                     (if (member candidate worklist)
-                                         worklist
-                                         (append wlist (list candidate))))
-                                   worklist*
-                                   :initial-value nil)))
-            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (append worklist more-work)))))))
-|#
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
@@ -402,8 +365,7 @@
   ;; we represent this as a map from wireid -> (cons first-use last-use). returns a map of these.
   (map-reduce (lambda (map blockid blck)
                 (declare (ignore blockid))
-                (let ((wires (compute-used-wires (get-block-op blck) (get-block-base blck) blck)))
-                  ;; we don't have to ignore this, but better for decoupling if we use the accessor on the block itself
+                (let ((wires (get-used-wires (get-block-base blck) blck)))
                   (reduce (lambda (mp wire)
                             (aif (map-val wire mp t)
                                  (map-insert wire (cons (car it) (get-block-id blck)) mp) ;; was found, preserve first and get new last
@@ -423,7 +385,6 @@
   ;; remove this block from its preds' succs and its succs' preds
   ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
   (declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (let ((preds (get-block-preds blck))
         (succs (get-block-succs blck))
         (blckid (get-block-id blck)))
@@ -451,8 +412,94 @@
                (block-with-op (list (make-instance 'copy :dest ,destination :op1 ,source :op2 1)) blk)
                cfg*))
 
+(defmacro block-with-copy* (destination source)
+  `(make-instance 'copy :dest ,destination :op1 ,source :op2 1))
+
 (defmacro is-not-const (wire)
   `(equalp ,wire 'pcf2-block-graph:pcf-not-const))
+
+(defgeneric transform-op (op base faints lives consts)
+  (:documentation "Describes how an op should be transformed during optimization using all available data flow information")
+  )
+
+(defmethod transform-op ((op gate) base faints lives consts)
+  (with-slots (dest op1 op2 truth-table) op
+    (let ((pre-dest dest)
+          (pre-op1 op1)
+          (pre-op2 op2))
+      (with-true-addresses (dest op1 op2)
+        (let ((op1-val (map-val op1 consts t))
+              (op2-val (map-val op2 consts t)))
+          ;; if an output is live, both of its inputs will be live
+          (if (not (and (set-member op1 faints)
+                        (set-member op2 faints)))
+              nil
+              (aif (map-val dest consts t)
+                   (if (not (is-not-const it))
+                       ;; constant gate, simply replace with const
+                       (make-instance 'const :dest pre-dest :op1 it)
+                       ;; gate is not const, but it might be OR w/ 0 or AND w/1,
+                       ;; in which case we can replace it with a simply copy
+                       (if (or (not (is-not-const op1-val))
+                               (not (is-not-const op2-val)))
+                           (cond
+                             ((equalp truth-table #*0001) ;; x AND 1 = x, replace gate with copy 
+                              (cond
+                                ((equal op1-val 1)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 1)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t (make-instance 'const :dest pre-dest :op1 0)))) ;; one of the inputs is const, but it is 0. this should have been handles above though.
+                             ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
+                              (cond
+                                ((equal op1-val 0)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 0)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t (make-instance 'const :dest pre-dest :op1 1)))) ;; one of the inputs is const, and neither is 0 (so one is 1). this should have been handled above though.
+                             ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
+                              (cond
+                                ((equal op1-val 0)
+                                 (block-with-copy* pre-dest pre-op2))
+                                ((equal op2-val 0)
+                                 (block-with-copy* pre-dest pre-op1))
+                                (t op)))
+                             (t op))
+                           op))
+                   op)))))))
+
+(defmethod transform-op ((op instruction) base faints lives consts)
+  op
+  )
+
+
+(defun eliminate-extra-gates* (cfg)
+  ;;(declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (map-reduce (lambda (cfg* blckid blk)
+                ;;(declare (optimize (debug 3)(speed 0)))
+                ;;(break)
+                (declare (ignore blk))
+                (aif (map-val blckid cfg* t)
+                     (let* ((blk it)
+                            (base (get-block-base blk))
+                            (faints (get-block-faints blk))
+                            (lives (get-block-lives blk))
+                            (consts (get-block-consts blk))
+                            (newops (reduce (lambda (oplist op)
+                                              (let ((newop
+                                                     (transform-op op base faints lives consts)))
+                                                (aif newop
+                                                     (append oplist (list newop))
+                                                     oplist)))
+                                            (get-block-op-list blk)
+                                            :initial-value nil)))
+                       (if (null newops)
+                           (remove-block-from-cfg blk cfg*)
+                           (map-insert blckid (block-with-op-list newops blk) cfg*)))
+                     cfg*))
+              cfg
+              cfg))
 
 
 (defun eliminate-extra-gates (cfg)
@@ -480,7 +527,6 @@
                                      (let ((op1-val (map-val op1 consts t))
                                            (op2-val (map-val op2 consts t)))
                                        ;; if an output is live, both of its inputs will be live
-                                       ;;(if (and (equalp pre-dest 426) (equalp pre-op1 361) (equalp pre-op2 328)) (break))
                                        (if (not (and (set-member op1 faints)
                                                      (set-member op2 faints)))
                                            (remove-block-from-cfg blk cfg*);; remove this op from the cfg
@@ -519,15 +565,11 @@
                                                           (t cfg*))
                                                         cfg*))
                                                 cfg*)))))))
-                         (copy-indir
-                          (with-slots (dest op1 op2) op
-                              (with-true-addresses (dest op1)
-                                ;;(if (equalp op2 1)
-                                ;;    (break))
-                                cfg*)))
                          #|(const (with-slots (dest) op
                                   (with-true-addresses (dest)
-                                    (if (not (set-member dest lives))
+                                    (if (not (or
+                                              (set-member dest faints)
+                                              (set-member dest lives)))
                                         (remove-block-from-cfg blk cfg*)
                                         cfg*))))|#
                           #|(copy (with-slots (dest op2) op
@@ -547,7 +589,7 @@
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
                 (declare (ignore id))
-                (cons (get-block-op blck) ops))
+                (append (get-block-op-list blck) ops))
               cfg
               nil))
 
@@ -555,5 +597,5 @@
 ;; the big cahoona
 (defun optimize-circuit (cfg)
   ;;(print cfg)
-  (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
+  (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
 )

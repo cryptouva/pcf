@@ -85,17 +85,17 @@
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the larger set come second
-                 (gen (get-block-op blck) blck in-flow)
-                 (set-diff in-flow (kill (get-block-op blck) blck in-flow)))))
+                 (gen blck in-flow)
+                 (set-diff in-flow (kill blck in-flow)))))
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))
 
-(defgeneric gen (op blck flow-data)
+(defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
   )
 
-(defgeneric kill (op blck flow-data)
+(defgeneric kill (blck flow-data)
   (:documentation "this function describes how to compute the kill part of the flow function for each op")
 )
 
@@ -115,14 +115,28 @@
   (:documentation "this function describes how to compute the dependent kill part of the flow function for each op")
 )
 
-(defmethod gen (op blck flow-data)
+(defmethod gen (blck flow-data)
   ;; gen = const_gen union dep_gen
-  (faint-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data)))
+  (reduce (lambda (state op)
+            (set-union state
+                       (set-union (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data))))
+          (get-block-op-list blck)
+          :initial-value (empty-set)))
+;;  (let ((op (get-block-op blck)))
+  ;;  (faint-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data)))
+ ;; )
 
-(defmethod kill (op blck flow-data)
+(defmethod kill (blck flow-data)
   ;;(declare (ignore flow-data))
-  ;; kill = const-kill uniond ep_kill
-  (faint-confluence-op (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data)))
+  ;; kill = const-kill uniond dep_kill
+ (reduce (lambda (state op)
+           (set-union state
+                      (set-union (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data))))
+         (get-block-op-list blck)
+         :initial-value (empty-set)))
+;;  (let ((op (get-block-op blck)))
+;;    (faint-confluence-op (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data)))
+;;  )
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
@@ -226,13 +240,13 @@
                (with-true-addresses (op1 op2 dest)
                  (if (set-member dest flow-data)
                      ;;(aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
-                     #|(if (equalp it 'pcf2-block-graph:pcf-not-const)
-                              (set-from-list (list op1 op2))
-                              (empty-set)) |#
+                     ;;(if (equalp it 'pcf2-block-graph:pcf-not-const)
+                     ;;(set-from-list (list op1 op2))
+                     ;;(empty-set))
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
                      
                      (set-from-list (list op1 op2))
-                     ;;     (empty-set))
+                     ;;(empty-set))
                      (empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)

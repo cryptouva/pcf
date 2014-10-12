@@ -65,8 +65,24 @@
   ;;  (break)
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
-     (set-diff in-flow (kill (get-block-op blck) blck (get-block-base blck)))
-     (gen (get-block-op blck) blck (get-block-base blck)))))
+     (set-diff in-flow (get-kill blck (get-block-base blck)))
+     (get-gen blck (get-block-base blck)))))
+
+(defun get-gen (blck base)
+  (reduce (lambda (state op)
+            (set-union state (gen op blck base)))
+          (get-block-op-list blck)
+          :initial-value (empty-set)))
+;;  (let ((op (get-block-op blck)))
+;;    (gen op blck base)))
+
+(defun get-kill (blck base)
+  (reduce (lambda (state op)
+            (set-union state (kill op blck base)))
+          (get-block-op-list blck)
+          :initial-value (empty-set)))
+;;  (let ((op (get-block-op blck)))
+;;    (kill op blck base)))
 
 (defgeneric gen (op blck base)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
