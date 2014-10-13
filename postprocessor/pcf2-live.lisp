@@ -65,8 +65,8 @@
   ;;  (break)
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
-     (set-diff-efficient in-flow (get-gen-kill blck (get-block-base blck) #'kill))
-     (get-gen-kill blck (get-block-base blck) #'gen))))
+     (set-diff-efficient in-flow (kill (get-block-op blck) blck (get-block-base blck)))
+     (gen (get-block-op blck) blck (get-block-base blck)))))
 
 (defun get-gen-kill (blck base fn)
   (reduce (lambda (state op)

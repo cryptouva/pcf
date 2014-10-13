@@ -54,14 +54,10 @@
 ;; all unassigned wires are 0, so if something is not found in the consts then it is implicitly 0 (otherwise it will be an integer or pcf2-block-graph:pcf-not-const)
 
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
-
+#|
 (defun map-union-without-conflicts (map1 map2)
   (let ((newmap (map-reduce (lambda (map-accum key val)
                               (declare (optimize (debug 3)(speed 0)))
-                              #|(if (and (equal key 533)
-                                       (not (equal val 1))
-                                       (not (equal val 0)))
-                                  (break))|#
                               (aif (map-val key map2 t)
                                    (if (equal it val)
                                        map-accum ;; already have the element
@@ -69,11 +65,11 @@
                                    (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
                             map1
                             map2)))
-    ;;(if (equal (map-val 533 map2 t) 3)
-      ;;  (break))
-     newmap))
+    newmap))
+|#
 
 (defparameter confluence-operator #'map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of map-inter
+
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
@@ -115,8 +111,6 @@
                  (gen blck in-flow))))
       (if (zerop (mod (get-block-id blck) 100))
       (eliminate-extra-consts flow blck use-map)
-      #|(if (equalp (get-block-id blck) 438)
-          (break))|#
       flow)))
   )
 
@@ -129,12 +123,6 @@
              (map-reduce (lambda (state key m-val1)
                            (declare (optimize (debug 3)(speed 0)))
                            (let ((m-val2 (map-val key m2 t)))
-                             #|(if (and (not (equalp m2 (map-empty)))
-                                      (not (null (map-val 2 m2 t)))
-                                      (not (equalp m-val1 m-val2))
-                                      (not (null m-val2))
-                                      (not (member key (list 2 3 363 364 365 502 362 265 400 464 465 496 497 498 499))))
-                                 (break))|#
                              (and state
                                   (or (equal m-val1 m-val2)
                                       (equalp m-val1 'pcf2-block-graph:pcf-not-const)
@@ -421,7 +409,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
-                   (format t "o1: ~A o2: ~A~%" o1 o2) ;; can only add on constants
+                   ;;(format t "o1: ~A o2: ~A~%" o1 o2) ;; can only add on constants
                    (map-singleton dest (if (and o1 o2) (+ o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
@@ -433,7 +421,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
-                   (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                   ;;(format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
                    (map-singleton dest (if (and o1 o2) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
@@ -445,7 +433,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (map-extract-val op1 flow-data))
                        (o2 (map-extract-val op2 flow-data)))
-                   (format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                   ;;(format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
                    (map-singleton dest (if (and o1 o2) (* o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
