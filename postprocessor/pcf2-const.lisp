@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform constant-propagation analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-const
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap :hashset :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export const-flow-fn
            const-confluence-op
            const-weaker-fn

@@ -15,6 +15,7 @@
 				    (:file "utils")
 				    (:file "setmap" :depends-on ("avl"))
 				    (:file "pcf2-bytecode")
+                                    (:file "hashset")
 				    )
                        :depends-on (unit)
                        )

@@ -36,6 +36,7 @@
            pcf-not-const
            remove-block-from-cfg
            map-union-without-conflicts
+           blocks-conflict
            )
   )
 (in-package :pcf2-block-graph)
@@ -332,14 +333,14 @@
                     (if (or (member x preds) (= x (get-block-id blck1)))
                         preds
                         (append preds (list x))))
-                  (get-block-preds blck1)
-                  :initial-value (get-block-preds blck2))
+                  (get-block-preds blck2)
+                  :initial-value (get-block-preds blck1))
    :succs (reduce (lambda (succs x)
                     (if (or (member x succs) (= x (get-block-id blck1)))
                         succs
                         (append succs (list x))))
-                  (get-block-succs blck1)
-                  :initial-value (get-block-succs blck2))
+                  (get-block-succs blck2)
+                  :initial-value (get-block-succs blck1))
    :data (list
           (map-union-without-conflicts (get-block-consts blck1) (get-block-consts blck2))
           (set-union (get-block-faints blck1) (get-block-faints blck2))
@@ -360,3 +361,15 @@
                             map2)))
     newmap))
 
+(defun blocks-conflict (blck1 blck2)
+  (let ((in-blck1 (get-block-inputs blck1))
+        (in-blck2 (get-block-inputs blck2))
+        (dest-blck1 (get-block-dests blck1))
+        (dest-blck2 (get-block-dests blck2)))
+    ;; blocks may not share inputs or dests, or have crossover between them
+    ;; returns boolean value of whether the blocks conflict. t for yes, nil for no.
+    (or (> 0 (length (intersection in-blck1 in-blck2)))
+        (> 0 (length (intersection dest-blck1 dest-blck2)))
+        (> 0 (length (intersection in-blck1 dest-blck2)))
+        (> 0 (length (intersection in-blck2 dest-blck1)))))
+)
