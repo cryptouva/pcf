@@ -14,6 +14,8 @@
            get-block-id
            get-block-by-id
            get-block-base
+           get-block-inputs
+           get-block-dests
            block-with-lives
            block-with-faints
            block-with-consts
@@ -32,6 +34,8 @@
            cfg-with-bottom
            cfg-with-map
            pcf-not-const
+           remove-block-from-cfg
+           map-union-without-conflicts
            )
   )
 (in-package :pcf2-block-graph)
@@ -137,6 +141,38 @@
 
 (defun get-block-lives (blck)
   (third (pcf-basic-block-data blck)))
+
+(defun get-block-inputs (blck)
+  (reduce (lambda (in-list op)
+            (typecase op
+              (gate 
+               (with-slots (op1 op2) op
+                 (append in-list (list op1 op2))))
+              (const
+               (with-slots (op1) op
+                 (append in-list (list op1))))
+              (otherwise
+               ;; can fill in the rest as needed
+               in-list)))
+  (get-block-op-list blck)
+  :initial-value nil)
+)
+
+(defun get-block-dests (blck)
+  (reduce (lambda (dest-list op)
+            (typecase op
+              (gate 
+               (with-slots (dest) op
+                 (append dest-list (list dest))))
+              (const
+               (with-slots (dest) op
+                 (append dest-list (list dest))))
+              (otherwise
+               ;; can fill in the rest as needed
+               dest-list)))
+    (get-block-op-list blck)
+    :initial-value nil)
+)
 
 (defun get-block-by-id (id blocks)
   (cdr (map-find id (get-graph-map blocks))))
@@ -257,3 +293,70 @@
                :data (get-block-data ,bb)
                )))
      ,@body))
+
+
+
+(defun remove-block-from-cfg (blck cfg)
+  ;; remove this block from its preds' succs and its succs' preds
+  ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
+  (declare (optimize (debug 3)(speed 0)))
+  (let ((preds (get-block-preds blck))
+        (succs (get-block-succs blck))
+        (blckid (get-block-id blck)))
+    (let ((remove-back (reduce (lambda(cfg* pred)
+                                 (declare (optimize (debug 3) (speed 0)))
+                                 ;;(break)
+                                 (let* ((predblck (map-val pred cfg*))
+                                        (predsuccs (get-block-succs predblck)))
+                                   (map-insert pred
+                                               (block-with-succs (append (remove blckid predsuccs) succs) predblck)
+                                               cfg*)))
+                               preds
+                               :initial-value cfg)))
+      (let ((remove-forward (reduce (lambda(cfg* succ)
+                                      (declare (optimize (debug 3)(speed 0)))
+                                      (let* ((succblck (map-val succ cfg*))
+                                             (succpreds (get-block-preds succblck)))
+                                        (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
+                                    succs
+                                    :initial-value remove-back)))
+        (map-remove blckid remove-forward)))))
+
+
+(defun merge-blocks (blck1 blck2)
+  (make-pcf-basic-block
+   :id (get-block-id blck1)
+   :op (append (get-block-op-list blck1) (get-block-op-list blck2))
+   :base (get-block-base blck1)
+   :preds (reduce (lambda (preds x)
+                    (if (or (member x preds) (= x (get-block-id blck1)))
+                        preds
+                        (append preds (list x))))
+                  (get-block-preds blck1)
+                  :initial-value (get-block-preds blck2))
+   :succs (reduce (lambda (succs x)
+                    (if (or (member x succs) (= x (get-block-id blck1)))
+                        succs
+                        (append succs (list x))))
+                  (get-block-succs blck1)
+                  :initial-value (get-block-succs blck2))
+   :data (list
+          (map-union-without-conflicts (get-block-consts blck1) (get-block-consts blck2))
+          (set-union (get-block-faints blck1) (get-block-faints blck2))
+          (set-union (get-block-lives blck1) (get-block-lives blck2))
+          )
+   )
+  )
+
+(defun map-union-without-conflicts (map1 map2)
+  (let ((newmap (map-reduce (lambda (map-accum key val)
+                              (declare (optimize (debug 3)(speed 0)))
+                              (aif (map-val key map2 t)
+                                   (if (equal it val)
+                                       map-accum ;; already have the element
+                                       (map-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
+                                   (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
+                            map1
+                            map2)))
+    newmap))
+

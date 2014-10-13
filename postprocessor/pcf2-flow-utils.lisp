@@ -32,8 +32,8 @@
   `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
      ,@body))
 |#
+
 (defun eliminate-extra-consts (flow blck use-map)
-  ;; if blckid is past 
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
     (map-reduce (lambda (map key val)

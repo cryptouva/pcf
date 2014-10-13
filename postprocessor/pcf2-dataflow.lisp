@@ -381,31 +381,6 @@
 
 ;; functions for eliminating gates (and potentially other pcf2 ops) from the cfg as a result of the analysis we've performed
 
-(defun remove-block-from-cfg (blck cfg)
-  ;; remove this block from its preds' succs and its succs' preds
-  ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
-  (declare (optimize (debug 3)(speed 0)))
-  (let ((preds (get-block-preds blck))
-        (succs (get-block-succs blck))
-        (blckid (get-block-id blck)))
-    (let ((remove-back (reduce (lambda(cfg* pred)
-                                 (declare (optimize (debug 3) (speed 0)))
-                                 ;;(break)
-                                 (let* ((predblck (map-val pred cfg*))
-                                        (predsuccs (get-block-succs predblck)))
-                                   (map-insert pred
-                                               (block-with-succs (append (remove blckid predsuccs) succs) predblck)
-                                               cfg*)))
-                               preds
-                               :initial-value cfg)))
-      (let ((remove-forward (reduce (lambda(cfg* succ)
-                                      (declare (optimize (debug 3)(speed 0)))
-                                      (let* ((succblck (map-val succ cfg*))
-                                             (succpreds (get-block-preds succblck)))
-                                        (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
-                                    succs
-                                    :initial-value remove-back)))
-        (map-remove blckid remove-forward)))))
 
 (defmacro block-with-copy (destination source)
   `(map-insert blockid 
@@ -449,14 +424,16 @@
                                  (block-with-copy* pre-dest pre-op2))
                                 ((equal op2-val 1)
                                  (block-with-copy* pre-dest pre-op1))
-                                (t (make-instance 'const :dest pre-dest :op1 0)))) ;; one of the inputs is const, but it is 0. this should have been handles above though.
+                                (t (error "const gate not handled: should be 0"))))
+                                 ;;(make-instance 'const :dest pre-dest :op1 0)))) ;; one of the inputs is const, but it is 0. this should have been handles above though.
                              ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
                               (cond
                                 ((equal op1-val 0)
                                  (block-with-copy* pre-dest pre-op2))
                                 ((equal op2-val 0)
                                  (block-with-copy* pre-dest pre-op1))
-                                (t (make-instance 'const :dest pre-dest :op1 1)))) ;; one of the inputs is const, and neither is 0 (so one is 1). this should have been handled above though.
+                                (t (error " const gate not handled: should be 1"))))
+                                 ;;(make-instance 'const :dest pre-dest :op1 1)))) ;; one of the inputs is const, and neither is 0 (so one is 1). this should have been handled above though.
                              ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
                               (cond
                                 ((equal op1-val 0)
@@ -471,7 +448,33 @@
 (defmethod transform-op ((op instruction) base faints lives consts)
   op
   )
-
+#|
+(defun remove-block-from-cfg (blck cfg)
+  ;; remove this block from its preds' succs and its succs' preds
+  ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
+  (declare (optimize (debug 3)(speed 0)))
+  (let ((preds (get-block-preds blck))
+        (succs (get-block-succs blck))
+        (blckid (get-block-id blck)))
+    (let ((remove-back (reduce (lambda(cfg* pred)
+                                 (declare (optimize (debug 3) (speed 0)))
+                                 ;;(break)
+                                 (let* ((predblck (map-val pred cfg*))
+                                        (predsuccs (get-block-succs predblck)))
+                                   (map-insert pred
+                                               (block-with-succs (append (remove blckid predsuccs) succs) predblck)
+                                               cfg*)))
+                               preds
+                               :initial-value cfg)))
+      (let ((remove-forward (reduce (lambda(cfg* succ)
+                                      (declare (optimize (debug 3)(speed 0)))
+                                      (let* ((succblck (map-val succ cfg*))
+                                             (succpreds (get-block-preds succblck)))
+                                        (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
+                                    succs
+                                    :initial-value remove-back)))
+        (map-remove blckid remove-forward)))))
+|#
 
 (defun eliminate-extra-gates* (cfg)
   ;;(declare (optimize (debug 3)(speed 0)))
@@ -579,7 +582,7 @@
                                         cfg*))))|#
                          #|(branch
                           (progn (break)
-                                 cfg*))|#
+                         cfg*))|#
                          (otherwise cfg*)))
                      cfg*))
               cfg
@@ -599,3 +602,15 @@
   ;;(print cfg)
   (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
 )
+
+#|
+(defun compress-cfg (cfg)
+  (map-reduce (lambda (map-accum blockid blck)
+                (let ((preds (get-block-preds blck))
+                      (inputs (get-block-inputs blck))
+                      (dests (get-block-outputs blck))
+                      )
+                  cfg
+              cfg)
+)
+|#
