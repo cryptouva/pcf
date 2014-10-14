@@ -113,7 +113,7 @@
       ;;(break)
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-consts flow blck use-map)
-      flow)))
+          flow)))
   )
 
 (defun const-weaker-fn (map1 map2)
