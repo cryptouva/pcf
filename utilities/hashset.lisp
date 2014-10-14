@@ -71,13 +71,13 @@
     set))
 
 (defun hset-member (key set)
-  (hmap-val key set)) ;; will spit out t or nil
+  (hmap-val key set t)) ;; will spit out t or nil
 
 (defun hset-subset (set1 set2)
-  (hmap-reduce (lambda (state key)
+  (hset-reduce (lambda (state key)
                  (and
                   state
-                  (hmap-find key set2)))
+                  (hset-member key set2)))
                set1
                t))
 
