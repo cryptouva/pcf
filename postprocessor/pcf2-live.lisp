@@ -59,8 +59,8 @@
   ))
 
 (defun live-flow-fn (blck cfg use-map)
-  (declare (optimize (speed 0) (debug 3))
-           (ignore use-map))
+  (declare ;;(optimize (speed 0) (debug 3))
+   (ignore use-map))
   ;;  (break)
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op

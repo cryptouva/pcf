@@ -36,16 +36,16 @@
 (defun eliminate-extra-consts (flow blck use-map)
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
-    (map-reduce (lambda (map key val)
+    (hmap-reduce (lambda (map key val)
                   (let ((key-use (map-val key use-map t)))
                     (if key-use
                         (if (and (not (set-member key lives))
                                  (> blckid (cdr key-use))) ;; use-map is (first . last )
                             map ;; eliminate
-                            (map-insert key val map)) ;; not done with it yet
-                        (map-insert key val map)))) ;; don't know when it's used, must retain
+                            (hmap-insert key val map)) ;; not done with it yet
+                        (hmap-insert key val map)))) ;; don't know when it's used, must retain
                 flow
-                (map-empty))))
+                (hmap-empty))))
 
 (defun eliminate-extra-faints (flow blck use-map)
   (let ((blckid (get-block-id blck))

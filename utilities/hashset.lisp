@@ -3,7 +3,7 @@
 (defpackage :hashset
   (:use :common-lisp )
   (:export make-hash-set
-           hash-set
+           hashset
            hmap-empty
            hset-insert
            hset-remove
@@ -40,7 +40,7 @@
 (defun get-hashset-table (hashset)
   (hashset-set hashset))
 
-(defun make-hash-set (&key (size 50) (comp #'equal))
+(defun make-hash-set (&key (size 10) (comp #'equal))
   (make-hashset
    :set (make-hash-table :test comp :size size)
    :comp comp)

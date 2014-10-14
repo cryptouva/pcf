@@ -103,17 +103,17 @@
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  (declare (optimize (speed 0) (debug 3)))
+  (declare 
+    (ignore use-map)
+    (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'map-union-without-conflicts)))
-    ;;(if (equalp (get-block-id blck) 439) (break))
-    ;;(break)
     (let ((flow (map-union-without-conflicts
                  (map-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
       ;;(break)
-      ;;(if (zerop (mod (get-block-id blck) 100))
-       ;;   (eliminate-extra-consts flow blck use-map)
-      flow));;)
+      (if (zerop (mod (get-block-id blck) 100))
+          (eliminate-extra-consts flow blck use-map)
+      flow)))
   )
 
 (defun const-weaker-fn (map1 map2)
@@ -123,12 +123,12 @@
 ;;  (declare (optimize (debug 3)(speed 0)))
   (labels ((weaker-map-vals (m1 m2)
              (hmap-reduce (lambda (state key m-val1)
-                           (declare (optimize (debug 3)(speed 0)))
-                           (let ((m-val2 (hmap-val key m2 t)))
-                             (and state
-                                  (or (equal m-val1 m-val2)
-                                      (equalp m-val1 'pcf2-block-graph:pcf-not-const)
-                                      (null m-val2)))))
+                            (declare (optimize (debug 3)(speed 0)))
+                            (let ((m-val2 (hmap-val key m2 t)))
+                              (and state
+                                   (or (equal m-val1 m-val2)
+                                       (equalp m-val1 'pcf2-block-graph:pcf-not-const)
+                                       (null m-val2)))))
                           m1
                           t)))
     (and
