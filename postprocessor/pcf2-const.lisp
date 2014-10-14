@@ -498,7 +498,7 @@
 
 (defmacro kill-for-indirection (dest-address length)
   `(if (equal ,length 1)
-       (if (map-find ,dest-address flow-data t) ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
+       (if (hmap-find ,dest-address flow-data t) ;; it may not always be found; but usually in this case we're copying a condition wire, which usually won't be const (or faint) anyway
            (singleton ,dest-address)
            (empty-kill))
         (reduce (lambda (set var)
