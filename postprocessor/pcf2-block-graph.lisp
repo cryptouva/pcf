@@ -1,5 +1,5 @@
 (defpackage :pcf2-block-graph
-  (:use :common-lisp :pcf2-bc :setmap :utils)
+  (:use :common-lisp :pcf2-bc :setmap :utils :hashset)
   (:export pcf-graph
            pcf-basic-block
            get-cfg-top
@@ -97,7 +97,7 @@
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Base: ~A~%" (get-block-base struct))
                 (format stream "Faint-Out: ~A~%" (get-block-faints struct))
-                ;;(format stream "Consts: ~A~%" (get-block-consts struct))
+                (format stream "Consts: ~A~%" (get-block-consts struct))
                 (format stream "Live-Out: ~A~%" (get-block-lives struct))
                 )
               )
@@ -108,7 +108,7 @@
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
-  (data (list (map-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
+  (data (list (hmap-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -350,15 +350,17 @@
   )
 
 (defun map-union-without-conflicts (map1 map2)
-  (let ((newmap (map-reduce (lambda (map-accum key val)
-                              (declare (optimize (debug 3)(speed 0)))
-                              (aif (map-val key map2 t)
-                                   (if (equal it val)
-                                       map-accum ;; already have the element
-                                       (map-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
-                                   (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
-                            map1
-                            map2)))
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (let ((newmap (hmap-reduce (lambda (map-accum key val)
+                               (declare (optimize (debug 3)(speed 0)))
+                               (aif (hmap-val key map2 t)
+                                    (if (equal it val)
+                                        map-accum ;; already have the element
+                                        (hmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
+                                    (hmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
+                             map1
+                             (copy-hash-set map2))))
     newmap))
 
 (defun blocks-conflict (blck1 blck2)

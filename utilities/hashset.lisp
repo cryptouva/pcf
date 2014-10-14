@@ -4,12 +4,18 @@
   (:use :common-lisp )
   (:export make-hash-set
            hash-set
+           hmap-empty
            hset-insert
            hset-remove
            hmap-insert
            hmap-remove
+           hmap-reduce
+           hmap-find
+           hmap-val
            hmap-singleton
+           hset-subset
            get-hashset-table
+           copy-hash-set
            )
   )
 
@@ -40,6 +46,17 @@
    :comp comp)
 )
 
+(defun copy-hash-set (hashset)
+  (let* ((comp (hashset-comp hashset))
+         (newset (make-hashset
+                  :set (make-hash-table :test comp :size 50)
+                  :comp comp)))
+    (progn
+      (maphash (lambda (key val)
+                (hmap-insert key val newset))
+              (get-hashset-table hashset))
+      newset)))
+
 (defun hmap-empty ()
   (make-hash-set))
 
@@ -52,6 +69,17 @@
   (progn
     (remhash key (get-hashset-table set))
     set))
+
+(defun hset-member (key set)
+  (hmap-val key set)) ;; will spit out t or nil
+
+(defun hset-subset (set1 set2)
+  (hmap-reduce (lambda (state key)
+                 (and
+                  state
+                  (hmap-find key set2)))
+               set1
+               t))
 
 (defun hmap-insert (key val map)
   (progn
@@ -75,14 +103,14 @@
         (error "Key not found in map.")
         (cons key value))))
 
-(defmacro hset-singleton (key)
+(defun hset-singleton (key)
   (let ((a (make-hashset)))
     (progn
       (setf (gethash key (get-hashset-table a)) t)
       a)))
 
-(defmacro hmap-singleton (key val)
-  `(let ((a (make-hash-set)))
+(defun hmap-singleton (key val)
+  (let ((a (make-hash-set)))
      (progn
        (setf (gethash key (get-hashset-table a)) val)
        a))
@@ -100,13 +128,14 @@
   ;; fn should be of the form (lambda (state key) ...)
   (reduce (lambda (st x)
             (funcall fn st x))
-          (loop for i being the hash-keys in (get-hashset-table hset))
+          (loop for i being the hash-keys in (get-hashset-table hset) collect i)
           :initial-value init))
 
 (defun hmap-reduce (fn hmap init)
   ;; fn should be of the form (lambda (state key val) ...)
   (reduce (lambda (st x)
-            (funcall fn st x (gethash x (get-hashset-table st))))
-          (loop for i being the hash-keys in (get-hashset-table hmap))
+            (funcall fn st x (hmap-val x hmap)))
+          ;;(gethash x (get-hashset-table st))))
+          (loop for i being the hash-keys in (get-hashset-table hmap) collect i)
           :initial-value init))
 
