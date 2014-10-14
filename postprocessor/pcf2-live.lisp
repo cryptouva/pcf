@@ -36,7 +36,6 @@
 
 (defmacro top-set ()
   `(empty-set))
-  ;;`(set-insert (empty-set) *lattice-top*))
 
 (defun get-out-sets (blck cfg conf)
   (reduce
@@ -50,7 +49,7 @@
 
 (defun live-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (funcall live-confluence-operator set1 set2))
 
 (defun live-weaker-fn (set1 set2)
@@ -210,12 +209,12 @@
            (with-true-address op1
              (if (equalp op2 1)
                  (singleton op1)
-                 (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))))
+                 (set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i)))))
     :kill (with-slots (dest op2) op
             (with-true-address dest
               (if (equalp op2 1)
                   (singleton dest)
-                  (set-from-list (loop for i from dest to (+ dest op2) collect i))))))
+                  (set-from-list (loop for i from dest to (+ dest op2 -1) collect i))))))
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
@@ -229,13 +228,13 @@
     ;; definition of wires from dest to dest + op2
     :kill (with-slots (dest op2) op
             (with-true-address dest
-              (set-from-list (loop for i from dest to (+ dest op2) collect i)))))
+              (set-from-list (loop for i from dest to (+ dest op2 -1) collect i)))))
 
 (def-gen-kill indir-copy
     ;; use of wires from op1 to op1 + op2
     :gen (with-slots (op1 op2) op
            (with-true-address op1
-             (set-from-list (loop for i from op1 to (+ op1 op2) collect i))))
+             (set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i))))
     ;; no kill here because we can't dereference
     )
 

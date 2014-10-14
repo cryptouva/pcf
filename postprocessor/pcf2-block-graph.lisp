@@ -360,7 +360,7 @@
                                         (hmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
                                     (hmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
                              map1
-                             (copy-hash-set map2))))
+                            (copy-hash-set map2))))
     newmap))
 
 (defun blocks-conflict (blck1 blck2)
