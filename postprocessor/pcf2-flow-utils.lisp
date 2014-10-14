@@ -1,7 +1,7 @@
 ;;; some utilities for flow functions in our data flow analysis, which is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-flow-utils
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph)
+  (:use :common-lisp :pcf2-bc :setmap :utils :hashset :pcf2-block-graph)
   (:export map-extract-val
            ;;with-true-address
            ;;with-true-addresses
@@ -14,7 +14,7 @@
 
 
 (defmacro map-extract-val (var data)
-  `(aif (map-val ,var ,data t)
+  `(aif (hmap-val ,var ,data t)
         (if (equalp 'pcf2-block-graph:pcf-not-const it) nil it)
         0)
   )

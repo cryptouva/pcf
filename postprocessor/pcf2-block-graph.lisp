@@ -1,5 +1,5 @@
 (defpackage :pcf2-block-graph
-  (:use :common-lisp :pcf2-bc :setmap :utils)
+  (:use :common-lisp :pcf2-bc :setmap :utils :hashset)
   (:export pcf-graph
            pcf-basic-block
            get-cfg-top
@@ -36,6 +36,7 @@
            pcf-not-const
            remove-block-from-cfg
            map-union-without-conflicts
+           blocks-conflict
            )
   )
 (in-package :pcf2-block-graph)
@@ -96,7 +97,7 @@
                 (format stream "Succs: ~A~%" (get-block-succs struct))
                 (format stream "Base: ~A~%" (get-block-base struct))
                 (format stream "Faint-Out: ~A~%" (get-block-faints struct))
-                ;;(format stream "Consts: ~A~%" (get-block-consts struct))
+                (format stream "Consts: ~A~%" (get-block-consts struct))
                 (format stream "Live-Out: ~A~%" (get-block-lives struct))
                 )
               )
@@ -107,7 +108,7 @@
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
-  (data (list (map-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
+  (data (list (hmap-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -332,14 +333,14 @@
                     (if (or (member x preds) (= x (get-block-id blck1)))
                         preds
                         (append preds (list x))))
-                  (get-block-preds blck1)
-                  :initial-value (get-block-preds blck2))
+                  (get-block-preds blck2)
+                  :initial-value (get-block-preds blck1))
    :succs (reduce (lambda (succs x)
                     (if (or (member x succs) (= x (get-block-id blck1)))
                         succs
                         (append succs (list x))))
-                  (get-block-succs blck1)
-                  :initial-value (get-block-succs blck2))
+                  (get-block-succs blck2)
+                  :initial-value (get-block-succs blck1))
    :data (list
           (map-union-without-conflicts (get-block-consts blck1) (get-block-consts blck2))
           (set-union (get-block-faints blck1) (get-block-faints blck2))
@@ -349,14 +350,28 @@
   )
 
 (defun map-union-without-conflicts (map1 map2)
-  (let ((newmap (map-reduce (lambda (map-accum key val)
-                              (declare (optimize (debug 3)(speed 0)))
-                              (aif (map-val key map2 t)
-                                   (if (equal it val)
-                                       map-accum ;; already have the element
-                                       (map-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
-                                   (map-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
-                            map1
-                            map2)))
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (let ((newmap (hmap-reduce (lambda (map-accum key val)
+                               (declare (optimize (debug 3)(speed 0)))
+                               (aif (hmap-val key map2 t)
+                                    (if (equal it val)
+                                        map-accum ;; already have the element
+                                        (hmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
+                                    (hmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
+                             map1
+                             (copy-hash-set map2))))
     newmap))
 
+(defun blocks-conflict (blck1 blck2)
+  (let ((in-blck1 (get-block-inputs blck1))
+        (in-blck2 (get-block-inputs blck2))
+        (dest-blck1 (get-block-dests blck1))
+        (dest-blck2 (get-block-dests blck2)))
+    ;; blocks may not share inputs or dests, or have crossover between them
+    ;; returns boolean value of whether the blocks conflict. t for yes, nil for no.
+    (or (> 0 (length (intersection in-blck1 in-blck2)))
+        (> 0 (length (intersection dest-blck1 dest-blck2)))
+        (> 0 (length (intersection in-blck1 dest-blck2)))
+        (> 0 (length (intersection in-blck2 dest-blck1)))))
+)
