@@ -35,7 +35,6 @@
            cfg-with-map
            pcf-not-const
            remove-block-from-cfg
-           map-union-without-conflicts
            blocks-conflict
            )
   )
@@ -108,7 +107,7 @@
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
-  (data (list (hmap-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
+  (data (list (map-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
@@ -323,7 +322,7 @@
                                     :initial-value remove-back)))
         (map-remove blckid remove-forward)))))
 
-
+#|
 (defun merge-blocks (blck1 blck2)
   (make-pcf-basic-block
    :id (get-block-id blck1)
@@ -348,21 +347,7 @@
           )
    )
   )
-
-(defun map-union-without-conflicts (map1 map2)
-  (declare (optimize (debug 3)(speed 0)))
-  ;;(break)
-  (let ((newmap (hmap-reduce (lambda (map-accum key val)
-                               (declare (optimize (debug 3)(speed 0)))
-                               (aif (hmap-val key map2 t)
-                                    (if (equal it val)
-                                        map-accum ;; already have the element
-                                        (hmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
-                                    (hmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
-                             map1
-                            (copy-hash-set map2))))
-    newmap))
-
+|#
 (defun blocks-conflict (blck1 blck2)
   (let ((in-blck1 (get-block-inputs blck1))
         (in-blck2 (get-block-inputs blck2))

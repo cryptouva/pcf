@@ -403,13 +403,13 @@
           (pre-op1 op1)
           (pre-op2 op2))
       (with-true-addresses (dest op1 op2)
-        (let ((op1-val (hmap-val op1 consts t))
-              (op2-val (hmap-val op2 consts t)))
+        (let ((op1-val (map-val op1 consts t))
+              (op2-val (map-val op2 consts t)))
           ;; if an output is live, both of its inputs will be live
           (if (not (and (set-member op1 faints)
                         (set-member op2 faints)))
               nil
-              (aif (hmap-val dest consts t)
+              (aif (map-val dest consts t)
                    (if (not (is-not-const it))
                        ;; constant gate, simply replace with const
                        (make-instance 'const :dest pre-dest :op1 it)
