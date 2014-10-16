@@ -71,7 +71,7 @@
 
 (defun faint-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (funcall faint-confluence-operator set1 set2))
 
 (defun faint-weaker-fn (set1 set2)
@@ -81,7 +81,7 @@
   ))
 
 (defun faint-flow-fn (blck cfg use-map)
-  (declare (optimize (speed 0) (debug 3)))
+  ;;(declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the larger set come second
@@ -221,7 +221,7 @@
                (with-true-address-list dest
                  (with-true-address op1
                    (let ((destwires (set-from-list dest)))
-                     (if (equalp (empty-set) (set-inter destwires flow-data))
+                     (if (set-equalp (empty-set) (set-inter destwires flow-data))
                          (empty-set)
                          (singleton op1))))))
     ;; if the op is a member of the dests, then don't kill it
@@ -349,7 +349,8 @@
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
-                 (let ((addr (map-extract-val op1 (get-block-consts blck))))
+                 (let ((addr (hmap-val op1 (get-block-consts blck))))
+                   ;; addr should always be defined in consts
                    ;;(break)
                    (gen-for-indirection addr dest op2))))
     :const-kill (with-slots (dest op2) op
@@ -360,12 +361,14 @@
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
-                 (let ((addr (map-extract-val dest (get-block-consts blck))))
+                 (let ((addr (hmap-val dest (get-block-consts blck))))
                    ;;(break)
+                   ;; addr should always be defined in consts
                    (gen-for-indirection op1 addr op2))))
     :dep-kill (with-slots (dest op2) op
                 (with-true-address dest
-                  (let ((addr (map-extract-val dest (get-block-consts blck))))
+                  (let ((addr (hmap-val dest (get-block-consts blck))))
+                    ;; addr should always be defined in consts
                     (kill-for-indirection addr op2))))
     )
 

@@ -7,6 +7,11 @@
            hmap-empty
            hset-insert
            hset-remove
+           hset-to-list
+           hset-member
+           hset-reduce
+           hmap-keys
+           hmap-vals
            hmap-insert
            hmap-remove
            hmap-reduce
@@ -37,20 +42,26 @@
   )
 
 (defparameter *default-hash-size* 10)
+(defparameter *default-rehash-size* 1.25)
+
 
 (defun get-hashset-table (hashset)
   (hashset-set hashset))
 
-(defun make-hash-set (&key (size *default-hash-size*) (comp #'equal))
+(defun make-hash-set (&key (size *default-hash-size*) (rehash-size *default-rehash-size*) (comp #'equal))
   (make-hashset
-   :set (make-hash-table :test comp :size size)
+   :set (make-hash-table :test comp
+                         :rehash-size rehash-size
+                         :size size)
    :comp comp)
 )
 
 (defun copy-hash-set (hashset)
   (let* ((comp (hashset-comp hashset))
          (newset (make-hashset
-                  :set (make-hash-table :test comp :size *default-hash-size*)
+                  :set (make-hash-table :test comp
+                                        :size *default-hash-size*
+                                        :rehash-size *default-rehash-size*)
                   :comp comp)))
     (progn
       (maphash (lambda (key val)
@@ -75,10 +86,12 @@
   (hmap-val key set t)) ;; will spit out t or nil
 
 (defun hset-subset (set1 set2)
+  (declare (type hashset set1 set2))
   (hset-reduce (lambda (state key)
                  (and
                   state
-                  (hset-member key set2)))
+                  (equal (cons key (hmap-val key set1)) (hmap-find key set2 t))))
+                  ;;(hset-member key set2)))
                set1
                t))
 
@@ -112,10 +125,14 @@
 
 (defun hmap-singleton (key val)
   (let ((a (make-hash-set)))
-     (progn
-       (setf (gethash key (get-hashset-table a)) val)
-       a))
+    (progn
+      (setf (gethash key (get-hashset-table a)) val)
+      a))
   )
+
+(defun hset-to-list (hmap)
+  (loop for k being the hash-keys in (get-hashset-table hmap) collect k)
+  )  
 
 (defun hmap-keys (hmap)
   (loop for k being the hash-keys in (get-hashset-table hmap) collect k)
