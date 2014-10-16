@@ -311,10 +311,11 @@
 ;; functions for the implementation of the worklist algorithm
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  ;;(declare (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
+      ;;(if (equal (get-block-id cur-node) 4)(break))
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
                                    (worklist (second state))
@@ -398,18 +399,20 @@
   )
 
 (defmethod transform-op ((op gate) base faints lives consts)
+  (declare (optimize (debug 3)(speed 0)))
   (with-slots (dest op1 op2 truth-table) op
     (let ((pre-dest dest)
           (pre-op1 op1)
           (pre-op2 op2))
       (with-true-addresses (dest op1 op2)
-        (let ((op1-val (map-val op1 consts t))
-              (op2-val (map-val op2 consts t)))
+        (let ((op1-val (hmap-val op1 consts t))
+              (op2-val (hmap-val op2 consts t)))
           ;; if an output is live, both of its inputs will be live
+          ;;(break)
           (if (not (and (set-member op1 faints)
                         (set-member op2 faints)))
               nil
-              (aif (map-val dest consts t)
+              (aif (hmap-val dest consts t)
                    (if (not (is-not-const it))
                        ;; constant gate, simply replace with const
                        (make-instance 'const :dest pre-dest :op1 it)

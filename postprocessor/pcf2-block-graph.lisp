@@ -107,7 +107,7 @@
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
-  (data (list (map-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
+  (data (list (hmap-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
   (:documentation "This represents a basic block in the control flow graph.")
   )
 
