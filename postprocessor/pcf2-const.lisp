@@ -89,9 +89,9 @@
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  (declare 
+  ;;(declare 
    ;;(ignore use-map)
-    (optimize (speed 0) (debug 3)))
+  ;; (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'hmap-union-without-conflicts)))
     ;;(break)
     ;;(if (typep (get-block-op blck) 'bits) (break))
@@ -99,14 +99,14 @@
                  (hmap-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
       ;;(break)
-      #|
+      
       (if (zerop (mod (get-block-id blck) 50))
           (eliminate-extra-consts flow blck use-map)
           flow)))
-      |#
-      ;;(if (typep (get-block-op blck) 'const)
-      ;;    (break))
-      flow))
+  
+  ;;(if (typep (get-block-op blck) 'const)
+  ;;    (break))
+  ;;flow))
   )
 
 ;;(defparameter const-weaker-fn #'pcf2-flow-utils:hmap-weaker-fn)

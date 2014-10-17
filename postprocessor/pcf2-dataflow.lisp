@@ -311,7 +311,7 @@
 ;; functions for the implementation of the worklist algorithm
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
@@ -447,6 +447,17 @@
                              (t op))
                            op))
                    op)))))))
+
+#|
+(defmethod transform-op ((op const) base faints lives consts)
+  (declare (optimize (debug 3)(speed 0)))
+  (with-slots (dest) op
+    (with-true-addresses (dest)
+      (if (not (set-member dest lives))
+          nil
+          op)))
+)
+|#
 
 (defmethod transform-op ((op instruction) base faints lives consts)
   op

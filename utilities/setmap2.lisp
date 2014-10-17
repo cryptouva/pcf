@@ -57,8 +57,8 @@
 
 (defmacro empty-set (&key comp)
   (if comp
-      `(make-avl-set :tree nil :comp ,comp)
-      `(make-avl-set :tree nil :comp #'<)
+      `(make-avl-set :tree (empty-avl-tree :comp ,comp) :comp ,comp)
+      `(make-avl-set :tree (empty-avl-tree :comp #'<) :comp #'<)
       )
   )
 
@@ -73,7 +73,7 @@
 (defun singleton (x &key (comp #'<))
   "Create a new singleton set"
   (make-avl-set :tree
-                (avl-tree-insert x (empty-set) :comp comp)
+                (avl-tree-insert x (empty-avl-tree :comp comp) :comp comp)
                 :comp comp)
   )
 
@@ -238,8 +238,8 @@
 
 (defmacro map-empty (&key comp)
   (if comp
-      `(make-avl-set :tree nil :comp (carcomp ,comp))
-      `(make-avl-set :tree nil :comp #'default-comp)
+      `(make-avl-set :tree (empty-avl-tree :comp (carcomp ,comp)) :comp (carcomp ,comp))
+      `(make-avl-set :tree (empty-avl-tree :comp #'default-comp) :comp #'default-comp)
       )
   )
 
