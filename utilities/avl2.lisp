@@ -122,7 +122,7 @@
   )
 
 (defun avl-balance (tr)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -158,14 +158,14 @@
 |#
 
 (defun avl-tree-insert (x tr &key (comp nil))
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (if (null comp)
       (avl-insert x tr :comp (avl-comp tr))
       (avl-insert x tr :comp comp)))
 
 (defun avl-insert (x tr &key comp)
   "Insert a new value into an AVL tree."
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (or
        (null tr)
        (tree-is-empty tr))
@@ -191,7 +191,7 @@
                          
 (defun avl-insert-unique (x lst &key comp)
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (or
        (null lst)
        (tree-is-empty lst))
@@ -224,7 +224,7 @@
 
 (defun avl-tree-remove-min (lst)
   "Find the leftmost node of the tree and remove it"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (null (avl-left lst))
       (values (avl-data lst) (if (avl-right lst)
                                  (avl-right lst)
@@ -247,7 +247,7 @@
 
 (defun avl-remove (x lst &key comp allow-no-result)
   "Remove a value from an AVL tree"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (tree-is-empty lst)
       (if allow-no-result
           nil
