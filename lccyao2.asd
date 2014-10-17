@@ -10,10 +10,10 @@
 	       (:module utilities
 		       :components ((:file "string-tokenizer")
 				    (:file "skewlist")
-				    (:file "avl")
+				    (:file "avl2")
 				    (:file "pairingheap")
 				    (:file "utils")
-				    (:file "setmap" :depends-on ("avl"))
+				    (:file "setmap2" :depends-on ("avl2"))
 				    (:file "pcf2-bytecode")
                                     (:file "hashset")
 				    )

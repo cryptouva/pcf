@@ -41,8 +41,8 @@
   (:documentation "An easier interface for hash sets.")
   )
 
-(defparameter *default-hash-size* 10)
-(defparameter *default-rehash-size* 1.25)
+(defparameter *default-hash-size* 5)
+(defparameter *default-rehash-size* 1.2)
 
 
 (defun get-hashset-table (hashset)
@@ -60,8 +60,8 @@
   (let* ((comp (hashset-comp hashset))
          (newset (make-hashset
                   :set (make-hash-table :test comp
-                                        :size *default-hash-size*
-                                        :rehash-size *default-rehash-size*)
+                                        :size (/ (hash-table-size (get-hashset-table hashset)) 2) ;;*default-hash-size*
+                                        :rehash-size (hash-table-rehash-size (get-hashset-table hashset)));; *default-rehash-size*)
                   :comp comp)))
     (progn
       (maphash (lambda (key val)

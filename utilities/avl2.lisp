@@ -14,54 +14,80 @@
             )
 (in-package :tree)
 
-;; here is what these avl tree nodes look like:
-;;   cons:  [   car   |   cdr   ]    
-;;              /             \
-;;       [  height  ]  [  data  |       ]
-;;                                     \
-;;                           [ avl-left  |  avl-right  ]
 
-(defmacro empty-avl-tree ()
-  nil)
+(defstruct (avl-tree
+             (:print-function
+              (lambda (struct stream depth)
+                (declare (ignore depth));; (ignore struct))
+                (format stream "{")
+                (avl-tree-map (lambda (x) (format stream "~A  " x)) struct :comp (avl-tree-comp struct))
+                (format stream "}")
+                )
+              )
+             )
+  (left)
+  (right)
+  (height)
+  (comp)
+  (data)
+)
+
+(defparameter *default-comp* #'<)
+
+(defun empty-avl-tree (&key (comp *default-comp*))
+  (make-avl-tree
+   :left nil
+   :right nil
+   :height 1
+   :comp comp
+   :data nil)
+  )
+
+(defmacro tree-is-empty (tr)
+  `(and (null (avl-data ,tr))
+        (null (avl-left ,tr))
+        (null (avl-right ,tr))))
 
 (defmacro avl-height (tr)
-  `(the fixnum
-     (if (null ,tr)
-         0
-         (car ,tr)
-         )
-     )
+  `(if ,tr
+       (avl-tree-height ,tr)
+       0)
   )
 
 (defmacro avl-data (tr)
-  `(cadr ,tr)
-  )
+  `(if ,tr
+       (avl-tree-data ,tr)
+       nil)
+)
 
 (defmacro avl-left (tr)
-  `(if (null (cdr ,tr))
-       nil
-       (caddr ,tr))) 
+  `(if ,tr
+      (avl-tree-left ,tr)
+      nil)
+  )
 
 (defmacro avl-right (tr)
-  `(if (null (cdr ,tr))
-       nil
-       (cdddr ,tr)))
-
-(defmacro avl-cons (data left right)
-  (let ((_right (gensym))
-        (_left (gensym))
-        (_data (gensym))
-        )
-    `(let ((,_right ,right)
-           (,_left ,left)
-           (,_data ,data))
-       (cons (locally (declare (optimize (safety 0)))
-               (the fixnum (1+ (max (avl-height ,_left) (avl-height ,_right)))))
-             (cons ,_data
-                   (cons ,_left ,_right)))
-       )
-    )
+  `(if ,tr
+      (avl-tree-right ,tr)
+      nil)
   )
+
+(defmacro avl-comp (tr)
+  `(if ,tr
+      (avl-tree-comp ,tr)
+      nil)
+)
+
+(defun avl-cons (data left right &key (comp *default-comp*))
+  (assert (or
+           (or (null left) (null right))
+           (equalp (avl-comp left) (avl-comp right))))
+  (make-avl-tree
+   :left left
+   :right right
+   :data data
+   :height (max (avl-height left) (avl-height right))
+   :comp comp))
 
 (defun left-rotate (tr)
   "Perform a left rotation"
@@ -72,6 +98,7 @@
                 (avl-cons (avl-data tr)
                           (avl-left tr)
                           (avl-left (avl-right tr))
+                          :comp (avl-comp tr)
                           )
                 (avl-right (avl-right tr))
                 )
@@ -88,12 +115,14 @@
                 (avl-cons (avl-data tr)
                           (avl-right (avl-left tr))
                           (avl-right tr)
+                          :comp (avl-comp tr)
                           )
                 )
       )
   )
 
 (defun avl-balance (tr)
+  (declare (optimize (debug 3)(speed 0)))
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -102,7 +131,8 @@
                                         ; Need a right rotation
                       (avl-cons (avl-data tr)
                                 (avl-left tr)
-                                (right-rotate (avl-right tr)))
+                                (right-rotate (avl-right tr))
+                                :comp (avl-comp tr))
                       tr)))
     ((< -1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
      (right-rotate (if (< (avl-height (avl-left (avl-left tr)))  
@@ -110,10 +140,12 @@
                                         ; Need a left rotation
                        (avl-cons (avl-data tr)
                                  (left-rotate (avl-left tr))
-                                 (avl-right tr))
+                                 (avl-right tr)
+                                 :comp (avl-comp tr))
                        tr)))
     (t tr)))
 
+#|
 (defun avl-list-cons (x lst)
   "Using an AVL tree representation of a list, perform cons"
   (if (null lst)
@@ -123,47 +155,69 @@
       (avl-balance (avl-cons (avl-data lst) (avl-list-cons x (avl-left lst)) (avl-right lst)))
       )
   )
+|#
 
-(defun avl-tree-insert (x lst &key (comp #'<))
+(defun avl-tree-insert (x tr &key (comp nil))
+  (declare (optimize (debug 3)(speed 0)))
+  (if (null comp)
+      (avl-insert x tr :comp (avl-comp tr))
+      (avl-insert x tr :comp comp)))
+
+(defun avl-insert (x tr &key comp)
   "Insert a new value into an AVL tree."
-  (if (null lst)
-      (avl-cons x nil nil)
+  (declare (optimize (debug 3)(speed 0)))
+  (if (or
+       (null tr)
+       (tree-is-empty tr))
+      (avl-cons x nil nil :comp comp)
       (cond
-        ((null x) lst)
-        ((funcall comp x (avl-data lst))
+        ((null x) tr)
+        ((funcall comp x (avl-data tr))
          (avl-balance (avl-cons
-                       (avl-data lst)
-                        (avl-tree-insert x (avl-left lst) :comp comp)
-                        (avl-right lst))))
+                       (avl-data tr)
+                       (avl-insert x (avl-left tr) :comp comp)
+                       (avl-right tr)
+                       :comp comp)))
         (t (avl-balance (avl-cons
-                         (avl-data lst)
-                         (avl-left lst)
-                         (avl-tree-insert x (avl-right lst) :comp comp)))))))
+                         (avl-data tr)
+                         (avl-left tr)
+                         (avl-insert x (avl-right tr) :comp comp)
+                         :comp comp))))))
 
-(defun avl-tree-insert-unique (x lst &key (comp #'<))
+(defun avl-tree-insert-unique (x lst &key (comp nil))
+  (if (null comp)
+      (avl-insert-unique x lst :comp (avl-comp lst))
+      (avl-insert-unique x lst :comp comp)))
+                         
+(defun avl-insert-unique (x lst &key comp)
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
-  (declare (type function comp))
-  (if (null lst)
-      (avl-cons x nil nil)
+  (declare (optimize (debug 3)(speed 0)))
+  (if (or
+       (null lst)
+       (tree-is-empty lst))
+      (avl-cons x nil nil :comp comp)
       (cond
         ((null x) lst)
         ((funcall comp x (avl-data lst))
          (avl-balance (avl-cons
                        (avl-data lst)
-                       (avl-tree-insert-unique x (avl-left lst) :comp comp)
-                       (avl-right lst)))
+                       (avl-insert-unique x (avl-left lst) :comp comp)
+                       (avl-right lst)
+                       :comp comp))
          )
         ((funcall comp (avl-data lst) x)
          (avl-balance (avl-cons
                        (avl-data lst)
                        (avl-left lst)
-                       (avl-tree-insert-unique x (avl-right lst) :comp comp)))
+                       (avl-insert-unique x (avl-right lst) :comp comp)
+                       :comp comp))
          )
         ;; To allow maps to be updated, we create a node with this input value
         (t 
          (avl-cons x
-                     (avl-left lst)
-                     (avl-right lst)))
+                   (avl-left lst)
+                   (avl-right lst)
+                   :comp comp))
         )
       )
   )
@@ -180,16 +234,21 @@
                       (avl-data lst)
                       rlst
                       (avl-right lst)
-                      )
-                )
-        )
-      )
-  )
+                      :comp (avl-comp lst))))))
 
-(defun avl-tree-remove (x lst &key (comp #'<) (allow-no-result nil))
+(defun avl-tree-remove (x lst &key (comp nil) (allow-no-result nil))
+  (if (null comp)
+      (avl-remove x lst 
+                  :comp (avl-comp lst)
+                  :allow-no-result allow-no-result)
+      (avl-remove x lst 
+                  :comp comp
+                  :allow-no-result allow-no-result)))
+
+(defun avl-remove (x lst &key comp allow-no-result)
   "Remove a value from an AVL tree"
   (declare (optimize (debug 3)(speed 0)))
-  (if (null lst)
+  (if (tree-is-empty lst)
       (if allow-no-result
           nil
           (error 'value-not-in-tree))
@@ -197,31 +256,39 @@
         ((funcall comp x (avl-data lst))
          (avl-balance (avl-cons
                        (avl-data lst)
-                       (avl-tree-remove x (avl-left lst) :comp comp :allow-no-result allow-no-result)
-                       (avl-right lst))))
+                       (avl-remove x (avl-left lst) :comp comp :allow-no-result allow-no-result)
+                       (avl-right lst)
+                       :comp comp)))
         ((funcall comp (avl-data lst) x)
          (avl-balance (avl-cons
                        (avl-data lst)
                        (avl-left lst)
-                       (avl-tree-remove x (avl-right lst) :comp comp :allow-no-result allow-no-result))))
+                       (avl-remove x (avl-right lst) :comp comp :allow-no-result allow-no-result)
+                       :comp comp)))
         (t 
          (if (avl-right lst)
              (multiple-value-bind (rgsm rglst) (avl-tree-remove-min (avl-right lst))
                (avl-balance (avl-cons rgsm
                                         (avl-left lst)
-                                        rglst)))
+                                        rglst
+                                        :comp comp)))
              (avl-left lst))))))
 
-(defun avl-tree-search (x lst &key (comp #'<))
+(defun avl-tree-search (x lst &key (comp nil))
+  (if (null comp)
+      (avl-search x lst :comp (avl-comp lst))
+      (avl-search x lst :comp comp)))
+
+(defun avl-search (x lst &key comp)
   "Search an AVL tree for x, return true if x is in the tree"
-  (if (null lst)
+  (if (tree-is-empty lst)
       (values nil nil)
       (cond
         ((funcall comp x (avl-data lst))
-         (avl-tree-search x (avl-left lst) :comp comp)
+         (avl-search x (avl-left lst) :comp comp)
          )
         ((funcall comp (avl-data lst) x)
-         (avl-tree-search x (avl-right lst) :comp comp)
+         (avl-search x (avl-right lst) :comp comp)
          )
         ;; We use (avl-data lst) rather than x to support implementations of maps
         (t (values t (avl-data lst)))
@@ -244,7 +311,7 @@
                                                                                       (avl-tree-insert 3
                                                                                                        (avl-tree-insert
                                                                                                         4
-                                                                                                        nil
+                                                                                                        (empty-avl-tree)
                                                                                                         )
                                                                                                        )
                                                                                       )
@@ -275,7 +342,7 @@
 
 \"fn\" should be of the form (lambda (state x) ...)"
   (declare (type function fn))
-  (if (null tr)
+  (if (tree-is-empty tr)
       st
       (let* ((st-left (avl-tree-reduce fn (avl-left tr) st))
              (st-cur (apply fn (list st-left (avl-data tr))))
