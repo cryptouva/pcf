@@ -59,7 +59,7 @@ fields:
      * AND #\*0001
      * OR #\*0111
      * XOR #\*0110
-     * NOT #\*0011 (where op1 and op2 are supplied with the same gate)
+     * NOT #\*!!00 (where op1 and op2 are supplied with the same gate)
 
 ####const
 creates a constant value and stores it
