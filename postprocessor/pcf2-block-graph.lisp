@@ -51,7 +51,7 @@
                 (declare (ignore depth))
                 (format stream "~&PCF2 CFG Block Bottom ~A:~%" (get-graph-bottom struct))
                 (format stream "~&PCF2 CFG Block Map ~A:~%" (get-graph-map struct)))))
-  (cfg (map-empty :comp #'<) :type avl-set)
+  (cfg (map-empty) :type avl-set)
   (bottom nil)
   )
 
@@ -69,7 +69,7 @@
     :bottom (get-graph-bottom cfg)
     ))                  
 
-(defun new-cfg (&key (cfg (map-empty :comp #'<)) (bottom nil))
+(defun new-cfg (&key (cfg (map-empty)) (bottom nil))
   (make-pcf-graph
     :cfg cfg
     :bottom bottom)

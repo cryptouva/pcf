@@ -73,7 +73,7 @@
 (defun singleton (x &key (comp #'<))
   "Create a new singleton set"
   (make-avl-set :tree
-                (avl-tree-insert x (empty-set) :comp comp)
+                (avl-tree-insert x nil :comp comp)
                 :comp comp)
   )
 
