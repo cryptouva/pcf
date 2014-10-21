@@ -191,7 +191,7 @@
       (cond
         (funcall comp x (avl-idx tr))
         
-)
+)))
 |#
 
 (defun rle-avl-insert (x tr &key (comp *default-comp*) (length 1))
@@ -311,60 +311,56 @@
                        (avl-idx lst)
                        (rle-avl-remove x (avl-left lst) :comp comp
                                        :allow-no-result allow-no-result :length length)
-                       (avl-right lst)
-                      )))
+                       (avl-right lst))))
         ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) x)
          (avl-balance (avl-cons
                        (avl-idx lst)
                        (avl-left lst)
                        (rle-avl-remove x (avl-right lst) :comp comp
-                                       :allow-no-result allow-no-result :length length)
-                       )))
+                                       :allow-no-result allow-no-result :length length))))
         (t 
          (cond 
            ((equal length (avl-length lst)) ;; then we can do remove-min as per a usual avl-tree    
-             (if (avl-right lst)
-                 (multiple-value-bind (rgsm rglst) (rle-avl-remove-min (avl-right lst))
-                   (avl-balance (avl-cons rgsm
-                                          (avl-left lst)
-                                          rglst
-                                          )))
-                 (avl-left lst)))
-             ;; one of the lengths is not 1
-            ((> length (avl-length lst))
-             (error "cannot remove more than the length of the target node"))
-            (t ;; (avl-length lst) is not 1
-             ;; build a new tree with the stuff that came before, followed by the stuff that came after
-             (let ((prev-remain (- x (avl-idx lst))) ;; the length of items remaining after cutting at x
-                   (succ-remain (- (+ (avl-idx lst) (avl-length lst)) (+ x length))) ;; length of items remaining after resuming where x left off
-                   (left (avl-left lst))
-                   (right (avl-right lst)))
-               (cond
-                 ((and (zerop succ-remain) (zerop prev-remain))
-                  nil)
-                 ((zerop prev-remain)
-                  (avl-cons (+ x length)
-                            left
-                            right
-                            :data (avl-data lst)
-                            :length succ-remain))
-                 ((zerop succ-remain)
-                  (avl-cons (avl-idx lst)
-                            left
-                            right
-                            :data (avl-data lst)
-                            :length prev-remain))
-                 (t
-                  (rle-avl-insert-unique (avl-idx lst)
-                                         (avl-cons (+ x length)
-                                                   left
-                                                   right
-                                                   :data (avl-data lst)
-                                                   :length succ-remain)
-                                         :data (avl-data lst)
-                                         :length prev-remain))))
-             ))))))
-         
+            (if (avl-right lst)
+                (multiple-value-bind (rgsm rglst) (rle-avl-remove-min (avl-right lst))
+                  (avl-balance (avl-cons rgsm
+                                         (avl-left lst)
+                                         rglst)))
+                (avl-left lst)))
+           ;; one of the lengths is not 1
+           ((> length (avl-length lst))
+            (error "cannot remove more than the length of the target node"))
+           (t ;; (avl-length lst) is not 1
+            ;; build a new tree with the stuff that came before, followed by the stuff that came after
+            (let ((prev-remain (- x (avl-idx lst))) ;; the length of items remaining after cutting at x
+                  (succ-remain (- (+ (avl-idx lst) (avl-length lst)) (+ x length))) ;; length of items remaining after resuming where x left off
+                  (left (avl-left lst))
+                  (right (avl-right lst)))
+              (cond
+                ((and (zerop succ-remain) (zerop prev-remain))
+                 nil)
+                ((zerop prev-remain)
+                 (avl-cons (+ x length)
+                           left
+                           right
+                           :data (avl-data lst)
+                           :length succ-remain))
+                ((zerop succ-remain)
+                 (avl-cons (avl-idx lst)
+                           left
+                           right
+                           :data (avl-data lst)
+                           :length prev-remain))
+                (t
+                 (rle-avl-insert-unique (avl-idx lst)
+                                        (avl-cons (+ x length)
+                                                  left
+                                                  right
+                                                  :data (avl-data lst)
+                                                  :length succ-remain)
+                                        :data (avl-data lst)
+                                        :length prev-remain))))
+            ))))))
 
 (defun rle-avl-search (x lst &key (comp *default-comp*))
   "Search an AVL tree for x, return true if x is in the tree"
@@ -436,7 +432,7 @@
       st
       (let* ((st-left (rle-avl-reduce fn (avl-left tr) st))
              (st-cur (reduce (lambda (state x)
-                               (apply fn (list state (avl-idx tr))))
+                               (apply fn (list state x)))
                              (loop for i from (avl-idx tr) to (+ (avl-idx tr) (avl-length tr) -1) collect i)
                              :initial-value st-left))
              )
