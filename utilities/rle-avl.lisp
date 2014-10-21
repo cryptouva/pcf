@@ -105,7 +105,7 @@
   )
 
 (defun node-expand-up (tr)
-  (break)
+  ;;(break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
@@ -115,7 +115,7 @@
    :length (1+ (avl-length tr))))
 
 (defun node-expand-down (tr)
-  (break)
+  ;;(break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
@@ -435,7 +435,10 @@
   (if (tree-is-empty tr)
       st
       (let* ((st-left (rle-avl-reduce fn (avl-left tr) st))
-             (st-cur (apply fn (list st-left (avl-idx tr))))
+             (st-cur (reduce (lambda (state x)
+                               (apply fn (list state (avl-idx tr))))
+                             (loop for i from (avl-idx tr) to (+ (avl-idx tr) (avl-length tr) -1) collect i)
+                             :initial-value st-left))
              )
         (rle-avl-reduce fn (avl-right tr) st-cur)
         )
