@@ -58,17 +58,18 @@
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
     ;;(break)
-    (hmap-reduce (lambda (map key val)
-                   (declare (ignore val))
-                   (let ((key-use (map-val key use-map t)))
-                     (if key-use
-                         (if (and (not (set-member key lives))
-                                  (> blckid (cdr key-use)))
-                             (hmap-remove key map)
-                             map)
-                         map)))
-                 flow
-                 flow)))
+    (rle-map-reduce (lambda (map key val)
+                      (declare (ignore val))
+                      (let ((key-use (map-val key use-map t)))
+                        (if key-use
+                            (if (and (not (rle-set-member key lives))
+                                     (> blckid (cdr key-use))
+                                     (equal key (get-block-base blck)))
+                                (rle-map-remove key map)
+                                map)
+                            map)))
+                    flow
+                    flow)))
     #|(map-reduce (lambda (map key val)
                   (let ((key-use (map-val key use-map t)))
                     (if key-use
@@ -83,16 +84,16 @@
 (defun eliminate-extra-faints (flow blck use-map)
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
-    (set-reduce (lambda (set key)
+    (rle-set-reduce (lambda (set key)
                   (let ((key-use (map-val key use-map t)))
                     (if key-use
-                        (if (and (not (set-member key lives))
+                        (if (and (not (rle-set-member key lives))
                                  (< blckid (car key-use))) ;; use-map is (first . last )
                             set ;; eliminate
-                            (set-insert set key)) ;; not done with it yet
-                        (set-insert set key)))) ;; don't know when it's used, must retain
+                            (rle-set-insert set key)) ;; not done with it yet
+                        (rle-set-insert set key)))) ;; don't know when it's used, must retain
                 flow
-                (empty-set))))
+                (rle-empty-set))))
 
 
 

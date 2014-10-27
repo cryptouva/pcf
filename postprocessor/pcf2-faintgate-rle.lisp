@@ -71,25 +71,27 @@
 
 (defun faint-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  ;;(declare (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   (funcall faint-confluence-operator set1 set2))
 
 (defun faint-weaker-fn (set1 set2)
+  (declare (optimize (debug 3)(speed 0)))
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
   (and (not (rle-set-subset set1 set2))
        (rle-set-subset set2 set1)
   ))
 
 (defun faint-flow-fn (blck cfg use-map)
-  ;;(declare (optimize (speed 0) (debug 3)))
+  (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the larger set come second
                  (gen blck in-flow)
                  (rle-set-diff-efficient in-flow (kill blck in-flow)))))
-      (if (zerop (mod (get-block-id blck) 100))
-          (eliminate-extra-faints flow blck use-map)
-          flow))))
+      ;; (if (zerop (mod (get-block-id blck) 100))
+      ;;     (eliminate-extra-faints flow blck use-map)
+      ;;     flow))))
+      flow)))
 
 (defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -380,7 +382,7 @@
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
-    :const-gen (singleton 0)
+    :const-gen (rle-singleton 0)
 )
 
 (def-gen-kill branch

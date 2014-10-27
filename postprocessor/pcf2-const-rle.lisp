@@ -77,30 +77,29 @@
 
 (defun rle-map-remove-key-set (map set)
   (rle-set-reduce (lambda (newmap key)
-                (if (rle-map-find key newmap t)
-                    (rle-map-remove key newmap)
-                    newmap))
-              set
-              map))
+                    (if (rle-map-find key newmap t)
+                        (rle-map-remove key newmap)
+                        newmap))
+                  set
+                  map))
 
 (defun const-confluence-op (set1 set2)
   (funcall confluence-operator set1 set2))
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  ;;(declare 
+  (declare 
    ;;(ignore use-map)
-  ;; (optimize (speed 0) (debug 3)))
+   (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'rle-map-union-without-conflicts)))
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      (if (zerop (mod (get-block-id blck) 50))
-          (eliminate-extra-consts flow blck use-map)
-          flow)))
-
-  )
-
+      ;; (if (zerop (mod (get-block-id blck) 50))
+      ;;     (eliminate-extra-consts flow blck use-map)
+      ;;       flow))))
+      flow)))
+      
 (defun const-weaker-fn (map1 map2)
   (rle-map-weaker-fn map1 map2))
 
@@ -503,7 +502,7 @@
                        (empty-gen))))
     :dep-kill (with-slots (newbase fname) op
                 (with-true-address newbase
-                  (set-from-list
+                  (rle-set-from-list
                    (loop for i from newbase to (+ 32 newbase -1) collect i))))
     )
 

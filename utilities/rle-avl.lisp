@@ -15,6 +15,7 @@
                      rle-avl-insert-unique
                      rle-avl-remove
                      rle-avl-search
+                     rle-avl-search-val
                      rle-avl-map
                      rle-avl-reduce
                      empty-rle-avl
@@ -364,6 +365,7 @@
 (defun rle-avl-remove (x lst &key (comp *default-comp*) (allow-no-result nil) (length 1))
   "Remove a value from a RLE-AVL tree"
   (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
   (if (tree-is-empty lst)
       (if allow-no-result
           nil
@@ -445,11 +447,31 @@
          (rle-avl-search x (avl-right lst) :comp comp)
          )
         ;; We use (avl-data lst) rather than x to support implementations of maps
+        ;;(t (values t x))
         (t (values t (avl-data lst)))
         )
       )
   )
 
+(defun rle-avl-search-val (x lst &key (comp *default-comp*))
+  "Search an AVL tree for x, return true if x is in the tree"
+  (declare (optimize (debug 3)(speed 0)))
+  (if (tree-is-empty lst)
+      (values nil nil)
+      (cond
+        ((funcall comp x (avl-idx lst))
+         (rle-avl-search x (avl-left lst) :comp comp)
+         )
+        ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) x)
+         ;; subtract 1 because single nodes have length 1
+         (rle-avl-search x (avl-right lst) :comp comp)
+         )
+        ;; We use (avl-data lst) rather than x to support implementations of maps
+        ;;(t (values t x))
+        (t (values t (avl-data lst)))
+        )
+      )
+  )
 
 (defun rle-avl-map (fn tr &key (comp #'<) (key-val nil))
  (if key-val
@@ -521,7 +543,7 @@
       st
       (let* ((st-left (rle-avl-reduce fn (avl-left tr) st))
              (st-cur (reduce (lambda (state x)
-                                (apply fn (list state (car x) (cdr x))))
+                               (funcall fn state (car x) (cdr x)))
                              (loop for i from (avl-idx tr) to (+ (avl-idx tr) (avl-length tr) -1) collect (cons i (avl-data tr)))
                              :initial-value st-left))
              )

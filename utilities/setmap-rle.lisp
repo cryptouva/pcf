@@ -77,12 +77,10 @@
 
 (defun rle-set-member (x st)
   "Check if \"x\" is contained in \"set\""
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
   (multiple-value-bind (y v) (rle-avl-search x (rle-avl-set-tree st) :comp (rle-avl-set-comp st))
-    (and y (or
-            (equalp x v)
-            (funcall (rle-avl-set-comp st) v x)))
-    )
-  )
+    (and y v)))
 
 (defun rle-singleton (x &key (comp #'<))
   "Create a new singleton set"
@@ -119,13 +117,15 @@
   (let ((comp (rle-avl-set-comp set1)))
     (make-rle-avl-set :tree
                   (rle-avl-reduce (lambda (st k v)
-                                    (declare (ignore v))
-                                     (if (rle-set-member k set1)
-                                         (rle-avl-remove k st :comp comp)
-                                         st)
-                                     )
-                                   (rle-avl-set-tree set2)
-                                   (rle-avl-set-tree set1))
+                                    (declare (ignore v)
+                                             (optimize (debug 3)(speed 0)))
+                                    ;;(break)
+                                    (if (rle-set-member k set1)
+                                        (rle-avl-remove k st :comp comp)
+                                        st)
+                                    )
+                                  (rle-avl-set-tree set2)
+                                  (rle-avl-set-tree set1))
                   :comp comp)
     )
     ;; (set-reduce (lambda (st x)
@@ -180,7 +180,7 @@
                   :comp comp))
   )
 
-(defun set-remove (set x &optional (allow-no-result t))
+(defun rle-set-remove (set x &optional (allow-no-result t))
   "Remove key \"x\" from the set"
   (declare (optimize (debug 3)(speed 0)))
    (let ((comp (rle-avl-set-comp set)))
@@ -235,8 +235,9 @@
 
 (defun rle-set-reduce (fn st state)
   "Fold \"st\" over \"fn\""
-  ;; fn should be of type (lambda (state key val))
-  (rle-avl-reduce fn (rle-avl-set-tree st) state)
+  ;; fn should be of type (lambda (state key))
+  (rle-avl-reduce (lambda (x y z) (declare (ignore z)) (funcall fn x y)) (rle-avl-set-tree st) state)
+  ;;(rle-avl-reduce fn (rle-avl-set-tree st) state)
   )
 
 
@@ -292,7 +293,7 @@
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
   (declare (type rle-avl-set mp)
            (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(break)
   (let ((comp (rle-avl-set-comp mp))
         )
     (make-rle-avl-set :tree
@@ -335,7 +336,7 @@
           (cons x value)))))
 
 (defun rle-map-val (x mp &optional (allow-no-result nil))
-  (let ((val (rle-map-find x mp allow-no-result)))
+ (let ((val (rle-map-find x mp allow-no-result)))
     (if (null val)
         nil
         (cdr val))))
