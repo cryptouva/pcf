@@ -292,6 +292,7 @@
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
   (declare (type rle-avl-set mp)
            (optimize (debug 3)(speed 0)))
+  (break)
   (let ((comp (rle-avl-set-comp mp))
         )
     (make-rle-avl-set :tree

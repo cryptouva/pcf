@@ -101,6 +101,7 @@
                             map2)));;(copy-hash-set map2))))
     newmap))
 
+;; hmap is "hash map"
 (defun hmap-union-without-conflicts (map1 map2)
   (declare (optimize (debug 3)(speed 0)))
   ;;(break)
@@ -114,6 +115,22 @@
                             map1
                             (copy-hash-set map2))))
     newmap))
+
+;; cmap is "compressed map"
+;; (defun cmap-union-without-conflicts (map1 map2)
+;;   (declare (optimize (debug 3)(speed 0)))
+;;   ;;(break)
+;;   (let ((newmap (cmap-reduce (lambda (map-accum key val)
+;;                                (declare (optimize (debug 3)(speed 0)))
+;;                                (aif (cmap-val key map2 t)
+;;                                     (if (equal it val)
+;;                                         map-accum ;; already have the element
+;;                                         (cmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
+;;                                     (cmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
+;;                             map1
+;;                             map2)))
+;;     newmap))
+
 
 (defun hmap-weaker-fn (map1 map2)
   ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2
