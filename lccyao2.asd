@@ -17,6 +17,7 @@
 				    (:file "pcf2-bytecode")
                                     (:file "hashset")
                                     (:file "rle-avl" :depends-on ("utils"))
+                                    (:file "setmap-rle" :depends-on ("rle-avl"))
 				    )
                        :depends-on (unit)
                        )

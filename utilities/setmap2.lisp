@@ -249,6 +249,7 @@
       )
   )
 
+;; for some reason, this returns a list
 (defun map-keys (mp)
   (declare (type avl-set mp))
   (map-reduce (lambda (state key val)
@@ -259,7 +260,7 @@
               nil ;;(empty-set :comp cmp)
               ))
 
-
+;; and this returns a set
 (defun map-vals (mp &key (cmp #'<))
   (declare (type avl-set mp) (type function cmp))
   (map-reduce (lambda (state key val)
