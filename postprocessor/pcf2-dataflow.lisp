@@ -1,7 +1,7 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :hashset :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap :setmap-rle #| :hashset |# :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
            flow-forward-test
            flow-backward-test
@@ -19,7 +19,6 @@
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-
 
 ;; id should be an integer
 ;; val should be a block
@@ -405,14 +404,14 @@
           (pre-op1 op1)
           (pre-op2 op2))
       (with-true-addresses (dest op1 op2)
-        (let ((op1-val (hmap-val op1 consts t))
-              (op2-val (hmap-val op2 consts t)))
+        (let ((op1-val (rle-map-val op1 consts t))
+              (op2-val (rle-map-val op2 consts t)))
           ;; if an output is live, both of its inputs will be live
           ;;(break)
-          (if (not (and (set-member op1 faints)
-                        (set-member op2 faints)))
+          (if (not (and (rle-set-member op1 faints)
+                        (rle-set-member op2 faints)))
               nil
-              (aif (hmap-val dest consts t)
+              (aif (rle-map-val dest consts t)
                    (if (not (is-not-const it))
                        ;; constant gate, simply replace with const
                        (make-instance 'const :dest pre-dest :op1 it)
