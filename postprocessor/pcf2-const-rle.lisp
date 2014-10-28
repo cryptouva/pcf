@@ -57,6 +57,8 @@
 
 (defparameter confluence-operator #'rle-map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of hmap-inter
 
+(defparameter ostream (open "rle-const-out.txt" :direction :output :if-exists :supersede))
+
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
   `(rle-map-empty))
@@ -88,9 +90,8 @@
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  ;;(declare 
-   ;;(ignore use-map)
-   ;;(optimize (speed 0) (debug 3)))
+  (declare 
+   (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'rle-map-union-without-conflicts)))
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
@@ -98,6 +99,21 @@
       ;; (if (zerop (mod (get-block-id blck) 50))
       ;;     (eliminate-extra-consts flow blck use-map)
       ;;       flow))))
+      (with-slots (op1 op2 dest) (get-block-op blck)
+        (typecase (get-block-op blck)
+          (gate
+           (let ((base (get-block-base blck)))
+             (with-true-addresses (op1 op2 dest)
+               (let ((o1 (rle-map-extract-val op1 in-flow))
+                     (o2 (rle-map-extract-val op2 in-flow))
+                     (o1* (rle-map-extract-val op1 flow))
+                     (o2* (rle-map-extract-val op2 flow))
+                     (d (rle-map-extract-val dest flow)))
+                 (progn
+                   (format ostream "~A ~%" (get-block-id blck))
+                   (format ostream "~A ~%" (get-block-op blck))
+                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d))))))
+          (otherwise t)))
       flow)))
       
 (defun const-weaker-fn (map1 map2)
@@ -309,6 +325,7 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
+                   ;;(break)
                    (if (or-defined op1 op2 flow-data)
                        (if (and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
                            (progn
@@ -379,6 +396,7 @@
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
                    ;;(format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
+                   ;;(assert (and o1 o2))
                    (rle-map-singleton dest (if (and o1 o2) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest

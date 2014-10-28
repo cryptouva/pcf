@@ -57,6 +57,7 @@
 
 (defparameter confluence-operator #'hmap-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of hmap-inter
 
+(defparameter ostream (open "h-const-out.txt" :direction :output :if-exists :supersede))
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
@@ -64,6 +65,12 @@
 
 (defmacro empty-kill ()
   `(empty-set))
+
+
+(defmacro with-true-addresses ((&rest syms) &body body)
+  `(let ,(loop for sym in syms
+            collect `(,sym (+ ,sym (aif base it 0))))
+     ,@body))
 
 (defun hmap-diff (map1 map2)
   ;; map1 without the elements from map2
@@ -98,9 +105,25 @@
     (let ((flow (hmap-union-without-conflicts
                  (hmap-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      (if (zerop (mod (get-block-id blck) 50))
+      #|(if (zerop (mod (get-block-id blck) 50))
           (hmap-eliminate-extra-consts flow blck use-map)
-          flow))))
+       |#
+       (with-slots (op1 op2 dest) (get-block-op blck)
+        (typecase (get-block-op blck)
+          (gate
+           (let ((base (get-block-base blck)))
+             (with-true-addresses (op1 op2 dest)
+               (let ((o1 (hmap-extract-val op1 in-flow))
+                     (o2 (hmap-extract-val op2 in-flow))
+                     (o1* (hmap-extract-val op1 flow))
+                     (o2* (hmap-extract-val op2 flow))
+                     (d (hmap-extract-val dest flow)))
+                 (progn
+                   (format ostream "~A ~%" (get-block-id blck))
+                   (format ostream "~A ~%" (get-block-op blck))
+                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d))))))
+          (otherwise t)))
+      flow)))
 
 ;;(defparameter const-weaker-fn #'pcf2-flow-utils:hmap-weaker-fn)
 (defun const-weaker-fn (map1 map2)
@@ -220,11 +243,6 @@
 ;; gen sets are represented as maps of variable -> value
 ;; kill sets are represented as sets of variables since their values aren't necessary for the kill
 
-
-(defmacro with-true-addresses ((&rest syms) &body body)
-  `(let ,(loop for sym in syms
-            collect `(,sym (+ ,sym (aif base it 0))))
-     ,@body))
 
 (defmacro with-true-address (sym &body body)
   `(let ((,sym (+ ,sym base)))

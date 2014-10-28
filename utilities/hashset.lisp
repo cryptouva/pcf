@@ -31,7 +31,7 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (maphash #'(lambda (k v) (format stream "~a => ~a " k v)) (get-hashset-table struct))
+                (maphash #'(lambda (k v) (format stream "(~A.~A) " k v)) (get-hashset-table struct))
                 (format stream "}")
                 )
               )

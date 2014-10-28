@@ -91,7 +91,7 @@
       ;; (if (zerop (mod (get-block-id blck) 100))
       ;;     (eliminate-extra-faints flow blck use-map)
       ;;     flow))))
-      (break)
+      ;;(break)
       flow)))
 
 (defgeneric gen (blck flow-data)
@@ -238,6 +238,7 @@
 (def-gen-kill gate
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
+                 ;;(break)
                  (if (rle-set-member dest flow-data)
                      ;;(aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
                      ;;(if (equalp it 'pcf2-block-graph:pcf-not-const)
@@ -245,7 +246,9 @@
                      ;;(empty-set))
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
                      
-                     (rle-set-from-list (list op1 op2))
+                     (progn
+                       ;;(break)
+                       (rle-set-from-list (list op1 op2)))
                      ;;(empty-set))
                      (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
