@@ -60,7 +60,7 @@
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
-  `(map-empty))
+  `(hmap-empty))
 
 (defmacro empty-kill ()
   `(empty-set))
@@ -98,16 +98,9 @@
     (let ((flow (hmap-union-without-conflicts
                  (hmap-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      ;;(break)
-      
       (if (zerop (mod (get-block-id blck) 50))
-          (eliminate-extra-consts flow blck use-map)
-          flow)))
-  
-  ;;(if (typep (get-block-op blck) 'const)
-  ;;    (break))
-  ;;flow))
-  )
+          (hmap-eliminate-extra-consts flow blck use-map)
+          flow))))
 
 ;;(defparameter const-weaker-fn #'pcf2-flow-utils:hmap-weaker-fn)
 (defun const-weaker-fn (map1 map2)

@@ -71,11 +71,11 @@
 
 (defun faint-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (funcall faint-confluence-operator set1 set2))
 
 (defun faint-weaker-fn (set1 set2)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
   (and (not (rle-set-subset set1 set2))
        (rle-set-subset set2 set1)
@@ -91,6 +91,7 @@
       ;; (if (zerop (mod (get-block-id blck) 100))
       ;;     (eliminate-extra-faints flow blck use-map)
       ;;     flow))))
+      (break)
       flow)))
 
 (defgeneric gen (blck flow-data)

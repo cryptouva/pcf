@@ -88,7 +88,7 @@
                  (gen blck in-flow)
                  (set-diff-efficient in-flow (kill blck in-flow)))))
       (if (zerop (mod (get-block-id blck) 100))
-          (eliminate-extra-faints flow blck use-map)
+          (hmap-eliminate-extra-faints flow blck use-map)
           flow))))
 
 (defgeneric gen (blck flow-data)

@@ -8,8 +8,10 @@
            ;;with-true-address
            ;;with-true-addresses
            ;;with-true-address-list
+           hmap-eliminate-extra-consts
            eliminate-extra-consts
            eliminate-extra-faints
+           hmap-eliminate-extra-faints
            map-union-without-conflicts
            hmap-union-without-conflicts
            rle-map-union-without-conflicts
@@ -53,8 +55,26 @@
      ,@body))
 |#
 
+(defun hmap-eliminate-extra-consts (flow blck use-map)
+  ;;(declare (optimize (debug 3)(speed 0)))
+  (let ((blckid (get-block-id blck))
+        (lives (get-block-lives blck)))
+    ;;(break)
+    (hmap-reduce (lambda (map key val)
+                      (declare (ignore val))
+                      (let ((key-use (map-val key use-map t)))
+                        (if key-use
+                            (if (and (not (set-member key lives))
+                                     (> blckid (cdr key-use))
+                                     (equal key (get-block-base blck)))
+                                (hmap-remove key map)
+                                map)
+                            map)))
+                    flow
+                    flow)))
+
 (defun eliminate-extra-consts (flow blck use-map)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (let ((blckid (get-block-id blck))
         (lives (get-block-lives blck)))
     ;;(break)
@@ -95,10 +115,22 @@
                 flow
                 (rle-empty-set))))
 
-
+(defun hmap-eliminate-extra-faints (flow blck use-map)
+  (let ((blckid (get-block-id blck))
+        (lives (get-block-lives blck)))
+    (set-reduce (lambda (set key)
+                  (let ((key-use (map-val key use-map t)))
+                    (if key-use
+                        (if (and (not (set-member key lives))
+                                 (< blckid (car key-use))) ;; use-map is (first . last )
+                            set ;; eliminate
+                            (set-insert set key)) ;; not done with it yet
+                        (set-insert set key)))) ;; don't know when it's used, must retain
+                flow
+                (empty-set))))
 
 (defun map-union-without-conflicts (map1 map2)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((newmap (map-reduce (lambda (map-accum key val)
                                (declare (optimize (debug 3)(speed 0)))
@@ -113,7 +145,7 @@
 
 ;; hmap is "hash map"
 (defun hmap-union-without-conflicts (map1 map2)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((newmap (hmap-reduce (lambda (map-accum key val)
                                (declare (optimize (debug 3)(speed 0)))
@@ -122,16 +154,16 @@
                                         map-accum ;; already have the element
                                         (hmap-insert key 'pcf-not-const map-accum)) ;; element duplicates not equivalent
                                     (hmap-insert key val map-accum))) ;; if it's not found, it's new and needs to be added
-                            map1
-                            (copy-hash-set map2))))
+                             map1
+                             (copy-hash-set map2))))
     newmap))
 
 ;; rle-map is our compressed map
 (defun rle-map-union-without-conflicts (map1 map2)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((newmap (rle-map-reduce (lambda (map-accum key val)
-                                  (declare (optimize (debug 3)(speed 0)))
+                                  ;;(declare (optimize (debug 3)(speed 0)))
                                   (aif (rle-map-val key map2 t)
                                        (if (equal it val)
                                            map-accum ;; already have the element
@@ -149,7 +181,7 @@
 ;;  (declare (optimize (debug 3)(speed 0)))
   (labels ((weaker-map-vals (m1 m2)
              (hmap-reduce (lambda (state key m1-val)
-                            (declare (optimize (debug 3)(speed 0)))
+                            ;;(declare (optimize (debug 3)(speed 0)))
                             (let ((m2-val (hmap-val key m2 t)))
                               (and state
                                    (or (equal m1-val m2-val)
@@ -170,7 +202,7 @@
 ;;  (declare (optimize (debug 3)(speed 0)))
   (labels ((weaker-map-vals (m1 m2)
              (rle-map-reduce (lambda (state key m-val1)
-                               (declare (optimize (debug 3)(speed 0)))
+                               ;;(declare (optimize (debug 3)(speed 0)))
                                (let ((m-val2 (rle-map-val key m2 t)))
                                  (and state
                                       (or (equal m-val1 m-val2)
@@ -190,7 +222,7 @@
 ;;  (declare (optimize (debug 3)(speed 0)))
   (labels ((weaker-map-vals (m1 m2)
              (map-reduce (lambda (state key m-val1)
-                            (declare (optimize (debug 3)(speed 0)))
+                           ;;(declare (optimize (debug 3)(speed 0)))
                             (let ((m-val2 (map-val key m2 t)))
                               (and state
                                    (or (equal m-val1 m-val2)
