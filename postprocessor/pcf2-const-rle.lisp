@@ -99,10 +99,10 @@
       ;; (if (zerop (mod (get-block-id blck) 50))
       ;;     (eliminate-extra-consts flow blck use-map)
       ;;       flow))))
-      (with-slots (op1 op2 dest) (get-block-op blck)
-        (typecase (get-block-op blck)
-          (gate
-           (let ((base (get-block-base blck)))
+      (typecase (get-block-op blck)
+        (gate
+         (let ((base (get-block-base blck)))
+           (with-slots (op1 op2 dest) (get-block-op blck)
              (with-true-addresses (op1 op2 dest)
                (let ((o1 (rle-map-extract-val op1 in-flow))
                      (o2 (rle-map-extract-val op2 in-flow))
@@ -112,8 +112,10 @@
                  (progn
                    (format ostream "~A ~%" (get-block-id blck))
                    (format ostream "~A ~%" (get-block-op blck))
-                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d))))))
-          (otherwise t)))
+                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d)
+                   (if (and (< (get-block-id blck) 300) (> (get-block-id blck) 293)) (break))
+                   ))))))
+        (otherwise t))
       flow)))
       
 (defun const-weaker-fn (map1 map2)
