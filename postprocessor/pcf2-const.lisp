@@ -121,7 +121,8 @@
                  (progn
                    (format ostream "~A ~%" (get-block-id blck))
                    (format ostream "~A ~%" (get-block-op blck))
-                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d))))))
+                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d)
+                   )))))
           (otherwise t)))
       flow)))
 

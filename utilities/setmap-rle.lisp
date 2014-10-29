@@ -172,11 +172,11 @@
                       :comp comp
                       )))
 
-(defun rle-set-insert (set x)
+(defun rle-set-insert (set x &key (length 1))
   (declare (optimize (debug 3)(speed 0)))
   (let ((comp (rle-avl-set-comp set)))
     (make-rle-avl-set :tree
-                  (rle-avl-insert-unique x (rle-avl-set-tree set) :comp comp)
+                  (rle-avl-insert-unique x (rle-avl-set-tree set) :comp comp :length length)
                   :comp comp))
   )
 

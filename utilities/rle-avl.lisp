@@ -294,9 +294,11 @@
 
 (defun rle-avl-insert-unique (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
-  (let ((newtree (rle-avl-remove x lst :comp comp :allow-no-result t :length length)))
-    (rle-insert-unique x newtree :comp comp :length length :data data :data-equiv data-equiv))
-)
+  (multiple-value-bind (found value) (rle-avl-search x lst)
+    (if (and found (funcall data-equiv data value))
+        lst
+        (let ((newtree (rle-avl-remove x lst :comp comp :allow-no-result t :length length)))
+          (rle-insert-unique x newtree :comp comp :length length :data data :data-equiv data-equiv)))))
 
 (defmacro tree-insert ()
   `(if (or
