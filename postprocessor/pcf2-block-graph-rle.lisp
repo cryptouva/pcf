@@ -1,5 +1,5 @@
 (defpackage :pcf2-block-graph
-  (:use :common-lisp :pcf2-bc :setmap :utils :hashset)
+  (:use :common-lisp :pcf2-bc :setmap :setmap-rle :utils)
   (:export pcf-graph
            pcf-basic-block
            get-cfg-top
@@ -107,7 +107,7 @@
   (preds nil :type list)
   (succs nil :type list)
   ;; (out-set (empty-set) :type avl-set)
-  (data (list (hmap-empty) (empty-set) (empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables 
+  (data (list (rle-map-empty) (rle-empty-set) (rle-empty-set)) :type list) ;; this is a list of flow values; first is constants, second is faint variables, third is love variables
   (:documentation "This represents a basic block in the control flow graph.")
   )
 

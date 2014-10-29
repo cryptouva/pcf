@@ -22,7 +22,7 @@
 ;;                           [ avl-left  |  avl-right  ]
 
 (defmacro empty-avl-tree ()
-  nil)
+  `nil)
 
 (defmacro avl-height (tr)
   `(the fixnum

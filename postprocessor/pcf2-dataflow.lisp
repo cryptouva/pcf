@@ -1,7 +1,7 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :hashset :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap #| :setmap-rle |# :hashset :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
            flow-forward-test
            flow-backward-test
@@ -19,7 +19,6 @@
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
 (defparameter *specialfunctions* (set-from-list (list "alice" "bob" "output_alice" "output_bob") :comp #'string<))
-
 
 ;; id should be an integer
 ;; val should be a block
@@ -311,7 +310,7 @@
 ;; functions for the implementation of the worklist algorithm
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  ;;(declare (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg

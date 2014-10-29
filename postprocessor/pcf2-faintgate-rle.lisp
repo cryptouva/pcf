@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-faintgate
-  (:use :common-lisp :pcf2-bc :setmap :hashset :utils :pcf2-block-graph :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap :setmap-rle :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export faint-flow-fn
            faint-confluence-op
            faint-weaker-fn)
@@ -52,7 +52,7 @@
 
 ;; A note: because wire 0 is the global condition wire, it should always be live. we use the "ret" instruction to designate it as live because we know it will always be the last instruction (and therefore the first to be analyzed for faintness)
 
-(defparameter faint-confluence-operator #'set-union)  ;;#'set-inter)
+(defparameter faint-confluence-operator #'rle-set-union)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
 (defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
@@ -65,7 +65,7 @@
      (let ((succ-out (get-block-faints (get-block-by-id succ cfg))))
        (funcall conf temp-out succ-out)))
    (get-block-succs blck)
-   :initial-value (empty-set)
+   :initial-value (rle-empty-set)
    ;;(get-block-faints blck)
    ))
 
@@ -75,21 +75,24 @@
   (funcall faint-confluence-operator set1 set2))
 
 (defun faint-weaker-fn (set1 set2)
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
-  (and (not (set-subset set1 set2))
-       (set-subset set2 set1)
+  (and (not (rle-set-subset set1 set2))
+       (rle-set-subset set2 set1)
   ))
 
 (defun faint-flow-fn (blck cfg use-map)
-  ;;(declare (optimize (speed 0) (debug 3)))
+  (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the larger set come second
                  (gen blck in-flow)
-                 (set-diff-efficient in-flow (kill blck in-flow)))))
-      (if (zerop (mod (get-block-id blck) 100))
-          (hmap-eliminate-extra-faints flow blck use-map)
-          flow))))
+                 (rle-set-diff-efficient in-flow (kill blck in-flow)))))
+      ;; (if (zerop (mod (get-block-id blck) 100))
+      ;;     (eliminate-extra-faints flow blck use-map)
+      ;;     flow))))
+      ;;(break)
+      flow)))
 
 (defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 
@@ -118,29 +121,26 @@
 (defmethod gen (blck flow-data)
   ;; gen = const_gen union dep_gen
   (reduce (lambda (state op)
-            (set-union state
-                       (set-union (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data))))
+            (rle-set-union state
+                       (rle-set-union (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data))))
           (get-block-op-list blck)
-          :initial-value (empty-set)))
+          :initial-value (rle-empty-set)))
 ;;  (let ((op (get-block-op blck)))
   ;;  (faint-confluence-op (const-gen op (get-block-base blck)) (dep-gen op (get-block-base blck) blck flow-data)))
  ;; )
 
 (defmethod kill (blck flow-data)
   ;;(declare (ignore flow-data))
-  ;; kill = const-kill uniond dep_kill
+  ;; kill = const-kill union dep_kill
  (reduce (lambda (state op)
-           (set-union state
-                      (set-union (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data))))
+           (rle-set-union state
+                      (rle-set-union (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data))))
          (get-block-op-list blck)
-         :initial-value (empty-set)))
-;;  (let ((op (get-block-op blck)))
-;;    (faint-confluence-op (const-kill op (get-block-base blck))(dep-kill op (get-block-base blck) blck flow-data)))
-;;  )
+         :initial-value (rle-empty-set)))
 
 (defmacro gen-kill-standard ()
   ;; for faint variable analysis, standard is always empty set
-  `(empty-set))
+  `(rle-empty-set))
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 
@@ -205,14 +205,14 @@
     :dep-gen (with-slots (dest op1) op
                (with-true-address dest
                  (with-true-address-list op1
-                   (if (set-member dest flow-data)
-                       (set-from-list op1)
-                       (empty-set)))))
+                   (if (rle-set-member dest flow-data)
+                       (rle-set-from-list op1)
+                       (rle-empty-set)))))
 
     ;; kill at the bits in op1
     :const-kill (with-slots (op1) op
                   (with-true-address-list op1
-                    (set-from-list op1)))
+                    (rle-set-from-list op1)))
     )
     
 (def-gen-kill bits
@@ -220,106 +220,104 @@
     :dep-gen (with-slots (dest op1) op
                (with-true-address-list dest
                  (with-true-address op1
-                   (let ((destwires (set-from-list dest)))
-                     (if (set-equalp (empty-set) (set-inter destwires flow-data))
-                         (empty-set)
-                         (singleton op1))))))
+                   (let ((destwires (rle-set-from-list dest)))
+                     (if (rle-set-equalp (rle-empty-set) (rle-set-inter destwires flow-data))
+                         (rle-empty-set)
+                         (rle-singleton op1))))))
     ;; if the op is a member of the dests, then don't kill it
     :const-kill (with-slots (dest op1) op
                   (with-true-address op1
-                    (singleton op1))))
+                    (rle-singleton op1))))
 
 (def-gen-kill const
     ;; if x = const, kill x because it has been defined
     :const-kill (with-slots (dest) op
                   (with-true-addresses (dest)
-                    (singleton dest))))
+                    (rle-singleton dest))))
 
 (def-gen-kill gate
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (if (set-member dest flow-data)
+                 ;;(break)
+                 (if (rle-set-member dest flow-data)
                      ;;(aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
                      ;;(if (equalp it 'pcf2-block-graph:pcf-not-const)
                      ;;(set-from-list (list op1 op2))
                      ;;(empty-set))
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
                      
-                     (set-from-list (list op1 op2))
+                     (progn
+                       ;;(break)
+                       (rle-set-from-list (list op1 op2)))
                      ;;(empty-set))
-                     (empty-set))))
+                     (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
-                        (empty-set)
-                        (singleton dest)))))
+                        (rle-empty-set)
+                        (rle-singleton dest)))))
 
 (def-gen-kill add
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (if (set-member dest flow-data)
-                     (set-from-list (list op1 op2))
-                     (empty-set))))
+                 (if (rle-set-member dest flow-data)
+                     (rle-set-from-list (list op1 op2))
+                     (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
-                        (empty-set)
-                        (singleton dest)))))
+                        (rle-empty-set)
+                        (rle-singleton dest)))))
 
 (def-gen-kill sub
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (if (set-member dest flow-data)
-                     (set-from-list (list op1 op2))
-                     (empty-set))))
+                 (if (rle-set-member dest flow-data)
+                     (rle-set-from-list (list op1 op2))
+                     (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
-                        (empty-set)
-                        (singleton dest)))))
+                        (rle-empty-set)
+                        (rle-singleton dest)))))
 (def-gen-kill mul
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 op2 dest)
-                 (if (set-member dest flow-data)
-                     (set-from-list (list op1 op2))
-                     (empty-set))))
+                 (if (rle-set-member dest flow-data)
+                     (rle-set-from-list (list op1 op2))
+                     (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
                     (if (or (equalp op1 dest) (equalp op2 dest))
-                        (empty-set)
-                        (singleton dest)))))
+                        (rle-empty-set)
+                        (rle-singleton dest)))))
 
 (def-gen-kill copy
     ;; if dest is live (not faint), then whatever it copies will also be useful
     :dep-gen (with-slots (op1 op2 dest) op
                (with-true-addresses (op1 dest)
                  (if (equalp op2 1)
-                     (if (set-member dest flow-data)
-                         (singleton op1)
-                         (empty-set))
+                     (if (rle-set-member dest flow-data)
+                         (rle-singleton op1)
+                         (rle-empty-set))
                      (first (reduce (lambda (state oldwire)
                                (let ((set (first state))
                                      (new-wire (car (second state)))
                                      (restwires (cdr (second state))))
-                                 (if (set-member new-wire flow-data)
-                                     (list (set-insert set oldwire) restwires)
+                                 (if (rle-set-member new-wire flow-data)
+                                     (list (rle-set-insert set oldwire) restwires)
                                      (list set restwires))))
                              (loop for i from op1 to (+ op1 op2 -1) collect i)
-                             :initial-value (list (empty-set) (loop for i from dest to (+ dest op2 -1) collect i)))))))
-    #|(if (set-member dest flow-data)
-                     (if (equalp op2 1)
-                         (singleton op1)
-                         (set-from-list (loop for i from op1 to (+ op1 op2) collect i)))
-                     (empty-set)))) |#
+                             :initial-value (list (rle-empty-set) (loop for i from dest to (+ dest op2 -1) collect i)))))))
+    
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 dest)
                     (if (and (> dest op1) (< dest (+ op1 op2)))
                         (error "trying to copy onto self")
                         (if (equalp 1 op2)
-                            (singleton dest)
-                            (set-from-list
-                             (loop for i from dest to (+ dest op2 -1) collect i))))))
-    )
+                            (rle-singleton dest)
+                            (rle-set-from-list
+                             (loop for i from dest to (+ dest op2 -1) collect i)))))))
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will ever really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
@@ -330,26 +328,26 @@
 
 (defmacro gen-for-indirection (source destination length)
   `(if (eq ,length 1)
-       (if (set-member ,destination flow-data)
-            (singleton ,source)
-            (empty-set))
-       (set-from-list (loop for i from 0 to (- ,length 1)
-                         when (set-member (+ i ,destination) flow-data)
-                         collect (+ i ,source)))
+       (if (rle-set-member ,destination flow-data)
+            (rle-singleton ,source)
+            (rle-empty-set))
+       (rle-set-from-list (loop for i from 0 to (- ,length 1)
+                             when (rle-set-member (+ i ,destination) flow-data)
+                             collect (+ i ,source)))
        ))
 
 (defmacro kill-for-indirection (destination length)
   `(if (eq ,length 1)
        (if (not (equal ,destination 0))
-           (singleton ,destination)
-           (empty-set))
-       (set-from-list 
+           (rle-singleton ,destination)
+           (rle-empty-set))
+       (rle-set-from-list 
         (loop for i from ,destination to (+ ,length ,destination -1) collect i))))
 
 (def-gen-kill copy-indir
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
-                 (let ((addr (hmap-val op1 (get-block-consts blck))))
+                 (let ((addr (rle-map-val op1 (get-block-consts blck))))
                    ;; addr should always be defined in consts
                    ;;(break)
                    (gen-for-indirection addr dest op2))))
@@ -361,13 +359,13 @@
 (def-gen-kill indir-copy
     :dep-gen (with-slots (dest op1 op2) op
                (with-true-addresses (dest op1)
-                 (let ((addr (hmap-val dest (get-block-consts blck))))
+                 (let ((addr (rle-map-val dest (get-block-consts blck))))
                    ;;(break)
                    ;; addr should always be defined in consts
                    (gen-for-indirection op1 addr op2))))
     :dep-kill (with-slots (dest op2) op
                 (with-true-address dest
-                  (let ((addr (hmap-val dest (get-block-consts blck))))
+                  (let ((addr (rle-map-val dest (get-block-consts blck))))
                     ;; addr should always be defined in consts
                     (kill-for-indirection addr op2))))
     )
@@ -377,25 +375,25 @@
                  (with-true-address newbase
                    ;;(break)
                    (if (set-member fname output-functions)
-                       (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                       (empty-set))))
+                       (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                       (rle-empty-set))))
     :dep-kill (with-slots (newbase fname) op
                 (with-true-address newbase
                   (if (set-member fname input-functions)
-                      (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                      (empty-set))))
+                      (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                      (rle-empty-set))))
     )
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
-    :const-gen (singleton 0)
+    :const-gen (rle-singleton 0)
 )
 
 (def-gen-kill branch
     ;; we can assume that all branch wires introduce their condition wire to the set of not-faints. this preserves control flow from the original program
     :const-gen (with-slots (cnd) op
                  (with-true-address cnd
-                   (singleton cnd)))
+                   (rle-singleton cnd)))
     )
 
 (def-gen-kill label)
