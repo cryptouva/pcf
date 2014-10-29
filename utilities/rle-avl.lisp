@@ -106,24 +106,30 @@
    )
   )
 
-(defun node-expand-up (tr)
+(defun node-expand-up (tr x xlen)
   (declare (optimize (debug 3)(speed 0)))
+  (break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
    :data (avl-data tr)
    :idx (avl-idx tr)
    :height (avl-height tr)
-   :length (1+ (avl-length tr))))
+   :length (- (+ x xlen)
+              (avl-idx tr))))
 
-(defun node-expand-down (tr)
+(defun node-expand-down (tr x xlen)
+  (declare (ignore xlen)
+           (optimize (debug 3)(speed 0)))
+  (break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
    :data (avl-data tr)
-   :idx (1- (avl-idx tr))
+   :idx x ;;(- (avl-idx tr) (- (avl-idx tr) x))
    :height (avl-height tr)
-   :length (1+ (avl-length tr))))
+   :length (- (+ (avl-idx tr) (avl-length tr))
+              x)))
 
 ;; remember that i put the avl-balances into the following two functions while writing avl-remove
 ;; and i might want to take them out.
@@ -294,11 +300,15 @@
 
 (defun rle-avl-insert-unique (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
-  (multiple-value-bind (found value) (rle-avl-search x lst)
+  (multiple-value-bind (found value) (rle-avl-search x lst :comp comp)
     (if (and found (funcall data-equiv data value))
         lst
-        (let ((newtree (rle-avl-remove x lst :comp comp :allow-no-result t :length length)))
-          (rle-insert-unique x newtree :comp comp :length length :data data :data-equiv data-equiv)))))
+        (rle-insert-unique x lst
+
+#|        (rle-insert-unique x (if found
+                                 (rle-avl-remove x lst :comp comp :allow-no-result nil :length length)
+                                 lst)|#
+                                 :comp comp :length length :data data :data-equiv data-equiv))))
 
 (defmacro tree-insert ()
   `(if (or
@@ -314,13 +324,13 @@
         ((funcall comp (+ x length -1) (avl-idx lst))
          ;; x is before avl-idx but can reach it from its length
          (if (funcall data-equiv (avl-data lst) data)
-             (node-expand-down lst)
+             (node-expand-down lst x length)
              (insert-unique-left)))
         ;; if x is not reachable from the previous + its length
         ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) x)
          ;; x is the next on the high end after previous
          (if (funcall data-equiv (avl-data lst) data)
-             (node-expand-up lst)
+             (node-expand-up lst x length)
              (insert-unique-right)))
          ;; To allow maps to be updated, we create a node with this input value
         (t 
@@ -345,16 +355,21 @@
                                       (data t) (data-equiv #'equalp))
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
   (declare (optimize (debug 3)(speed 0)))
+  (break)
   (tree-insert))
 
 (defun rle-avl-remove-min (lst)
   "Find the leftmost node of the tree and remove it"
   ;;(declare (optimize (debug 3)(speed 0)))
   (if (null (avl-left lst))
-      (values (avl-idx lst) (if (avl-right lst)
-                                 (avl-right lst)
-                                 nil))
-      (multiple-value-bind (rval rlst) (rle-avl-remove-min (avl-left lst))
+      (values (avl-idx lst)
+              (if (avl-right lst)
+                  (avl-right lst)
+                  nil)
+              (avl-data lst)
+              (avl-length lst)
+              )
+      (multiple-value-bind (rval rlst rdata rlength) (rle-avl-remove-min (avl-left lst))
         (values rval (avl-cons
                       (avl-idx lst)
                       rlst
@@ -362,7 +377,9 @@
                       :data (avl-data lst)
                       :length (avl-length lst)
                       ;;:comp (avl-comp lst)
-                      )))))
+                      )
+                rdata rlength
+                ))))
 
 (defun rle-avl-remove (x lst &key (comp *default-comp*) (allow-no-result nil) (length 1))
   "Remove a value from a RLE-AVL tree"
@@ -393,15 +410,16 @@
          (cond 
            ((equal length (avl-length lst)) ;; then we can do remove-min as per a usual avl-tree    
             (if (avl-right lst)
-                (multiple-value-bind (rgsm rglst) (rle-avl-remove-min (avl-right lst))
-                  (avl-balance (avl-cons rgsm
+                (multiple-value-bind (rval rlst rdata rlength) (rle-avl-remove-min (avl-right lst))
+                  (avl-balance (avl-cons rval
                                          (avl-left lst)
-                                         rglst
-                                         :data (avl-data lst)
-                                         :length (avl-length lst))))
+                                         rlst
+                                         :data rdata
+                                         :length rlength)))
                 (avl-left lst)))
-           ;; one of the lengths is not 1
+           ;; lengths not equal
            ((> length (avl-length lst))
+            ;; this could signal a bug if i haven't combined consecutive pieces of the same data
             (error "cannot remove more than the length of the target node"))
            (t ;; (avl-length lst) is not 1
             ;; build a new tree with the stuff that came before, followed by the stuff that came after
@@ -411,7 +429,7 @@
                   (right (avl-right lst)))
               (cond
                 ((and (zerop succ-remain) (zerop prev-remain))
-                 nil)
+                 (error "lengths should not be equal"))
                 ((zerop prev-remain)
                  (avl-cons (+ x length)
                            left
@@ -425,6 +443,18 @@
                            :data (avl-data lst)
                            :length prev-remain))
                 (t
+                 (avl-balance (avl-cons (avl-idx lst)
+                                        (avl-left lst)
+                                        (avl-balance
+                                         (avl-cons (+ x length)
+                                                   nil
+                                                   (avl-right lst)
+                                                   :data (avl-data lst)
+                                                   :length succ-remain))
+                                        :data (avl-data lst)
+                                        :length prev-remain))))
+              )))))))
+ #|
                  (rle-insert-unique (avl-idx lst)
                                         (avl-cons (+ x length)
                                                   left
@@ -433,8 +463,9 @@
                                                   :length succ-remain)
                                         :data (avl-data lst)
                                         :length prev-remain))))
-            ))))))
+                 |#
 
+  
 (defun rle-avl-search (x lst &key (comp *default-comp*))
   "Search an AVL tree for x, return true if x is in the tree"
   (declare (optimize (debug 3)(speed 0)))
