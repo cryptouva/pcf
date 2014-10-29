@@ -108,7 +108,7 @@
 
 (defun node-expand-up (tr x xlen)
   (declare (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
@@ -119,16 +119,16 @@
               (avl-idx tr))))
 
 (defun node-expand-down (tr x xlen)
-  (declare (ignore xlen)
+  (declare ;;(ignore xlen)
            (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(break)
   (make-rle-avl
    :left (avl-left tr)
    :right (avl-right tr)
    :data (avl-data tr)
-   :idx x ;;(- (avl-idx tr) (- (avl-idx tr) x))
+   :idx x
    :height (avl-height tr)
-   :length (- (+ (avl-idx tr) (avl-length tr))
+   :length (- (max (+ (avl-idx tr) (avl-length tr)) (+ x xlen))
               x)))
 
 ;; remember that i put the avl-balances into the following two functions while writing avl-remove
@@ -148,10 +148,7 @@
                  ;;)
                  (avl-right (avl-right tr))
                  :data (avl-data (avl-right tr))
-                 :length (avl-length (avl-right tr))
-                 )
-      )
-  )
+                 :length (avl-length (avl-right tr)))))
 
 (defun right-rotate (tr)
   "Perform a right rotation"
@@ -169,10 +166,7 @@
                            )
                  ;;)
                  :data (avl-data (avl-left tr))
-                 :length (avl-length (avl-left tr))
-                 )
-      )
-)
+                 :length (avl-length (avl-left tr)))))
 
 (defun avl-balance (tr)
   (declare (optimize (debug 3)(speed 0)))
@@ -199,18 +193,6 @@
                                  :length (avl-length tr))
                        tr)))
     (t tr)))
-#|
-(defun rle-avl-find-previous (x tr &key (comp *default-comp*))
-  (if (or
-       (null tr)
-       (tree-is-empty tr))
-      nil
-      (cond
-        (funcall comp x (avl-idx tr))
-        
-)))
-|#
-
 
 
 (defmacro insert-right-branch ()
@@ -300,15 +282,21 @@
 
 (defun rle-avl-insert-unique (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
-  (multiple-value-bind (found value) (rle-avl-search x lst :comp comp)
-    (if (and found (funcall data-equiv data value))
-        lst
-        (rle-insert-unique x lst
+  (declare (optimize (debug 3)(speed 0)))
+  (multiple-value-bind (found tree) (rle-avl-node-search x lst :comp comp)
+    (declare (optimize (debug 3)(speed 0)))
+    ;;(break)
+    (if (and found (funcall data-equiv data (avl-data tree)))
+        (if (and ;; x must be >= than avl-idx and (x+length) must be <= (avl-idx + avl-length)
+             (funcall comp (- (avl-idx tree) 1) x)
+             (funcall comp (+ x length) (+ (avl-idx tree) (avl-length tree) 1)))
+            lst ;; in order to simply return the tree (nothing to insert)
+            (rle-insert-unique x lst :comp comp :length length :data data :data-equiv data-equiv)) 
+        (rle-insert-unique x lst :comp comp :length length :data data :data-equiv data-equiv))))
 
-#|        (rle-insert-unique x (if found
-                                 (rle-avl-remove x lst :comp comp :allow-no-result nil :length length)
-                                 lst)|#
-                                 :comp comp :length length :data data :data-equiv data-equiv))))
+#|   (rle-insert-unique x (if found
+(rle-avl-remove x lst :comp comp :allow-no-result nil :length length) 
+lst)|#
 
 (defmacro tree-insert ()
   `(if (or
@@ -335,7 +323,18 @@
          ;; To allow maps to be updated, we create a node with this input value
         (t 
          (if (funcall data-equiv data (avl-data lst))
-             lst ;; don't need to do anything to the list.
+             ;; at least part of the insert is redundant
+             (cond
+               ((funcall comp x (avl-idx lst))
+                ;; x < first node, expand down from avl-idx
+                (node-expand-down lst x length)
+                )
+               ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) (+ x length -1))
+                ;; x + length > last node, expand up from last
+                (node-expand-up lst x length)
+                )
+               (t
+                (error "should have already found data equivalence"))) ;; don't need to do anything to the list.
              (rle-insert-unique x (rle-avl-remove x lst
                                                   :comp comp
                                                   :allow-no-result nil
@@ -355,7 +354,7 @@
                                       (data t) (data-equiv #'equalp))
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
   (declare (optimize (debug 3)(speed 0)))
-  (break)
+  ;;(break)
   (tree-insert))
 
 (defun rle-avl-remove-min (lst)
@@ -485,6 +484,28 @@
         )
       )
   )
+
+(defun rle-avl-node-search (x lst &key (comp *default-comp*))
+  "Search an AVL tree for the tree rooted with the node containing x"
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (if (tree-is-empty lst)
+      (values nil nil)
+      (cond
+        ((funcall comp x (avl-idx lst))
+         (rle-avl-node-search x (avl-left lst) :comp comp)
+         )
+        ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) x)
+         ;; subtract 1 because single nodes have length 1
+         (rle-avl-node-search x (avl-right lst) :comp comp)
+         )
+        (t 
+         ;;(break)
+         (values t lst))
+        )
+      )
+  )
+
 
 (defun rle-avl-search-val (x lst &key (comp *default-comp*))
   "Search an AVL tree for x, return true if x is in the tree"
