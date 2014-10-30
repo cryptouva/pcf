@@ -29,6 +29,7 @@
                      rle-map-remove
                      rle-map-find
                      rle-map-val
+                     rle-map-submap
                      rle-map-map
                      rle-map-reduce
                      rle-map-filter
@@ -146,6 +147,20 @@
                           (and x (rle-set-member k set2))
                           )
                         (rle-avl-set-tree set1)
+                        t)
+       )
+    )
+  )
+
+(defun rle-map-submap (map1 map2)
+  (declare (type rle-avl-set map1 map2))
+  (cond
+    ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
+    (t (rle-avl-reduce (lambda (x k v)
+                         ;;(declare (ignore v))
+                          (and x (equal v (rle-map-val k map2)))
+                          )
+                        (rle-avl-set-tree map1)
                         t)
        )
     )

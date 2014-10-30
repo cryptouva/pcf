@@ -291,8 +291,16 @@
              (funcall comp (- (avl-idx tree) 1) x)
              (funcall comp (+ x length) (+ (avl-idx tree) (avl-length tree) 1)))
             lst ;; in order to simply return the tree (nothing to insert)
-            (rle-insert-unique x lst :comp comp :length length :data data :data-equiv data-equiv)) 
-        (rle-insert-unique x lst :comp comp :length length :data data :data-equiv data-equiv))))
+            (rle-insert-unique x 
+                               (rle-avl-remove x lst :comp comp :allow-no-result t :length length) 
+                               ;lst
+                               :comp comp :length length :data data :data-equiv data-equiv))
+         (rle-insert-unique x 
+                               (rle-avl-remove x lst :comp comp :allow-no-result t :length length) 
+                               ;lst
+                               :comp comp :length length :data data :data-equiv data-equiv))))
+
+;;(rle-insert-unique x lst :comp comp :length length :data data :data-equiv data-equiv))))
 
 #|   (rle-insert-unique x (if found
 (rle-avl-remove x lst :comp comp :allow-no-result nil :length length) 
@@ -335,10 +343,11 @@ lst)|#
                 )
                (t
                 (error "should have already found data equivalence"))) ;; don't need to do anything to the list.
-             (rle-insert-unique x (rle-avl-remove x lst
-                                                  :comp comp
-                                                  :allow-no-result nil
-                                                  :length length)
+             (rle-insert-unique x tree
+                                ;; (rle-avl-remove x lst
+                                ;;                 :comp comp
+                                ;;                 :allow-no-result nil
+                                ;;                 :length length)
                                 :comp comp :length length
                                 :data data :data-equiv data-equiv))))))
 
@@ -380,7 +389,20 @@ lst)|#
                 rdata rlength
                 ))))
 
-(defun rle-avl-remove (x lst &key (comp *default-comp*) (allow-no-result nil) (length 1))
+(defun rle-avl-remove (x lst &key (comp *default-comp*) (allow-no-result t) (length 1))
+  (if (equal length 0)
+      lst
+      (multiple-value-bind (found tree) (rle-avl-node-search x lst :comp comp)
+        (if found
+            (rle-avl-remove
+             (+ x (avl-length tree))
+             (rle-avl-remove-item x lst :comp comp :allow-no-result allow-no-result :length (min length (avl-length tree)))
+             :comp comp
+             :length (- length (min length (avl-length tree)))
+             )
+            (rle-avl-remove (+ x 1) lst :comp comp :length (- length 1))))))
+
+(defun rle-avl-remove-item (x lst &key (comp *default-comp*) (allow-no-result nil) (length 1))
   "Remove a value from a RLE-AVL tree"
   (declare (optimize (debug 3)(speed 0)))
   ;;(break)
