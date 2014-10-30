@@ -37,7 +37,7 @@
   (reduce
    (lambda (temp-out succ)
      (let ((succ-out (get-block-lives (get-block-by-id succ cfg))))
-       (funcall conf temp-out succ-out)))
+       (funcall conf succ-out temp-out)))
    (get-block-succs blck)
    :initial-value (rle-empty-set)
    ;; (get-block-lives blck)
