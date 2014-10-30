@@ -5,6 +5,7 @@
 
 (defpackage :setmap-rle (:use :rle-tree :common-lisp)
             (:export rle-set-member
+                     rle-set-member-group
                      rle-empty-set
                      rle-singleton
                      rle-set-insert
@@ -19,6 +20,7 @@
                      rle-set-equalp
                      rle-set-reduce
 		     rle-set-subset
+                     rle-set-subset-efficient
                      rle-set-filter
                      rle-map-empty
                      rle-map-singleton
@@ -83,6 +85,24 @@
   (multiple-value-bind (y v) (rle-avl-search x (rle-avl-set-tree st) :comp (rle-avl-set-comp st))
     (and y v)))
 
+(defun rle-set-member-group (x tr &key (length 1))
+  "Check if \"x\" ... \"x + length \" is contained in \"set\""
+  (declare (optimize (debug 3)(speed 0)))
+  (multiple-value-bind (found node) (rle-avl-node-search 
+                                     x 
+                                     (rle-avl-set-tree tr) 
+                                     :comp (rle-avl-set-comp tr))
+    (if (not found)
+        nil
+        (if (< (+ x length)
+               (+ (avl-idx node) (avl-length node) 1)) ;; x might start somewhere in the middle, and it's OK if they're equal
+            t
+            (rle-set-member-group (+ x length)
+                                  tr
+                                  :length (- (+ x length)
+                                             (+ (avl-idx node)
+                                                (avl-length node))))))))
+
 (defun rle-singleton (x &key (comp #'<))
   "Create a new singleton set"
   (make-rle-avl-set :tree
@@ -129,13 +149,6 @@
                                   (rle-avl-set-tree set1))
                   :comp comp)
     )
-    ;; (set-reduce (lambda (st x)
-    ;;               (if (set-member x set1)
-    ;;                 (set-remove st x)
-    ;;                 st))
-    ;;             set1
-    ;;             set2)
-    
 )
 
 (defun rle-set-subset (set1 set2)
@@ -147,10 +160,20 @@
                           (and x (rle-set-member k set2))
                           )
                         (rle-avl-set-tree set1)
-                        t)
-       )
-    )
-  )
+                        t))))
+
+(defun rle-set-subset-efficient (set1 set2)
+  (declare 
+   (optimize (debug 3)(speed 0))
+   (type rle-avl-set set1 set2))
+   (cond
+    ((not (equalp (rle-avl-set-comp set1) (rle-avl-set-comp set2))) nil)
+    (t (rle-avl-node-reduce (lambda (st node)
+                              (and st (rle-set-member-group (avl-idx node)
+                                                            set2
+                                                            :length (avl-length node))))
+                            (rle-avl-set-tree set1)
+                            t))))
 
 (defun rle-map-submap (map1 map2)
   (declare (type rle-avl-set map1 map2))
@@ -161,10 +184,8 @@
                           (and x (equal v (rle-map-val k map2)))
                           )
                         (rle-avl-set-tree map1)
-                        t)
-       )
-    )
-  )
+                        t))))
+
 
 (defun rle-set-equalp (set1 set2)
   (declare (type rle-avl-set set1 set2))

@@ -3,7 +3,9 @@
 ;; An run-length-encoded implementation of an AVL tree,
 ;; because Common Lisp does not come with a balanced binary tree,
 ;; and run-length encoding greatly improves the space efficiency
-;; for one of our applications.
+;; for one of our applications. It also seems to have some performance benefits
+;; because tree traversals are generally shorter (even with the extra overhead
+;; with removing nodes at insertion)
 ;;
 ;; for purposes that have to do with implementing this quickly,
 ;; nodes in this tree are only permitted to have integral idx values
@@ -15,11 +17,15 @@
                      rle-avl-insert-unique
                      rle-avl-remove
                      rle-avl-search
+                     rle-avl-node-search
                      rle-avl-search-val
                      rle-avl-map
                      rle-avl-reduce
-                     empty-rle-avl
-                     find-right-neighbor)
+                     rle-avl-node-reduce ;; ONLY for special-purpose efficient functions
+                     avl-data ;; ONLY for special-purpose efficient functions
+                     avl-length ;; ONLY for special-purpose efficient functions
+                     avl-idx ;; ONLY for special-purpose efficient functions
+                     empty-rle-avl)
             )
 (in-package :rle-tree)
 
@@ -221,42 +227,6 @@
      :data (avl-data lst)
      :length (avl-length lst))))
 
-#|
-(defmacro find-left-or-right (fn tree)
-  `(funcall ,fn x ,tree :comp comp :length length :data data :data-equiv data-equiv))
-
-(defun find-right-neighbor (x lst &key (comp *default-comp*) (length 1)(data t)(data-equiv #'equalp))
-  (declare (optimize (debug 3)(speed 0)))
-  (if (or (null lst)
-          (tree-is-empty lst))
-      nil
-      (cond
-        ((funcall comp (+ x length) (avl-idx lst)) ;; x + length is less than avl-idx
-         (find-left-or-right #'find-right-neighbor (avl-left lst))) ;; traverse to the left
-        ((funcall comp (+ (avl-idx lst) (avl-length lst) x)) ;; avl-idx + avl-node-length < x
-         (find-left-or-right #'find-right-neighbor (avl-right lst))) ;; traverse to the right
-        ((funcall comp (+ x length -1) (avl-idx lst)) ;; x + length -1 is less than avl-idx. x + length = avl-idx
-         lst) ;; found it on the border
-        (t ;; x + length <= avl-idx && avl-idx + avl-node-length >= x. 
-         lst)) ;; found it!
-        ))
-
-(defun find-left-neighbor (x lst &key (comp *default-comp*) (length 1)(data t)(data-equiv #'equalp))
-  (declare (optimize (debug 3)(speed 0)))
-  (if (or (null lst)
-          (tree-is-empty lst))
-      nil
-      (cond
-        ((funcall comp (+ x length) (avl-idx lst)) ;; x + length is less than avl-idx
-         (find-left-or-right #'find-left-neighbor (avl-left lst))) ;; traverse to the left
-        ((funcall comp (+ (avl-idx lst) (avl-length lst) x)) ;; avl-idx + avl-node-length < x
-         (find-left-or-right #'find-left-neighbor (avl-right lst))) ;; traverse to the right
-        ((funcall comp (+ (avl-idx lst) (avl-length lst) -1) x) ;; avlidx + avl-length - 1 < x. avlidx + avl-length = x
-         lst) ;; found it on the border
-        (t ;; x + length <= avl-idx && avl-idx + avl-node-length >= x. 
-         lst)) ;; found it!
-))
-|#
 
 (defmacro insert-unique-branch (branch)
   `(rle-insert-unique x ,branch :comp comp :length length :data data :data-equiv data-equiv)
@@ -343,7 +313,7 @@ lst)|#
                 )
                (t
                 (error "should have already found data equivalence"))) ;; don't need to do anything to the list.
-             (rle-insert-unique x tree
+             (rle-insert-unique x lst
                                 ;; (rle-avl-remove x lst
                                 ;;                 :comp comp
                                 ;;                 :allow-no-result nil
@@ -475,16 +445,6 @@ lst)|#
                                         :data (avl-data lst)
                                         :length prev-remain))))
               )))))))
- #|
-                 (rle-insert-unique (avl-idx lst)
-                                        (avl-cons (+ x length)
-                                                  left
-                                                  right
-                                                  :data (avl-data lst)
-                                                  :length succ-remain)
-                                        :data (avl-data lst)
-                                        :length prev-remain))))
-                 |#
 
   
 (defun rle-avl-search (x lst &key (comp *default-comp*))
@@ -542,8 +502,7 @@ lst)|#
          ;; subtract 1 because single nodes have length 1
          (rle-avl-search x (avl-right lst) :comp comp)
          )
-        ;; We use (avl-data lst) rather than x to support implementations of maps
-        ;;(t (values t x))
+        ;; We use (avl-data lst) to support implementations of maps
         (t (values t (avl-data lst)))
         )
       )
@@ -628,3 +587,19 @@ lst)|#
       )
   )
 
+
+(defun rle-avl-node-reduce (fn tr st)
+    "Fold the nodes in the tree \"tr\" using the function \"fn\".  Note:  DO NOT ASSUME ANYTHING ABOUT ORDER!!!
+
+\"fn\" should be of the form (lambda (state node) ...)"
+  (declare (type function fn))
+  ;;(break)
+  (if (tree-is-empty tr)
+      st
+      (let* ((st-left (rle-avl-node-reduce fn (avl-left tr) st))
+             (st-cur (funcall fn st-left tr))
+             )
+        (rle-avl-node-reduce fn (avl-right tr) st-cur)
+        )
+      )
+)
