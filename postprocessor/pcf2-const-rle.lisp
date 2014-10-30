@@ -127,7 +127,7 @@
    (lambda (temp-out pred)
      (let ((pred-out (get-block-consts (get-block-by-id pred cfg))))
        ;;(format t "pred out: ~A~%" pred-out)
-       (funcall conf temp-out pred-out)))
+       (funcall conf pred-out temp-out)))
    (get-block-preds blck)
    :initial-value (rle-map-empty)
    ))
