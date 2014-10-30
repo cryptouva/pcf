@@ -212,7 +212,7 @@
                              t)))
     (and
      (weaker-map-vals map1 map2)
-     (not (rle-map-submap map2 map1)))
+     (not (rle-map-submap-efficient map2 map1)))
     ))
 
 (defun map-weaker-fn (map1 map2)
