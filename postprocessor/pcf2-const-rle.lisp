@@ -99,7 +99,7 @@
       ;; (if (zerop (mod (get-block-id blck) 50))
       ;;     (eliminate-extra-consts flow blck use-map)
       ;;       flow))))
-      (typecase (get-block-op blck)
+#|      (typecase (get-block-op blck)
         (gate
          (let ((base (get-block-base blck)))
            (with-slots (op1 op2 dest) (get-block-op blck)
@@ -115,7 +115,7 @@
                    (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d)
                    ;;(if (and (< (get-block-id blck) 300) (> (get-block-id blck) 293)) (break))
                    ))))))
-        (otherwise t))
+        (otherwise t)) |#
       flow)))
       
 (defun const-weaker-fn (map1 map2)
