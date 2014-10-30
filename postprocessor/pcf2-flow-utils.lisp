@@ -211,7 +211,7 @@
                              m1
                              t)))
     (and
-     (weaker-map-vals map1 map2)
+     (rle-map-weaker-efficient map1 map2 'pcf2-block-graph:pcf-not-const)
      (not (rle-map-submap-efficient map2 map1)))
     ))
 

@@ -25,6 +25,7 @@
                      rle-map-member-group
                      rle-map-submap
                      rle-map-submap-efficient
+                     rle-map-weaker-efficient 
                      rle-map-empty
                      rle-map-singleton
                      rle-map-insert
@@ -225,6 +226,52 @@
                                                          :length (avl-length node))))
                             (rle-avl-set-tree map1)
                             t))))
+
+(defun rle-map-group-weaker (x val tr &key (length 1) (bottom nil))
+  "Check if \"x\" ... \"x + length \" with value \"val\" is contained in \"tr\""
+  (declare (optimize (debug 3)(speed 0)))
+  (multiple-value-bind (found node) (rle-avl-node-search 
+                                     x 
+                                     (rle-avl-set-tree tr) 
+                                     :comp (rle-avl-set-comp tr))
+    (if (zerop length)
+        t
+        (if (not found)
+            (rle-map-group-weaker (+ x 1)
+                                  val
+                                  tr
+                                  :length (- length 1)
+                                  :bottom bottom)
+            ;;nil ;; this might have to be a find on the next index.
+            (if (not (or (equal val (avl-data node)) (equal val bottom)))
+                nil
+                (if (< (+ x length)
+                       (+ (avl-idx node) (avl-length node) 1)) ;; x might start somewhere in the middle, and it's OK if they're equal
+                    t
+                    (rle-map-group-weaker (+ x (min length (avl-length node)))
+                                          val
+                                          tr
+                                          :length (- (+ x length)
+                                                     (+ (avl-idx node)
+                                                        (avl-length node)))
+                                          :bottom bottom)))))))
+
+(defun rle-map-weaker-efficient (map1 map2 bottom)
+  (declare 
+   (optimize (debug 3)(speed 0))
+   (type rle-avl-set map1 map2))
+   (cond
+    ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
+    (t (rle-avl-node-reduce (lambda (st node)
+                              (and st 
+                                   (rle-map-group-weaker (avl-idx node)
+                                                         (avl-data node)
+                                                         map2
+                                                         :length (avl-length node)
+                                                         :bottom bottom)))
+                            (rle-avl-set-tree map1)
+                            t))))
+
 
 (defun rle-set-equalp (set1 set2)
   (declare (type rle-avl-set set1 set2))
