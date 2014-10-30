@@ -173,8 +173,10 @@
        )
   )
 
-(defun rle-set-union (set1 set2)
+(defun rle-set-union (set2 set1)
   "Compute the union of \"set1\" and \"set2\""
+  ;; set1 should be the smaller one, since we reduce over it
+  ;; (second argument)
   (declare (type rle-avl-set set1 set2)
            (optimize (debug 3)(speed 0)))
   (assert (equalp (rle-avl-set-comp set1) (rle-avl-set-comp set2)))
