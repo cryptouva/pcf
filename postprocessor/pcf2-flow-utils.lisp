@@ -159,7 +159,7 @@
     newmap))
 
 ;; rle-map is our compressed map
-(defun rle-map-union-without-conflicts (map1 map2)
+(defun rle-map-union-without-conflicts (map2 map1)
   ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((newmap (rle-map-reduce (lambda (map-accum key val)
