@@ -29,6 +29,7 @@
                      rle-map-remove
                      rle-map-find
                      rle-map-val
+                     rle-map-submap
                      rle-map-map
                      rle-map-reduce
                      rle-map-filter
@@ -86,7 +87,7 @@
   "Create a new singleton set"
   (make-rle-avl-set :tree
                 ;;(avl-tree-insert x (empty-avl-tree :comp comp) :comp comp)
-                    (rle-avl-insert-unique x (empty-rle-avl) :comp comp)
+                    (rle-avl-insert x (empty-rle-avl) :comp comp)
                     :comp comp)
   )
 
@@ -146,6 +147,20 @@
                           (and x (rle-set-member k set2))
                           )
                         (rle-avl-set-tree set1)
+                        t)
+       )
+    )
+  )
+
+(defun rle-map-submap (map1 map2)
+  (declare (type rle-avl-set map1 map2))
+  (cond
+    ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
+    (t (rle-avl-reduce (lambda (x k v)
+                         ;;(declare (ignore v))
+                          (and x (equal v (rle-map-val k map2)))
+                          )
+                        (rle-avl-set-tree map1)
                         t)
        )
     )
@@ -215,7 +230,7 @@
     (make-rle-avl-set :tree 
                       (rle-avl-reduce (lambda (st k v)
                                         (if (rle-set-member k set2)
-                                            (rle-avl-insert-unique k st :comp comp :data v)
+                                            (rle-avl-insert k st :comp comp :data v)
                                             st
                                             )
                                         )
@@ -289,7 +304,7 @@
                   mp
                   (rle-empty-set :comp cmp)))
 
-(defun rle-map-insert (x y mp)
+(defun rle-map-insert (x y mp &key (length 1))
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
   (declare (type rle-avl-set mp)
            (optimize (debug 3)(speed 0)))
@@ -300,7 +315,8 @@
                   (rle-avl-insert-unique  x
                                           (rle-avl-set-tree mp)
                                           :comp comp
-                                          :data y)
+                                          :data y
+                                          :length length)
                   :comp comp)
     )
   )
@@ -310,13 +326,13 @@
   (rle-map-insert x y mp)
   )
 
-(defun rle-map-remove (x mp)
+(defun rle-map-remove (x mp &key (length 1))
   "Remove the element with key \"x\" from the map \"mp\""
   (declare (optimize (debug 3)(speed 0)))
   (let ((comp (rle-avl-set-comp mp))
         )
     (make-rle-avl-set :tree
-                  (rle-avl-remove x (rle-avl-set-tree mp) :comp comp)
+                  (rle-avl-remove x (rle-avl-set-tree mp) :comp comp :length length)
                   :comp comp)
     )
   )
