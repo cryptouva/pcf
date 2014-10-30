@@ -94,7 +94,7 @@
                                      x 
                                      (rle-avl-set-tree tr) 
                                      :comp (rle-avl-set-comp tr))
-    (break)
+    ;;(break)
     (if (not found)
         nil
         (if (< (+ x length)
