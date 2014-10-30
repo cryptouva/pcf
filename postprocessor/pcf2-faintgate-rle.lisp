@@ -88,11 +88,11 @@
                  ;; set-union should have the larger set come second
                  (gen blck in-flow)
                  (rle-set-diff-efficient in-flow (kill blck in-flow)))))
-      ;; (if (zerop (mod (get-block-id blck) 100))
-      ;;     (eliminate-extra-faints flow blck use-map)
-      ;;     flow))))
+      (if (zerop (mod (get-block-id blck) 100))
+          (eliminate-extra-faints flow blck use-map)
+          flow))))
       ;;(break)
-      flow)))
+      ;;flow)))                           
 
 (defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 

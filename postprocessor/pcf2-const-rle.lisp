@@ -96,9 +96,9 @@
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      ;; (if (zerop (mod (get-block-id blck) 50))
-      ;;     (eliminate-extra-consts flow blck use-map)
-      ;;       flow))))
+      (if (zerop (mod (get-block-id blck) 50))
+          (eliminate-extra-consts flow blck use-map)
+          flow))))
 #|      (typecase (get-block-op blck)
         (gate
          (let ((base (get-block-base blck)))
@@ -116,7 +116,7 @@
                    ;;(if (and (< (get-block-id blck) 300) (> (get-block-id blck) 293)) (break))
                    ))))))
         (otherwise t)) |#
-      flow)))
+;;flow)))
       
 (defun const-weaker-fn (map1 map2)
   (rle-map-weaker-fn map1 map2))
