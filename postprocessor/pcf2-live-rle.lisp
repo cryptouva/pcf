@@ -50,8 +50,8 @@
 
 (defun live-weaker-fn (set1 set2)
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
-  (and (not (rle-set-subset set1 set2))
-       (rle-set-subset set2 set1)
+  (and (not (rle-set-subset-efficient set1 set2))
+       (rle-set-subset-efficient set2 set1)
   ))
 
 (defun live-flow-fn (blck cfg use-map)
