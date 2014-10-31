@@ -85,9 +85,9 @@
   (declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
-                 ;; set-union should have the larger set come second
-                 (gen blck in-flow)
-                 (rle-set-diff-efficient in-flow (kill blck in-flow)))))
+                 ;; set-union should have the smaller set come second
+                 (rle-set-diff-efficient in-flow (kill blck in-flow))
+                 (gen blck in-flow))))
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))

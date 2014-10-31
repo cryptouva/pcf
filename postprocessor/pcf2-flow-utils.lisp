@@ -207,11 +207,13 @@
                                  (and state
                                       (or (equal m-val1 m-val2)
                                           (equalp m-val1 'pcf2-block-graph:pcf-not-const)
-                                          (null m-val2)))))
+                                          (null m-val2)
+                                          ))))
                              m1
                              t)))
     (and
-     (rle-map-weaker-efficient map1 map2 'pcf2-block-graph:pcf-not-const)
+     (weaker-map-vals map1 map2)
+     ;;(rle-map-weaker-efficient map1 map2 'pcf2-block-graph:pcf-not-const)
      (not (rle-map-submap-efficient map2 map1)))
     ))
 
