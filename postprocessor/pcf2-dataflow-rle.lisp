@@ -310,7 +310,7 @@
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
 
 ;; functions for the implementation of the worklist algorithm
-
+#|
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
@@ -340,8 +340,8 @@
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
   )
+|#
 
-#|
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
@@ -355,10 +355,6 @@
                                    (worklist (second state))
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                              (if (and (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-                                       (equalp (get-block-id cur-node) 1829))
-                                  (progn
-                                    (format ostream "gate~%~A~%compare~%~A~%neighbor~%~A~%end~%~%" (get-block-op cur-node) compare-flow neighbor-flow)))
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
                                   state)))
@@ -366,7 +362,7 @@
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
   )
-|#
+
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
