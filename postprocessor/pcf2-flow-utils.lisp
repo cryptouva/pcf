@@ -17,6 +17,7 @@
            rle-map-union-without-conflicts
            hmap-weaker-fn
            rle-map-weaker-fn
+           rle-map-weaker-fn-brk
            map-weaker-fn)
   )
 
@@ -212,11 +213,32 @@
                              m1
                              t)))
     (and
-     (weaker-map-vals map1 map2)
-     ;;(rle-map-weaker-efficient map1 map2 'pcf2-block-graph:pcf-not-const)
+     ;;(weaker-map-vals map1 map2)
+     (rle-map-weaker-efficient map1 map2 'pcf2-block-graph:pcf-not-const) 
      (not (rle-map-submap-efficient map2 map1)))
     ))
 
+(defun rle-map-weaker-fn-brk (map1 map2)
+  ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2
+  ;; and every entry in map 1 is either the same as in map 2 or not-const
+  ;;(set-subset set1 set2)
+  (declare (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (labels ((weaker-map-vals (m1 m2)
+             (rle-map-reduce (lambda (state key m-val1)
+                               ;;(declare (optimize (debug 3)(speed 0)))
+                               (let ((m-val2 (rle-map-val key m2 t)))
+                                 (and state
+                                      (or (equal m-val1 m-val2)
+                                          (equalp m-val1 'pcf2-block-graph:pcf-not-const)
+                                          (null m-val2)
+                                          ))))
+                             m1
+                             t)))
+    (let ((cond1 (rle-map-weaker-efficient-brk map1 map2 'pcf2-block-graph:pcf-not-const))
+          (cond2 (not (rle-map-submap-efficient map2 map1))))
+      ;;(break)
+      (and cond1 cond2))))
 
 (defun map-weaker-fn (map1 map2)
   ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2

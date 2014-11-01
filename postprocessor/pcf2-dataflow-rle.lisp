@@ -314,8 +314,8 @@
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
-  ;;(if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-  ;;    (format ostream "~A~%~A~%" (get-block-id cur-node) (funcall get-data-fn cur-node)))
+  (if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
+      (format ostream "~A~%" (get-block-id cur-node)))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       ;;(if (equal (get-block-id cur-node) 4)(break))
@@ -325,8 +325,40 @@
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
                               (if (and (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-                                       (equalp (get-block-id cur-node) 2844))
-                                  (format ostream "compare~%~A~%neighbor~%~A~%end~%~%" compare-flow neighbor-flow))
+                                       (equalp (get-block-id cur-node) 2298)
+                                       (not (funcall weaker-fn compare-flow neighbor-flow)))
+                                  (progn
+                                    ;;(format ostream "gate~%~A~%compare~%~A~%neighbor~%~A~%end~%~%" (get-block-op cur-node) compare-flow neighbor-flow)
+                                    ;;(break)
+                                    (if (pcf2-flow-utils:rle-map-weaker-fn-brk compare-flow neighbor-flow)
+                                        (list (first state) (append worklist (list neighbor-id)))
+                                        state))
+                                  (if (funcall weaker-fn compare-flow neighbor-flow)
+                                      (list (first state) (append worklist (list neighbor-id)))
+                                      state))))
+                          (funcall get-neighbor-fn cur-node)
+                          :initial-value (list cfg nil))))
+        (values (first vals) (second vals)))))
+  )
+
+#|
+(defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
+  (declare (optimize (debug 3)(speed 0)))
+  (format t "~A~%" (get-block-id cur-node))
+  ;;(if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
+  ;;    (format ostream "~A~%" (get-block-id cur-node)))
+  (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
+    (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
+      ;;(if (equal (get-block-id cur-node) 4)(break))
+      (let ((vals (reduce (lambda (state neighbor-id)
+                            (let* ((cfg (first state))
+                                   (worklist (second state))
+                                   (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
+                                   (compare-flow (funcall join-fn new-flow neighbor-flow)))
+                              (if (and (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
+                                       (equalp (get-block-id cur-node) 1829))
+                                  (progn
+                                    (format ostream "gate~%~A~%compare~%~A~%neighbor~%~A~%end~%~%" (get-block-op cur-node) compare-flow neighbor-flow)))
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
                                   state)))
@@ -334,6 +366,7 @@
                           :initial-value (list cfg nil))))
         (values (first vals) (second vals)))))
   )
+|#
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
