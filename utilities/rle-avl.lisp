@@ -34,7 +34,9 @@
               (lambda (struct stream depth)
                 (declare (ignore depth))
                 (format stream "{")
-                (rle-avl-map (lambda (idx data) (format stream "(~A.~A)" idx data)) struct :key-val t)
+                ;;(rle-avl-map (lambda (idx data) (format stream "(~A.~A)" idx data)) struct :key-val t)
+                (rle-avl-node-reduce (lambda (st node)
+                                       (format stream "(~A.~A.~A)" (avl-idx node) (avl-data node) (avl-length node))) struct t)
                 (format stream "}")
                 )
               )
@@ -113,36 +115,64 @@
   )
 
 (defun node-expand-up (tr x xlen)
+  ;; this function can go at most 2 deep (base call and then a recursive one)
   (declare (optimize (debug 3)(speed 0)))
   ;;(break)
-  (make-rle-avl
-   :left (avl-left tr)
-   :right (avl-right tr)
-   :data (avl-data tr)
-   :idx (avl-idx tr)
-   :height (avl-height tr)
-   :length (- (+ x xlen)
-              (avl-idx tr))))
+  (if (and (avl-right tr)
+           (equal (avl-data tr) (avl-data (avl-right tr)))
+           (equal (avl-idx (avl-right tr)) (+ (avl-idx tr) (avl-length tr) xlen)))
+      (avl-cons
+       (avl-idx tr)
+       (avl-left tr)
+       (avl-balance
+        (rle-avl-remove (avl-idx (avl-right tr))
+                    (avl-right tr)
+                    :length (avl-length (avl-right tr))))
+       :data (avl-data tr)
+       :length (+ (avl-length tr) xlen (avl-length (avl-right tr))))
+      (make-rle-avl
+       :left (avl-left tr)
+       :right (avl-right tr)
+       :data (avl-data tr)
+       :idx (avl-idx tr)
+       :height (avl-height tr)
+       :length (- (+ x xlen)
+                  (avl-idx tr))))
+)
 
 (defun node-expand-down (tr x xlen)
-  (declare ;;(ignore xlen)
-           (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   ;;(break)
-  (make-rle-avl
-   :left (avl-left tr)
-   :right (avl-right tr)
-   :data (avl-data tr)
-   :idx x
-   :height (avl-height tr)
-   :length (- (max (+ (avl-idx tr) (avl-length tr)) (+ x xlen))
-              x)))
+  (if (and (avl-left tr)
+           (equal (avl-data tr) (avl-data (avl-left tr)))
+           (equal (avl-idx (avl-left tr))
+                  (- (avl-idx tr) xlen (avl-length (avl-left tr)))))
+      (avl-cons
+       (avl-idx (avl-left tr))
+       (avl-balance
+        (rle-avl-remove (avl-idx (avl-left tr))
+                        (avl-left tr)
+                        :length (avl-length (avl-left tr))))
+       (avl-right tr)
+       :data (avl-data tr)
+       :length (+ (avl-length tr) xlen (avl-length (avl-left tr))))
+      (make-rle-avl
+       :left (avl-left tr)
+       :right (avl-right tr)
+       :data (avl-data tr)
+       :idx x
+       :height (avl-height tr)
+       :length (- (max (+ (avl-idx tr) (avl-length tr)) (+ x xlen))
+                  x)))
+)
+
 
 ;; remember that i put the avl-balances into the following two functions while writing avl-remove
 ;; and i might want to take them out.
 (defun left-rotate (tr)
   "Perform a left rotation"
-  (assert tr)
-  (if (or (= 1 (avl-height tr)) (null (avl-right tr)))
+ ;; (assert tr)
+  (if (or (null tr) (= 1 (avl-height tr)) (null (avl-right tr)))
       tr
       (avl-cons (avl-idx (avl-right tr))
                 ;;(avl-balance

@@ -57,7 +57,7 @@
 
 (defparameter confluence-operator #'rle-map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of hmap-inter
 
-(defparameter ostream (open "rle-const-out.txt" :direction :output :if-exists :supersede))
+;;(defparameter ostream (open "rle-const-out.txt" :direction :output :if-exists :supersede))
 
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
@@ -92,13 +92,16 @@
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
   (declare 
    (optimize (speed 0) (debug 3)))
+  ;;(if (equal (get-block-id blck) 2844) (break))
   (let ((in-flow (get-out-sets blck cfg #'rle-map-union-without-conflicts)))
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      (if (zerop (mod (get-block-id blck) 50))
-          (eliminate-extra-consts flow blck use-map)
-          flow))))
+      ;; (if (zerop (mod (get-block-id blck) 50))
+      ;;     (eliminate-extra-consts flow blck use-map)          
+      ;;     flow))))
+      flow)))
+
 #|      (typecase (get-block-op blck)
         (gate
          (let ((base (get-block-base blck)))
