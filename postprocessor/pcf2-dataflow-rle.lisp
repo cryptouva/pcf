@@ -15,6 +15,8 @@
 (in-package :pcf2-dataflow)
 
 
+(defparameter ostream (open "rle-weaker-out.txt" :direction :output :if-exists :supersede))
+
 ;; these special functions are included by the PCF interpreters and therefore will not have lookups in the .PCF2 file
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
@@ -312,6 +314,8 @@
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
+  ;;(if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
+  ;;    (format ostream "~A~%~A~%" (get-block-id cur-node) (funcall get-data-fn cur-node)))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       ;;(if (equal (get-block-id cur-node) 4)(break))
@@ -320,6 +324,9 @@
                                    (worklist (second state))
                                    (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
                                    (compare-flow (funcall join-fn new-flow neighbor-flow)))
+                              (if (and (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
+                                       (equalp (get-block-id cur-node) 2844))
+                                  (format ostream "compare~%~A~%neighbor~%~A~%end~%~%" compare-flow neighbor-flow))
                               (if (funcall weaker-fn compare-flow neighbor-flow)
                                   (list (first state) (append worklist (list neighbor-id)))
                                   state)))
@@ -613,8 +620,11 @@
 ;; the big cahoona
 (defun optimize-circuit (cfg)
   ;;(print cfg)
-  (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
-)
+  (prog1
+      (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
+    (close ostream)
+    )
+  )
 
 #|
 (defun compress-cfg (cfg)

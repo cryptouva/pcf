@@ -15,6 +15,8 @@
 (in-package :pcf2-dataflow)
 
 
+(defparameter ostream (open "h-weaker-out.txt" :direction :output :if-exists :supersede))
+
 ;; these special functions are included by the PCF interpreters and therefore will not have lookups in the .PCF2 file
 ;; alice and bob return unsigned integers
 ;; output_alice and output_bob give outputs to the parties
@@ -312,6 +314,7 @@
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
+  (format ostream "~A~%" (get-block-id cur-node))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
       ;;(if (equal (get-block-id cur-node) 4)(break))

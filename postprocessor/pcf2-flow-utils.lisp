@@ -217,6 +217,7 @@
      (not (rle-map-submap-efficient map2 map1)))
     ))
 
+
 (defun map-weaker-fn (map1 map2)
   ;; map 1 is weaker than (safely estimates) map 2 if map 1 is a subset of map2
   ;; and every entry in map 1 is either the same as in map 2 or not-const

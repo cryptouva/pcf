@@ -29,6 +29,7 @@
                      rle-map-empty
                      rle-map-singleton
                      rle-map-insert
+                     rle-map-insert-altern
                      rle-map-keys
                      rle-map-vals
                      rle-map-upsert
@@ -52,15 +53,16 @@
              (:print-function
               (lambda (struct stream depth)
                 (declare (ignore depth))
-                (format stream "{")
+                ;;(format stream "{")
                 ;; (format stream "Tree: ")
-                (rle-avl-map (lambda (x y)
+                (format stream "~A" (rle-avl-set-tree struct))
+                #|(rle-avl-map (lambda (x y)
                                (format stream "(~A.~A) " x y))
                              (rle-avl-set-tree struct)
-                             :key-val t) 
+                             :key-val t) |#
                 ;;(format stream "~%")
                 ;;(format stream "Comp: ~A" (rle-avl-set-comp struct))
-                (format stream "}")
+                ;;(format stream "}")
                 )
               )
              )
@@ -259,7 +261,7 @@
   (declare 
    (optimize (debug 3)(speed 0))
    (type rle-avl-set map1 map2))
-   (cond
+  (cond
     ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
     (t (rle-avl-node-reduce (lambda (st node)
                               (and st 
@@ -431,6 +433,22 @@
     )
   )
 
+(defun rle-map-insert-altern (x y length mp)
+  "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
+  (declare (type rle-avl-set mp)
+           (optimize (debug 3)(speed 0)))
+  ;;(break)
+  (let ((comp (rle-avl-set-comp mp))
+        )
+    (make-rle-avl-set :tree
+                  (rle-avl-insert-unique  x
+                                          (rle-avl-set-tree mp)
+                                          :comp comp
+                                          :data y
+                                          :length length)
+                  :comp comp)
+    )
+  )
 
 (defun rle-map-upsert (x y mp)
   (rle-map-insert x y mp)
