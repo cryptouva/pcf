@@ -303,11 +303,11 @@
 
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify worklist :comp #'<) #'< #|worklist|# (rle-set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'<) #'< #|worklist|# (rle-set-from-list worklist) use-map)))
 
 (defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn  (heapify worklist :comp #'>) #'> #| worklist|# (rle-set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn  (heapify (reverse worklist) :comp #'>) #'> #| worklist|# (rle-set-from-list worklist) use-map)))
 
 ;; functions for the implementation of the worklist algorithm
 #|

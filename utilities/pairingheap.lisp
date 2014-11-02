@@ -51,7 +51,8 @@
 (defun heap-insert (x heap &key (comp #'<))
   "Insert \"x\" into the heap \"heap\""
   (declare (type heap heap)
-           (optimize (debug 3) (speed 0)))
+           ;;(optimize (debug 3) (speed 0))
+           )
   (cond
     ((heap-empty heap) (singleton-heap x))
     ((funcall comp x (heap-min heap))
@@ -83,7 +84,7 @@
 
 (defun merge-pairs (heaps &key (comp #'<))
   (declare (type list heaps)
-           (optimize (debug 3) (speed 0))
+           ;;(optimize (debug 3) (speed 0))
            )
   (the heap
     (cond
