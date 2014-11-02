@@ -4,6 +4,8 @@
             (:export heap-insert
                      heap-delmin
                      heap-getmin
+                     heapify
+                     heap-emptyp
                      make-queue
                      peek-queue
                      queue-emptyp
@@ -37,8 +39,17 @@
               )
   )
 
+(defun heap-emptyp (heap)
+    (heap-empty heap))
+
+(defun heapify (lst &key (comp #'<))
+  (reduce (lambda (st x)
+            (heap-insert x st :comp comp))
+          lst
+          :initial-value (make-empty-heap)))
+
 (defun heap-insert (x heap &key (comp #'<))
-  "Insert \"x\" into thea heap \"heap\""
+  "Insert \"x\" into the heap \"heap\""
   (declare (type heap heap)
            (optimize (debug 3) (speed 0)))
   (cond

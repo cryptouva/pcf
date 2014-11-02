@@ -87,14 +87,14 @@
 
 (defun rle-set-member (x st)
   "Check if \"x\" is contained in \"set\""
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (multiple-value-bind (y v) (rle-avl-search x (rle-avl-set-tree st) :comp (rle-avl-set-comp st))
     (and y v)))
 
 (defun rle-set-member-group (x tr &key (length 1))
   "Check if \"x\" ... \"x + length \" is contained in \"tr\""
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (multiple-value-bind (found node) (rle-avl-node-search 
                                      x 
                                      (rle-avl-set-tree tr) 
@@ -113,7 +113,7 @@
 
 (defun rle-map-member-group (x val tr &key (length 1))
   "Check if \"x\" ... \"x + length \" with value \"val\" is contained in \"tr\""
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (multiple-value-bind (found node) (rle-avl-node-search 
                                      x 
                                      (rle-avl-set-tree tr) 
@@ -176,19 +176,19 @@
   (assert (equalp (rle-avl-set-comp set1) (rle-avl-set-comp set2)))
   (let ((comp (rle-avl-set-comp set1)))
     (make-rle-avl-set :tree
-                  (rle-avl-reduce (lambda (st k v)
-                                    (declare (ignore v)
-                                             (optimize (debug 3)(speed 0)))
-                                    ;;(break)
-                                    (if (rle-set-member k set1)
-                                        (rle-avl-remove k st :comp comp)
-                                        st)
-                                    )
-                                  (rle-avl-set-tree set2)
-                                  (rle-avl-set-tree set1))
-                  :comp comp)
+                      (rle-avl-reduce (lambda (st k v)
+                                        (declare (ignore v))
+                                        ;;(optimize (debug 3)(speed 0)))
+                                        ;;(break)
+                                        (if (rle-set-member k set1)
+                                            (rle-avl-remove k st :comp comp)
+                                            st)
+                                        )
+                                      (rle-avl-set-tree set2)
+                                      (rle-avl-set-tree set1))
+                      :comp comp)
     )
-)
+  )
 
 (defun rle-set-subset (set1 set2)
   (declare (type rle-avl-set set1 set2))
@@ -203,7 +203,7 @@
 
 (defun rle-set-subset-efficient (set1 set2)
   (declare 
-   (optimize (debug 3)(speed 0))
+;;   (optimize (debug 3)(speed 0))
    (type rle-avl-set set1 set2))
   ;;(break)
   (cond
@@ -227,7 +227,8 @@
   ;; set1 should be the smaller one, since we reduce over it
   ;; (second argument)
   (declare (type rle-avl-set set1 set2)
-           (optimize (debug 3)(speed 0)))
+           ;;(optimize (debug 3)(speed 0))
+           )
   (assert (equalp (rle-avl-set-comp set1) (rle-avl-set-comp set2)))
   (let ((comp (rle-avl-set-comp set1)))
     (make-rle-avl-set :tree
@@ -239,7 +240,7 @@
                       )))
 
 (defun rle-set-insert (set x &key (length 1))
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (let ((comp (rle-avl-set-comp set)))
     (make-rle-avl-set :tree
                   (rle-avl-insert-unique x (rle-avl-set-tree set) :comp comp :length length)
@@ -248,7 +249,7 @@
 
 (defun rle-set-remove (set x &optional (allow-no-result t))
   "Remove key \"x\" from the set"
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
    (let ((comp (rle-avl-set-comp set)))
      (make-rle-avl-set :tree
                    (rle-avl-remove x (rle-avl-set-tree set) :comp comp :allow-no-result allow-no-result)
@@ -358,7 +359,8 @@
 (defun rle-map-insert (x y mp &key (length 1))
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
   (declare (type rle-avl-set mp)
-           (optimize (debug 3)(speed 0)))
+           ;;(optimize (debug 3)(speed 0))
+           )
   ;;(break)
   (let ((comp (rle-avl-set-comp mp))
         )
@@ -375,7 +377,8 @@
 (defun rle-map-insert-altern (x y length mp)
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
   (declare (type rle-avl-set mp)
-           (optimize (debug 3)(speed 0)))
+          ;; (optimize (debug 3)(speed 0))
+           )
   ;;(break)
   (let ((comp (rle-avl-set-comp mp))
         )
@@ -395,7 +398,7 @@
 
 (defun rle-map-remove (x mp &key (length 1))
   "Remove the element with key \"x\" from the map \"mp\""
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (let ((comp (rle-avl-set-comp mp))
         )
     (make-rle-avl-set :tree
@@ -406,7 +409,7 @@
 
 (defun rle-map-find (x mp &optional (allow-no-result nil))
   "Search the map \"mp\" for the key \"x\".  If found, return the value; else return nil"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (let ((comp (rle-avl-set-comp mp)))
     (multiple-value-bind (found value) (rle-avl-search x
                                                        (rle-avl-set-tree mp) 
@@ -439,7 +442,7 @@
 
 (defun rle-map-submap-efficient (map1 map2)
   (declare 
-   (optimize (debug 3)(speed 0))
+   ;;(optimize (debug 3)(speed 0))
    (type rle-avl-set map1 map2))
    (cond
     ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
@@ -459,7 +462,7 @@
 
 (defun rle-map-group-weaker (x val tr &key (length 1))
   "Check if \"x\" ... \"x + length \" with value \"val\" is contained in \"tr\""
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (multiple-value-bind (found node) (rle-avl-node-search 
                                      x 
                                      (rle-avl-set-tree tr) 
@@ -487,7 +490,7 @@
 
 (defun rle-map-group-weaker-brk (x val tr &key (length 1))
   "Check if \"x\" ... \"x + length \" with value \"val\" is contained in \"tr\""
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (multiple-value-bind (found node) (rle-avl-node-search 
                                      x 
@@ -516,7 +519,7 @@
 
 (defun rle-map-weaker-efficient (map1 map2 bottom)
   (declare 
-   (optimize (debug 3)(speed 0))
+   ;;(optimize (debug 3)(speed 0))
    (type rle-avl-set map1 map2))
   (cond
     ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)
@@ -534,7 +537,7 @@
 
 (defun rle-map-weaker-efficient-brk (map1 map2 bottom)
   (declare 
-   (optimize (debug 3)(speed 0))
+   ;;(optimize (debug 3)(speed 0))
    (type rle-avl-set map1 map2))
   (cond
     ((not (equalp (rle-avl-set-comp map1) (rle-avl-set-comp map2))) nil)

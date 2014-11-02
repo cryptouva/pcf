@@ -103,7 +103,7 @@
   )
 
 (defun avl-cons (idx left right &key (data t) (length 1))
-  (declare (optimize (debug 3)(speed 0)))
+;;  (declare (optimize (debug 3)(speed 0)))
   (make-rle-avl
    :left left
    :right right
@@ -116,7 +116,7 @@
 
 (defun node-expand-up (tr x xlen)
   ;; this function can go at most 2 deep (base call and then a recursive one)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;  (declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (and (avl-right tr)
            (equal (avl-data tr) (avl-data (avl-right tr)))
@@ -141,7 +141,7 @@
 )
 
 (defun node-expand-down (tr x xlen)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (and (avl-left tr)
            (equal (avl-data tr) (avl-data (avl-left tr)))
@@ -205,7 +205,7 @@
                  :length (avl-length (avl-left tr)))))
 
 (defun avl-balance (tr)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (cond
     ((> 1 (- (avl-height (avl-left tr)) (avl-height (avl-right tr))))
                                         ; Need a left rotation
@@ -282,9 +282,9 @@
 
 (defun rle-avl-insert-unique (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (multiple-value-bind (found tree) (rle-avl-node-search x lst :comp comp)
-    (declare (optimize (debug 3)(speed 0)))
+    ;;(declare (optimize (debug 3)(speed 0)))
     ;;(break)
     (if (and found (funcall data-equiv data (avl-data tree)))
         (if (and ;; x must be >= than avl-idx and (x+length) must be <= (avl-idx + avl-length)
@@ -354,15 +354,15 @@ lst)|#
 (defun rle-avl-insert (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
   "Insert a new value into an AVL tree."
-  (declare ;;(ignore length)
-           (optimize (debug 3)(speed 0))
-           )
+  ;;(declare ;;(ignore length)
+  ;; (optimize (debug 3)(speed 0))
+   ;;        )
   (tree-insert))
 
 (defun rle-insert-unique (x lst &key (comp *default-comp*)(length 1)
                                       (data t) (data-equiv #'equalp))
   "Insert a new value into an AVL if the value is not already present, otherwise update the value"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (tree-insert))
 
@@ -404,7 +404,7 @@ lst)|#
 
 (defun rle-avl-remove-item (x lst &key (comp *default-comp*) (allow-no-result nil) (length 1))
   "Remove a value from a RLE-AVL tree"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (tree-is-empty lst)
       (if allow-no-result
@@ -479,7 +479,7 @@ lst)|#
   
 (defun rle-avl-search (x lst &key (comp *default-comp*))
   "Search an AVL tree for x, return true if x is in the tree"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (tree-is-empty lst)
       (values nil nil)
       (cond
@@ -499,7 +499,7 @@ lst)|#
 
 (defun rle-avl-node-search (x lst &key (comp *default-comp*))
   "Search an AVL tree for the tree rooted with the node containing x"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (if (tree-is-empty lst)
       (values nil nil)
@@ -521,7 +521,7 @@ lst)|#
 
 (defun rle-avl-search-val (x lst &key (comp *default-comp*))
   "Search an AVL tree for x, return true if x is in the tree"
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (if (tree-is-empty lst)
       (values nil nil)
       (cond
