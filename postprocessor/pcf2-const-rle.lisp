@@ -97,10 +97,10 @@
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      ;; (if (zerop (mod (get-block-id blck) 50))
-      ;;     (eliminate-extra-consts flow blck use-map)          
-      ;;     flow))))
-      flow)))
+      (if (zerop (mod (get-block-id blck) 50))
+          (eliminate-extra-consts flow blck use-map)          
+          flow))))
+;;      flow)))
 
 #|      (typecase (get-block-op blck)
         (gate
