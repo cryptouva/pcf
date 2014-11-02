@@ -1,7 +1,7 @@
 ;; Dataflow analysis framework for PCF2 bytecode. We use this to eliminate unnecessary gates that don't contribute to the output
 
 (defpackage :pcf2-dataflow
-  (:use :common-lisp :pcf2-bc :setmap :setmap-rle #| :hashset |# :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap :setmap-rle :pairing-heap #| :hashset |# :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
            flow-forward-test
            flow-backward-test
@@ -303,11 +303,11 @@
 
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify worklist :comp #'<) (rle-set-from-list worklist) use-map)))
 
 (defun flow-backward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify worklist :comp #'>) (rle-set-from-list worklist) use-map)))
 
 ;; functions for the implementation of the worklist algorithm
 #|
@@ -364,7 +364,26 @@
   )
 
 
+(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
+  ;;(declare (optimize (debug 3)(speed 0)))
+  (if (heap-emptyp worklist)
+      cfg ; done
+      (let* ((cur-node-id (heap-getmin worklist))
+             (worklist (heap-delmin worklist))
+             (new-work-set 
+              (rle-set-remove worklist-set cur-node-id)))
+        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
+          (let ((more-work (reduce (lambda (wlist candidate)
+                                     (if (or (rle-set-member candidate new-work-set) (null candidate))
+                                         wlist
+                                         (heap-insert candidate wlist)))
+                                   worklist*
+                                   :initial-value worklist))
+                (more-work-set (rle-set-union new-work-set (rle-set-from-list worklist*))))
+            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
 
+#|
+;;list implementation for worklist
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
   ;;(declare (optimize (debug 3)(speed 0)))
   (if (null worklist)
@@ -372,16 +391,17 @@
       (let* ((cur-node-id (car worklist))
              (worklist (cdr worklist))
              (new-work-set 
-              (set-remove worklist-set cur-node-id)))
+              (rle-set-remove worklist-set cur-node-id)))
         (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
           (let ((more-work (reduce (lambda (wlist candidate)
-                                     (if (set-member candidate new-work-set)
+                                     (if (rle-set-member candidate new-work-set)
                                          wlist
                                          (append wlist (list candidate))))
                                    worklist*
                                    :initial-value worklist))
-                (more-work-set (set-union (set-from-list worklist*) new-work-set)))
+                (more-work-set (rle-set-union new-work-set (rle-set-from-list worklist*))))
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
+|#
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
