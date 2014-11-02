@@ -4,6 +4,7 @@
             (:export heap-insert
                      heap-delmin
                      heap-getmin
+                     heapify
                      make-queue
                      peek-queue
                      queue-emptyp
@@ -36,6 +37,12 @@
               :children (cons ,heap2 (heap-children ,heap1))
               )
   )
+
+(defun heapify (lst &key (comp #'<))
+  (reduce (lambda (st x)
+            (heap-insert x heap :comp comp))
+          lst
+          (make-empty-heap)))
 
 (defun heap-insert (x heap &key (comp #'<))
   "Insert \"x\" into thea heap \"heap\""
