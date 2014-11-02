@@ -343,7 +343,7 @@
 |#
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (declare (optimize (debug 3)(speed 0)))
+  ;;(declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
   ;;(break)
   ;;(if (equalp (get-block-id cur-node) 6974) (break))
