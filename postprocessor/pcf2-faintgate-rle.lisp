@@ -249,14 +249,14 @@
                (with-true-addresses (op1 op2 dest)
                  ;;(break)
                  (if (rle-set-member dest flow-data)
-                     (aif (rle-map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
-                          (if (equalp it 'pcf2-block-graph:pcf-not-const)
-                              (rle-set-from-list (list op1 op2))
-                              (rle-empty-set))
+                     ;;(aif (rle-map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
+                         ;; (if (equalp it 'pcf2-block-graph:pcf-not-const)
+                           ;;   (rle-set-from-list (list op1 op2))
+                             ;; (rle-empty-set))
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
                           
-                       ;;(rle-set-from-list (list op1 op2)))
-                          (rle-empty-set))
+                     (rle-set-from-list (list op1 op2))
+                 ;;(error "input to gate does not have a value"))
                      (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
