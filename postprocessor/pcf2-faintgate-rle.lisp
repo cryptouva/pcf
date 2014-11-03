@@ -82,7 +82,7 @@
   ))
 
 (defun faint-flow-fn (blck cfg use-map)
-  (declare (optimize (speed 0) (debug 3)))
+  ;;(declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the smaller set come second

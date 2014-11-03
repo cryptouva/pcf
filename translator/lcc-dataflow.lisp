@@ -392,6 +392,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                             ;(ostack (first (funcall flow-fn (second new-out) (first new-out) (third new-out) cblock)))
                             )
                        (declare (type string bbid nbid))
+                       ;;(break)
                        ;;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%" bbid nbid nblock)
                        (do-flow-forwards 
                            (cdr nblock)
