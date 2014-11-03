@@ -452,6 +452,7 @@
                            op))
                    op)))))))
 
+
 (defmethod transform-op ((op const) blk cfg base faints lives consts)
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (dest) op

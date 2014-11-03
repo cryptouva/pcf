@@ -88,9 +88,10 @@
                  ;; set-union should have the smaller set come second
                  (rle-set-diff-efficient in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      ;; (typecase (get-block-op blck)
-      ;;   (indir-copy (break))
-      ;;   (otherwise t))
+      #|(typecase (get-block-op blck)
+        (bits (break))
+        (copy (break))
+        (otherwise t))|#
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))
@@ -224,10 +225,9 @@
                (with-true-address-list dest
                  (with-true-address op1
                    (let ((destwires (rle-set-from-list dest)))
-                     destwires))))
-    #|(if (rle-set-equalp (rle-empty-set) (rle-set-inter destwires flow-data))
-                         (rle-singleton op1)
-                         (rle-empty-set))))))|#
+                     (if (rle-set-equalp (rle-empty-set) (rle-set-inter destwires flow-data))
+                         (rle-empty-set)
+                         (rle-singleton op1))))))
     ;; if the op is a member of the dests, then don't kill it
     :const-kill (with-slots (dest op1) op
                   (with-true-address op1
@@ -311,7 +311,7 @@
                                  (if (rle-set-member new-wire flow-data)
                                      (list (rle-set-insert set oldwire) restwires)
                                      (list set restwires))))
-                             (loop for i from op1 to (+ op1 op2 -1) collect i)
+                             (loop for i from op1 to (+ op1 op2 -1) collect i) ;; old wires
                              :initial-value (list (rle-empty-set) (loop for i from dest to (+ dest op2 -1) collect i)))))))
     
     :const-kill (with-slots (op1 op2 dest) op
@@ -354,7 +354,9 @@
                  (let ((addr (rle-map-val op1 (get-block-consts blck))))
                    ;; addr should always be defined in consts
                    ;;(break)
-                   (gen-for-indirection addr dest op2))))
+                   (rle-set-union (gen-for-indirection addr dest op2)
+                                  (rle-singleton op1))
+                                  )))
     :const-kill (with-slots (dest op2) op
                   (with-true-address dest
                     (kill-for-indirection dest op2)))
@@ -366,9 +368,9 @@
                  (let ((addr (rle-map-val dest (get-block-consts blck))))
                    ;;(break)
                    ;; addr should always be defined in consts
-                   (gen-for-indirection op1 addr op2)
-                   ;;(rle-set-union (gen-for-indirection op1 addr op2)
-                   ;;               (rle-singleton dest)) ;; this info is important!
+                   ;;(gen-for-indirection op1 addr op2)
+                  (rle-set-union (gen-for-indirection op1 addr op2)
+                                 (rle-singleton dest)) ;; this info is important!
                                   )))
     :dep-kill (with-slots (dest op2) op
                 (with-true-address dest
@@ -387,9 +389,10 @@
                        (rle-empty-set))))
     :dep-kill (with-slots (newbase fname) op
                 (with-true-address newbase
-                  (if (set-member fname input-functions)
-                      (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                      (rle-empty-set))))
+                  
+                  #|(if (set-member fname input-functions)
+                      (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))|#
+                  (rle-empty-set)))
     )
 
 (def-gen-kill ret

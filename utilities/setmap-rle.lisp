@@ -217,8 +217,8 @@
 
 (defun rle-set-equalp (set1 set2)
   (declare (type rle-avl-set set1 set2))
-  (and (rle-set-subset set1 set2)
-       (rle-set-subset set2 set1)
+  (and (rle-set-subset-efficient set1 set2)
+       (rle-set-subset-efficient set2 set1)
        )
   )
 
