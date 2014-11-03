@@ -468,7 +468,7 @@
                             :initial-value nil)))
         (if useful
             op
-            op)))))
+            nil)))))
 
 
 (defmethod transform-op ((op instruction) blk cfg base faints lives consts)

@@ -90,7 +90,12 @@
                  (gen blck in-flow))))
       #|(typecase (get-block-op blck)
         (bits (break))
-        (copy (break))
+        (copy (if (< (get-block-id blck) 40)
+                  (break)))
+        (copy-indir (if (< (get-block-id blck) 40)
+                        (break)))
+        (indir-copy (if (< (get-block-id blck) 40)
+                        (break)))
         (otherwise t))|#
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
@@ -230,8 +235,8 @@
                          (rle-singleton op1))))))
     ;; if the op is a member of the dests, then don't kill it
     :const-kill (with-slots (dest op1) op
-                  (with-true-address op1
-                    (rle-singleton op1))))
+                  (with-true-address-list dest
+                    (rle-set-from-list dest))))
 
 (def-gen-kill const
     ;; if x = const, kill x because it has been defined
@@ -244,16 +249,14 @@
                (with-true-addresses (op1 op2 dest)
                  ;;(break)
                  (if (rle-set-member dest flow-data)
-                     ;;(aif (map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
-                     ;;(if (equalp it 'pcf2-block-graph:pcf-not-const)
-                     ;;(set-from-list (list op1 op2))
-                     ;;(empty-set))
+                     (aif (rle-map-val dest (get-block-consts blck)) ;; if the destination has a constant value, 
+                          (if (equalp it 'pcf2-block-graph:pcf-not-const)
+                              (rle-set-from-list (list op1 op2))
+                              (rle-empty-set))
                      ;; the above segment will remove MUXes that probably should be removed but also gates on conditional wires that should not. that logic should really be somewhere else, not here.
-                     
-                     (progn
-                       ;;(break)
-                       (rle-set-from-list (list op1 op2)))
-                     ;;(empty-set))
+                          
+                       ;;(rle-set-from-list (list op1 op2)))
+                          (rle-empty-set))
                      (rle-empty-set))))
     :const-kill (with-slots (op1 op2 dest) op
                   (with-true-addresses (op1 op2 dest)
@@ -384,7 +387,8 @@
     :const-gen (with-slots (newbase fname) op
                  (with-true-address newbase
                    ;;(break)
-                   (if (set-member fname output-functions)
+                   (if (or (set-member fname input-functions) 
+                           (set-member fname output-functions))
                        (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
                        (rle-empty-set))))
     :dep-kill (with-slots (newbase fname) op
