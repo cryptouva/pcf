@@ -268,7 +268,9 @@
                                              bin-list ;; reduce over the whole list
                                              :initial-value (list (rle-map-empty) dest))))
                             (error "bits called on non-const"))
-                        (error "bits called on non-existing value"))
+                        ;;(error "bits called on non-existing value")
+                        (rle-map-empty)
+                        )
                    )))
     :dep-kill (with-slots (dest) op
                 (with-true-address-list dest
