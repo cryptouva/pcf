@@ -398,11 +398,11 @@
 (defmacro is-not-const (wire)
   `(equalp ,wire 'pcf2-block-graph:pcf-not-const))
 
-(defgeneric transform-op (op base faints lives consts)
+(defgeneric transform-op (op blk cfg base faints lives consts)
   (:documentation "Describes how an op should be transformed during optimization using all available data flow information")
   )
 
-(defmethod transform-op ((op gate) base faints lives consts)
+(defmethod transform-op ((op gate) blk cfg base faints lives consts)
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (dest op1 op2 truth-table) op
     (let ((pre-dest dest)
@@ -452,18 +452,25 @@
                            op))
                    op)))))))
 
-#|
-(defmethod transform-op ((op const) base faints lives consts)
+(defmethod transform-op ((op const) blk cfg base faints lives consts)
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (dest) op
     (with-true-addresses (dest)
-      (if (not (set-member dest lives))
-          nil
-          op)))
-)
-|#
+      (let ((useful (reduce (lambda (st succ)
+                              (let ((succ-faints
+                                     (get-block-faints (map-val succ cfg)))
+                                    (succ-lives
+                                     (get-block-lives (map-val succ cfg))))
+                                ;;(break)
+                                (or st (rle-set-member dest succ-faints))))
+                            (get-block-succs blk)
+                            :initial-value nil)))
+        (if useful
+            op
+            op)))))
 
-(defmethod transform-op ((op instruction) base faints lives consts)
+
+(defmethod transform-op ((op instruction) blk cfg base faints lives consts)
   op
   )
 
@@ -471,7 +478,7 @@
   ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (map-reduce (lambda (cfg* blckid blk)
-                ;;(declare (optimize (debug 3)(speed 0)))
+                (declare (optimize (debug 3)(speed 0)))
                 ;;(break)
                 (declare (ignore blk))
                 (aif (map-val blckid cfg* t)
@@ -482,7 +489,7 @@
                             (consts (get-block-consts blk))
                             (newops (reduce (lambda (oplist op)
                                               (let ((newop
-                                                     (transform-op op base faints lives consts)))
+                                                     (transform-op op blk cfg* base faints lives consts)))
                                                 (aif newop
                                                      (append oplist (list newop))
                                                      oplist)))

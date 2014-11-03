@@ -88,6 +88,9 @@
                  ;; set-union should have the smaller set come second
                  (rle-set-diff-efficient in-flow (kill blck in-flow))
                  (gen blck in-flow))))
+      ;; (typecase (get-block-op blck)
+      ;;   (indir-copy (break))
+      ;;   (otherwise t))
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))
@@ -221,9 +224,10 @@
                (with-true-address-list dest
                  (with-true-address op1
                    (let ((destwires (rle-set-from-list dest)))
-                     (if (rle-set-equalp (rle-empty-set) (rle-set-inter destwires flow-data))
-                         (rle-empty-set)
-                         (rle-singleton op1))))))
+                     destwires))))
+    #|(if (rle-set-equalp (rle-empty-set) (rle-set-inter destwires flow-data))
+                         (rle-singleton op1)
+                         (rle-empty-set))))))|#
     ;; if the op is a member of the dests, then don't kill it
     :const-kill (with-slots (dest op1) op
                   (with-true-address op1
@@ -362,11 +366,15 @@
                  (let ((addr (rle-map-val dest (get-block-consts blck))))
                    ;;(break)
                    ;; addr should always be defined in consts
-                   (gen-for-indirection op1 addr op2))))
+                   (gen-for-indirection op1 addr op2)
+                   ;;(rle-set-union (gen-for-indirection op1 addr op2)
+                   ;;               (rle-singleton dest)) ;; this info is important!
+                                  )))
     :dep-kill (with-slots (dest op2) op
                 (with-true-address dest
                   (let ((addr (rle-map-val dest (get-block-consts blck))))
                     ;; addr should always be defined in consts
+                    ;;(break)
                     (kill-for-indirection addr op2))))
     )
 
