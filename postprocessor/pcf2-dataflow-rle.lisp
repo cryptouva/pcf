@@ -3,8 +3,8 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :setmap-rle :pairing-heap #| :hashset |# :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
-           flow-forward-test
-           flow-backward-test
+           ;;flow-forward-test
+           ;;flow-backward-test
            flow-forward
            flow-backward
            optimize-circuit
@@ -290,17 +290,17 @@
 
 
 ;; a couple of functions to test forward and backward flows
-
+#|
 (defun flow-backward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'>) #'> (set-from-list worklist) use-map)))
 
 (defun flow-forward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let* ((worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist (set-from-list worklist) use-map)))
+    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'<) #'< (set-from-list worklist) use-map)))
+|#
 
 ;; the actual flow-forward and flow-backward functions (could be replaced with macros and a single flow function, but not necessary
-
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'<) #'< #|worklist|# (rle-set-from-list worklist) use-map)))
@@ -309,38 +309,6 @@
   (let ((worklist (map-keys (get-graph-map cfg))))
     (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn  (heapify (reverse worklist) :comp #'>) #'> #| worklist|# (rle-set-from-list worklist) use-map)))
 
-;; functions for the implementation of the worklist algorithm
-#|
-(defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (declare (optimize (debug 3)(speed 0)))
-  (format t "~A~%" (get-block-id cur-node))
-  (if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-      (format ostream "~A~%" (get-block-id cur-node)))
-  (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
-    (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
-      ;;(if (equal (get-block-id cur-node) 4)(break))
-      (let ((vals (reduce (lambda (state neighbor-id)
-                            (let* ((cfg (first state))
-                                   (worklist (second state))
-                                   (neighbor-flow (funcall get-data-fn (get-block-by-id neighbor-id cfg)))
-                                   (compare-flow (funcall join-fn new-flow neighbor-flow)))
-                              (if (and (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-                                       (equalp (get-block-id cur-node) 2298)
-                                       (not (funcall weaker-fn compare-flow neighbor-flow)))
-                                  (progn
-                                    ;;(format ostream "gate~%~A~%compare~%~A~%neighbor~%~A~%end~%~%" (get-block-op cur-node) compare-flow neighbor-flow)
-                                    ;;(break)
-                                    (if (pcf2-flow-utils:rle-map-weaker-fn-brk compare-flow neighbor-flow)
-                                        (list (first state) (append worklist (list neighbor-id)))
-                                        state))
-                                  (if (funcall weaker-fn compare-flow neighbor-flow)
-                                      (list (first state) (append worklist (list neighbor-id)))
-                                      state))))
-                          (funcall get-neighbor-fn cur-node)
-                          :initial-value (list cfg nil))))
-        (values (first vals) (second vals)))))
-  )
-|#
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   ;;(declare (optimize (debug 3)(speed 0)))
@@ -383,27 +351,6 @@
                                    :initial-value worklist))
                 (more-work-set (rle-set-union new-work-set (rle-set-from-list worklist*))))
             (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work wlist-comp more-work-set use-map))))))
-
-#|
-;;list implementation for worklist
-(defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist worklist-set use-map)
-  ;;(declare (optimize (debug 3)(speed 0)))
-  (if (null worklist)
-      cfg ; done
-      (let* ((cur-node-id (car worklist))
-             (worklist (cdr worklist))
-             (new-work-set 
-              (rle-set-remove worklist-set cur-node-id)))
-        (multiple-value-bind (cfg* worklist*) (flow-once (get-block-by-id cur-node-id cfg) cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-          (let ((more-work (reduce (lambda (wlist candidate)
-                                     (if (rle-set-member candidate new-work-set)
-                                         wlist
-                                         (append wlist (list candidate))))
-                                   worklist*
-                                   :initial-value worklist))
-                (more-work-set (rle-set-union new-work-set (rle-set-from-list worklist*))))
-            (do-flow cfg* flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn more-work more-work-set use-map))))))
-|#
 
 (defmacro with-true-addresses ((&rest syms) &body body)
   `(let ,(loop for sym in syms
@@ -519,35 +466,8 @@
 (defmethod transform-op ((op instruction) base faints lives consts)
   op
   )
-#|
-(defun remove-block-from-cfg (blck cfg)
-  ;; remove this block from its preds' succs and its succs' preds
-  ;; and add all of its succs to its preds' succs, and add all of its preds to its succs' preds
-  (declare (optimize (debug 3)(speed 0)))
-  (let ((preds (get-block-preds blck))
-        (succs (get-block-succs blck))
-        (blckid (get-block-id blck)))
-    (let ((remove-back (reduce (lambda(cfg* pred)
-                                 (declare (optimize (debug 3) (speed 0)))
-                                 ;;(break)
-                                 (let* ((predblck (map-val pred cfg*))
-                                        (predsuccs (get-block-succs predblck)))
-                                   (map-insert pred
-                                               (block-with-succs (append (remove blckid predsuccs) succs) predblck)
-                                               cfg*)))
-                               preds
-                               :initial-value cfg)))
-      (let ((remove-forward (reduce (lambda(cfg* succ)
-                                      (declare (optimize (debug 3)(speed 0)))
-                                      (let* ((succblck (map-val succ cfg*))
-                                             (succpreds (get-block-preds succblck)))
-                                        (map-insert succ (block-with-preds (append (remove blckid succpreds) preds) succblck) cfg*)))
-                                    succs
-                                    :initial-value remove-back)))
-        (map-remove blckid remove-forward)))))
-|#
 
-(defun eliminate-extra-gates* (cfg)
+(defun eliminate-extra-gates (cfg)
   ;;(declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (map-reduce (lambda (cfg* blckid blk)
@@ -575,90 +495,7 @@
               cfg
               cfg))
 
-#|
-(defun eliminate-extra-gates (cfg)
-  ;; gates that are unnecessary may be eliminated here!
-  ;; rules:
-  ;; if the block is a gate with a constant in its output, replace the gate with a const 
-  ;; if the output of the gate is faint, remove it entirely
-  ;; remember that blocks in the original cfg may not be the same as those we find later
-  (declare (optimize (debug 3) (speed 0)))
-  (map-reduce (lambda (cfg* blockid blck)
-                (declare (ignore blck)(optimize (debug 3)(speed 0)))
-                (aif (map-val blockid cfg* t) 
-                     (let* ((blk it)
-                            (op (get-block-op blk))
-                            (base (get-block-base blk))
-                            (faints (get-block-faints blk))
-                            (lives (get-block-lives blk))
-                            (consts (get-block-consts blk)))
-                       (typecase op
-                         (gate (with-slots (dest op1 op2 truth-table) op
-                                 (let ((pre-dest dest)
-                                       (pre-op1 op1)
-                                       (pre-op2 op2))
-                                   (with-true-addresses (dest op1 op2)
-                                     (let ((op1-val (map-val op1 consts t))
-                                           (op2-val (map-val op2 consts t)))
-                                       ;; if an output is live, both of its inputs will be live
-                                       (if (not (and (set-member op1 faints)
-                                                     (set-member op2 faints)))
-                                           (remove-block-from-cfg blk cfg*);; remove this op from the cfg
-                                           (aif (map-val dest consts t)
-                                                (if (not (is-not-const it))
-                                                    ;; constant gate, simply replace with const
-                                                    (map-insert blockid
-                                                                (block-with-op (list (make-instance 'const :dest pre-dest :op1 it)) blk)
-                                                                cfg*)
-                                                    ;; gate is not const, but it might be OR w/ 0 or AND w/1,
-                                                    ;; in which case we can replace it with a simply copy
-                                                    (if (or (not (is-not-const op1-val))
-                                                            (not (is-not-const op2-val)))
-                                                        (cond
-                                                          ((equalp truth-table #*0001) ;; x AND 1 = x, replace gate with copy 
-                                                           (cond
-                                                             ((equal op1-val 1)
-                                                              (block-with-copy pre-dest pre-op2))
-                                                             ((equal op2-val 1)
-                                                              (block-with-copy pre-dest pre-op1))
-                                                          (t cfg*)))
-                                                          ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
-                                                           (cond
-                                                             ((equal op1-val 0)
-                                                              (block-with-copy pre-dest pre-op2))
-                                                             ((equal op2-val 0)
-                                                              (block-with-copy pre-dest pre-op1))
-                                                             (t cfg*)))
-                                                          ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
-                                                           (cond
-                                                             ((equal op1-val 0)
-                                                              (block-with-copy pre-dest pre-op2))
-                                                             ((equal op2-val 0)
-                                                              (block-with-copy pre-dest pre-op1))
-                                                             (t cfg*)))
-                                                          (t cfg*))
-                                                        cfg*))
-                                                cfg*)))))))
-                         #|(const (with-slots (dest) op
-                                  (with-true-addresses (dest)
-                                    (if (not (or
-                                              (set-member dest faints)
-                                              (set-member dest lives)))
-                                        (remove-block-from-cfg blk cfg*)
-                                        cfg*))))|#
-                          #|(copy (with-slots (dest op2) op
-                                  (with-true-addresses (dest)
-                                    (if (and (equalp op2 1) (not (set-member dest lives)))
-                                        (remove-block-from-cfg blk cfg*)
-                                        cfg*))))|#
-                         #|(branch
-                          (progn (break)
-                         cfg*))|#
-                         (otherwise cfg*)))
-                     cfg*))
-              cfg
-              cfg))
-|#
+
 
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
@@ -672,19 +509,8 @@
 (defun optimize-circuit (cfg)
   ;;(print cfg)
   (prog1
-      (reverse (extract-ops (eliminate-extra-gates* (get-graph-map cfg))))
+      (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
     (close ostream)
     )
   )
 
-#|
-(defun compress-cfg (cfg)
-  (map-reduce (lambda (map-accum blockid blck)
-                (let ((preds (get-block-preds blck))
-                      (inputs (get-block-inputs blck))
-                      (dests (get-block-outputs blck))
-                      )
-                  cfg
-              cfg)
-)
-|#
