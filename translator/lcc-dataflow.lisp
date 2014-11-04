@@ -79,15 +79,15 @@
   ;;   (list blocks curblock blkid)
   ;;   )
   (let ((new-block (make-basic-block :ops (list op))))
-    (add-succ (write-to-string idx) curblock blkid
-      (list (map-insert blkid curblock blocks) new-block (write-to-string idx) (1+ idx) targs)))
+    (add-succ idx curblock blkid
+      (list (map-insert blkid curblock blocks) new-block idx (1+ idx) targs)))
   )
 
 (defmethod find-basic-blocks ((op labelv) blocks curblock blkid idx targs)
   (let ((new-block (make-basic-block :ops (list op))))
     (with-slots (s-args) op
       (let ((str (first s-args)))
-        (let ((bid (write-to-string (map-val str targs))))
+        (let ((bid (map-val str targs)))
           (add-succ bid curblock blkid
             (list (map-insert blkid curblock blocks) new-block bid (1+ idx) targs))))))
   )
@@ -96,7 +96,7 @@
   (let ((new-block (make-basic-block :ops (list op))))
     (with-slots (s-args) op
       (let ((str (first s-args)))
-        (let ((bid (write-to-string (map-val str targs))))
+        (let ((bid (map-val str targs)))
           (add-succ bid curblock blkid
             (list (map-insert blkid curblock blocks) new-block bid (1+ idx) targs))))))
   )
@@ -104,8 +104,8 @@
 (defmethod find-basic-blocks ((op cnd-jump-instruction) blocks curblock blkid idx targs)
   (let ((new-block (make-basic-block :ops (list op))))
     (with-slots (s-args) op
-      (let ((targ (write-to-string (map-val (first s-args) targs)))
-            (fallid (write-to-string idx)))
+      (let ((targ (map-val (first s-args) targs))
+            (fallid idx))
         (add-succ targ curblock blkid
           (add-succ fallid curblock blkid
           ;;(add-succ (concatenate 'string "fall" blkid) curblock blkid
@@ -121,14 +121,14 @@
     (declare (type addrgp adrop))
     (with-slots (s-args) adrop
       (let ((targ (first s-args)))
-        (add-succ (write-to-string idx) curblock blkid
-          (list (map-insert blkid curblock blocks) new-block (write-to-string idx) (1+ idx) targs)))))
+        (add-succ idx curblock blkid
+          (list (map-insert blkid curblock blocks) new-block idx (1+ idx) targs)))))
   )
 
 (defmacro find-call ()
   `(let ((new-block (make-basic-block :ops (list op))))
      ;;(break)
-     (let ((callid (write-to-string idx)))
+     (let ((callid idx))
        (add-succ callid curblock blkid
        ;;(add-succ (concatenate 'string "call" blkid) curblock blkid
        (list (map-insert blkid curblock blocks) new-block
@@ -242,8 +242,6 @@ of basic block IDs to basic blocks."
                                         (with-slots (s-args) op
                                           (let ((str (first s-args)))
                                             (list (map-insert str idx mp) (1+ idx)))))
-                                       ;;(cnd-jump-instruction ())
-                                       ;;(jumpv ())
                                        (otherwise (list mp (1+ idx)))))
                                    )
                                ops
@@ -254,9 +252,9 @@ of basic block IDs to basic blocks."
                                   (type list x))
                          (apply #'find-basic-blocks (cons y x)))
                      ops
-                     :initial-value (list (map-empty :comp #'string<) ;;blocks
+                     :initial-value (list (map-empty :comp #'<) ;;blocks
                                           (make-basic-block) ;; curblock
-                                          "" ;; blkid
+                                          -1 ;; blkid
                                           0 ;;idx
                                           targs ;;targs
                                           ))))
@@ -450,6 +448,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
 (defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks valmaps empty-set &optional (cnt 0))
   (declare (optimize (debug 3) (speed 0))
            (ignorable cnt))
+  ;;(break)
   (the avl-set
     (labels ((do-flow-forwards (cblock in-sets in-stacks valmaps visited done)
                (declare (optimize (debug 3) (speed 0)))
@@ -476,10 +475,12 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                                                (aif (cdr (map-find (basic-block-id cblock) valmaps t))
                                                                     it
                                                                     (map-empty))))))
+                     ;;(print "here")
+                     ;;(break)
                      (let* ((nblock 
                              (map-find
                               (loop 
-                                for id in (basic-block-succs cblock)
+                                 for id in (basic-block-succs cblock)
                                  when (not (map-find id visited t))
                                  unless (null id)
                                  return id)
@@ -493,8 +494,10 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                              (second new-out))))
                             ;(ostack (first (funcall flow-fn (second new-out) (first new-out) (third new-out) cblock)))
                             )
-                       (declare (type string bbid nbid))
-                       (break)
+                       ;;(print "next")
+                       ;;(break)
+                       ;;(declare (type 'integer bbid nbid))
+                       ;;(declare (type string bbid nbid))
                        ;;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%" bbid nbid nblock)
                        (do-flow-forwards 
                            (cdr nblock)
@@ -503,8 +506,9 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                          (map-insert nbid (third new-out) valmaps)
                          (map-insert bbid t visited)
                          done)))))) 
-      (let ((ret (do-flow-forwards (cdr (map-find "1" cfg)) in-sets in-stacks valmaps (map-empty :comp #'string<) t)))
+      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks valmaps (map-empty :comp #'<) t)))
         ;(print (cons (fourth ret) cnt))
+        (print "let ret")
         (if (fourth ret)
             (values (first ret)
                     (second ret)
