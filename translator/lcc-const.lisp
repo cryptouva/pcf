@@ -33,8 +33,8 @@
 
 (defun lcc-const-join-fn (x y)
   "Compute the join operation on the constant propagation lattice."
-  (map-reduce (lambda (map key val)
-                (let ((new-val (aif (map-find key map t)
+  (rle-map-reduce (lambda (map key val)
+                (let ((new-val (aif (rle-map-find key map t)
                                     (typecase val
                                       (number (typecase (cdr it)
                                                 (number (if (= val (cdr it))
@@ -50,12 +50,12 @@
                                                   'not-const
                                                   (cdr it))))
                                     'not-const))) ;; not in both maps, so the value is unknown
-                  (map-insert key new-val map))) ;; computing a join on two value maps
+                  (rle-map-insert key new-val map))) ;; computing a join on two value maps
               x
               y)
   )
 
-(defparameter empty-s (map-empty :comp #'constcmp))
+(defparameter empty-s (rle-map-empty :comp #'constcmp))
 
 (defun const-dataflow-funs (ops)
   "Compute the locations that store constants in this stream of
@@ -69,9 +69,9 @@ as its value."
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn
                                                       #'lcc-const:lcc-const-flow-fn
                                                       (lcc-dataflow:make-cfg-single-ops v) ; cfg
-                                                      (setmap:map-empty :comp #'<) ; in-sets
-                                                      (setmap:map-empty :comp #'<) ; in-stacks
-                                                      (setmap:map-empty :comp #'<) ; valmaps
+                                                      (setmap-rle:rle-map-empty :comp #'<) ; in-sets
+                                                      (setmap-rle:rle-map-empty :comp #'<) ; in-stacks
+                                                      (setmap-rle:rle-map-empty :comp #'<) ; valmaps
                                         ;(setmap:set-from-list (loop for i from 0 to 8 collect 
                                         ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
                                                       #|
@@ -101,8 +101,8 @@ as its value."
   ;;(break)
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
     (list (third genkill) ;; stack
-          (set-union (first genkill)
-                     (set-diff in-set
+          (rle-set-union (first genkill)
+                     (rle-set-diff in-set
                                (second genkill))) ;; (gen U (in - kill))
           (fourth genkill))) ;; valmap
   )
@@ -113,11 +113,11 @@ as its value."
            (optimize (debug 3) (speed 0)))
   (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
          (reduce #'(lambda (&optional x y)
-                     (set-union (aif x
+                     (rle-set-union (aif x
                                      x
                                      empty-s)
                                 ;(map-empty :comp constcmp))
-                                (alist->map* y :empty-m empty-s)))
+                                (alist->rle-map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((valmap (third st))
                                         (stack (second st))
@@ -130,10 +130,10 @@ as its value."
                  :initial-value empty-s));(map-empty :comp constcmp)))
         (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
          (reduce #'(lambda (&optional x y)
-                     (set-union (aif x
+                     (rle-set-union (aif x
                                      x
                                      empty-s);(map-empty :comp constcmp))
-                                (alist->map* y :empty-m empty-s)));:comp #'constcmp)))
+                                (alist->rle-map* y :empty-m empty-s)));:comp #'constcmp)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
                                         (valmap (third st))
@@ -167,13 +167,13 @@ as its value."
 (defmacro def-gen-kill (type &key stck vals gen kill)
   `(progn
      (defmethod gen ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons avl-set t))) (list ,gen ,stck 
+       (the (cons list (cons list (cons rle-avl-set t))) (list ,gen ,stck 
                                                            (aif ,vals
                                                                 it
                                                                 valmap))))
      
      (defmethod kill ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons avl-set t))) (list ,kill ,stck 
+       (the (cons list (cons list (cons rle-avl-set t))) (list ,kill ,stck 
                                                            (aif ,vals
                                                                 it
                                                                 valmap)))))
@@ -299,7 +299,7 @@ as its value."
             (t (let ((addr (second stack)))
                  ;(declare (type integer addr))
                  (typecase addr
-                     (integer (map-insert addr (first stack) valmap))
+                     (integer (rle-map-insert addr (first stack) valmap))
                      (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
@@ -328,7 +328,7 @@ as its value."
             (t (let ((addr (second stack)))
                  ;(declare (type integer addr))
                  (typecase addr
-                     (integer (map-insert addr (first stack) valmap))
+                     (integer (rle-map-insert addr (first stack) valmap))
                      (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
@@ -384,7 +384,7 @@ as its value."
                    'glob)
                   ((or (eql (car stack) 'args))
                    'args)
-                  (t (cdr (map-find (car stack) valmap))))
+                  (t (cdr (rle-map-find (car stack) valmap))))
                 (cdr stack))
     )
 
@@ -398,7 +398,7 @@ as its value."
                    'glob)
                   ((or (eql (car stack) 'args))
                    'args)
-                  (t (cdr (map-find (car stack) valmap))))
+                  (t (cdr (rle-map-find (car stack) valmap))))
                 (cdr stack))
     ;;    :stck (cons (cdr (map-find (car stack) valmap)) (cdr stack)))
     )

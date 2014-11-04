@@ -19,6 +19,7 @@
                              :string-tokenizer
                              :common-lisp
                              :setmap
+                             :setmap-rle
                              :lcc-bc
                              :lcc-const
                              :utils
@@ -411,7 +412,7 @@ number of arguments."
     for this, but for some reason that is not working....~%"
           )
 
-    `(let ((,cnstsym (cadr (cdr (map-find #|(write-to-string iidx)|# iidx (cadr (cdr cnsts))))))
+    `(let ((,cnstsym (cadr (cdr (rle-map-find #|(write-to-string iidx)|# iidx (cadr (cdr cnsts))))))
            )
        (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)

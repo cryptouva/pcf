@@ -46,8 +46,9 @@
                      rle-avl-set
                     #|
                      alist->map
-                     alist->map*
-                     |#)
+                     |#
+                     alist->rle-map*
+                     )
             )
 (in-package :setmap-rle)
  
@@ -632,14 +633,14 @@ lists."
     (make-map alist)
     )
   )
-
-(defun alist->map* (alist &key empty-m)
+|#
+(defun alist->rle-map* (alist &key empty-m)
   "Convert an associative list to a map, using a specified empty map
 object.  The purpose of this function is to allow us to maintain the
 same function for all our maps."
   (labels ((make-map (lst &optional (ret empty-m))
              (if lst
-                 (make-map (rest lst) (map-insert (caar lst) (cdar lst) ret))
+                 (make-map (rest lst) (rle-map-insert (caar lst) (cdar lst) ret))
                  ret
                  )
              )
@@ -647,4 +648,4 @@ same function for all our maps."
     (make-map alist)
     )
   )
-|#
+
