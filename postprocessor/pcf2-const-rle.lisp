@@ -90,8 +90,8 @@
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  (declare 
-   (optimize (speed 0) (debug 3)))
+  ;;(declare 
+  ;;  (optimize (speed 0) (debug 3)))
   ;;(if (equal (get-block-id blck) 2844) (break))
   (let ((in-flow (get-out-sets blck cfg #'rle-map-union-without-conflicts)))
     (let ((flow (rle-map-union-without-conflicts

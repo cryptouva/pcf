@@ -13,7 +13,7 @@
 ;; This can be viewed as "constant propagation lite"
 
 (defpackage :lcc-const 
-  (:use :cl :utils :setmap :lcc-bc :lcc-dataflow)
+  (:use :cl :utils :setmap :setmap-rle :lcc-bc :lcc-dataflow)
   (:export lcc-const-flow-fn const-dataflow-funs not-const)
   (:shadow import export)
   )
@@ -66,11 +66,12 @@ as its value."
     (setmap:map-map (lambda (k v)
                       (declare (ignore k))
                       (multiple-value-bind (in-set in-stack valmap) 
-                          (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
+                          (lcc-dataflow:flow-forwards #'lcc-const-join-fn
+                                                      #'lcc-const:lcc-const-flow-fn
                                                       (lcc-dataflow:make-cfg-single-ops v) ; cfg
-                                                      (setmap:map-empty :comp #'string<) ; in-sets
-                                                      (setmap:map-empty :comp #'string<) ; in-stacks
-                                                      (setmap:map-empty :comp #'string<) ; valmaps
+                                                      (setmap:map-empty :comp #'<) ; in-sets
+                                                      (setmap:map-empty :comp #'<) ; in-stacks
+                                                      (setmap:map-empty :comp #'<) ; valmaps
                                         ;(setmap:set-from-list (loop for i from 0 to 8 collect 
                                         ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
                                                       #|
