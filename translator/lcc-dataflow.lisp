@@ -452,25 +452,29 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
   (the avl-set
     (labels ((do-flow-forwards (cblock in-sets in-stacks valmaps visited done)
                (declare (optimize (debug 3) (speed 0)))
+               ;;(break)
+               (print "in do-flow-forwards")
                (if (or (null cblock) (null (basic-block-id cblock)))
                    (list in-sets in-stacks valmaps done)
                    (let ((new-out (reduce (lambda (state pred)
                                             (print pred)
                                             ;;(break)
                                             (let ((res (funcall flow-fn
-                                                                (aif (rle-map-find pred in-sets t)
+                                                                (aif (map-find pred in-sets t)
                                                                      (cdr it)
                                                                      empty-set) ;; shouldn't this be impossible?
-                                                                (cdr (rle-map-find pred in-stacks t))
+                                                                (cdr (map-find pred in-stacks t)) ;in-stack
                                                                 (cdr (rle-map-find pred valmaps t)) ;valmap 
-                                                                (cdr (map-find pred cfg t)))))
+                                                                (cdr (map-find pred cfg t))))) ; cfg
+                                              (print "have res")
+                                              ;;(break)
                                               (list (first res) ;; stack
                                                     (funcall join-fn ;; state U in-stack??
                                                              (second state) ;; old flow | empty-set
                                                              (second res)) ;; new flow
                                                     (third res)))) ;; valmap
                                           (basic-block-preds cblock)
-                                          :initial-value (list (cdr (rle-map-find (basic-block-id cblock) in-stacks t))  ;; stack
+                                          :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t))  ;; stack
                                                                empty-set ;; no in-flow 
                                                                (aif (cdr (rle-map-find (basic-block-id cblock) valmaps t))
                                                                     it
@@ -481,14 +485,14 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                              (map-find
                               (loop 
                                  for id in (basic-block-succs cblock)
-                                 when (not (rle-map-find id visited t))
+                                 when (not (map-find id visited t))
                                  unless (null id)
                                  return id)
                               cfg))
                             (bbid (basic-block-id cblock))
                             (nbid (car nblock))
-                            (done (and done (rle-set-equalp 
-                                             (aif (rle-map-find bbid in-sets t)
+                            (done (and done (set-equalp 
+                                             (aif (map-find bbid in-sets t)
                                                   (cdr it)
                                                   empty-set)
                                              (second new-out))))
@@ -501,12 +505,12 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                        ;;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%" bbid nbid nblock)
                        (do-flow-forwards 
                            (cdr nblock)
-                         (rle-map-insert bbid (second new-out) in-sets)
-                         (rle-map-insert bbid (first new-out) in-stacks) ;; <-- We need to use bbid here, because new-out is the result of our *predecessor* operations; hence, the stack from new-out is the *input* stack for this operation.
+                         (map-insert bbid (second new-out) in-sets)
+                         (map-insert bbid (first new-out) in-stacks) ;; <-- We need to use bbid here, because new-out is the result of our *predecessor* operations; hence, the stack from new-out is the *input* stack for this operation.
                          (rle-map-insert nbid (third new-out) valmaps)
-                         (rle-map-insert bbid t visited)
+                         (map-insert bbid t visited)
                          done)))))) 
-      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks valmaps (rle-map-empty :comp #'<) t)))
+      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks valmaps (map-empty :comp #'<) t)))
         ;(print (cons (fourth ret) cnt))
         (print "let ret")
         (if (fourth ret)

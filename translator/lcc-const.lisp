@@ -19,6 +19,8 @@
   )
 (in-package :lcc-const)
 
+(defparameter *glob* -1)
+
 (defun constcmp (x y)
   (typecase x
     (number (typecase y
@@ -33,8 +35,9 @@
 
 (defun lcc-const-join-fn (x y)
   "Compute the join operation on the constant propagation lattice."
-  (rle-map-reduce (lambda (map key val)
-                (let ((new-val (aif (rle-map-find key map t)
+  (declare (optimize (debug 3)(speed 0)))
+  (map-reduce (lambda (map key val)
+                (let ((new-val (aif (map-find key map t)
                                     (typecase val
                                       (number (typecase (cdr it)
                                                 (number (if (= val (cdr it))
@@ -50,12 +53,13 @@
                                                   'not-const
                                                   (cdr it))))
                                     'not-const))) ;; not in both maps, so the value is unknown
-                  (rle-map-insert key new-val map))) ;; computing a join on two value maps
+                  (map-insert key new-val map))) ;; computing a join on two value maps
               x
               y)
   )
 
-(defparameter empty-s (rle-map-empty :comp #'constcmp))
+(defparameter empty-rle-s (rle-map-empty :comp #'constcmp))
+(defparameter empty-s (map-empty :comp #'constcmp))
 
 (defun const-dataflow-funs (ops)
   "Compute the locations that store constants in this stream of
@@ -69,8 +73,8 @@ as its value."
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn
                                                       #'lcc-const:lcc-const-flow-fn
                                                       (lcc-dataflow:make-cfg-single-ops v) ; cfg
-                                                      (setmap-rle:rle-map-empty :comp #'<) ; in-sets
-                                                      (setmap-rle:rle-map-empty :comp #'<) ; in-stacks
+                                                      (setmap:map-empty :comp #'<) ; in-sets
+                                                      (setmap:map-empty :comp #'<) ; in-stacks
                                                       (setmap-rle:rle-map-empty :comp #'<) ; valmaps
                                         ;(setmap:set-from-list (loop for i from 0 to 8 collect 
                                         ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
@@ -96,15 +100,24 @@ as its value."
   (:documentation "Get the kill set for this op")
   )
 
+(defun setmap-to-rle-set-map (inset)
+  (declare (optimize (debug 3)(speed 0)))
+  (map-reduce (lambda (st k v)
+                (declare (optimize (debug 3)(speed 0)))
+                (rle-map-insert k v st))
+              inset
+              empty-rle-s))
+
 (defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
-  ;;(declare (optimize (debug 3)(speed 0)))
+  (declare (optimize (debug 3)(speed 0)))
   ;;(break)
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
     (list (third genkill) ;; stack
-          (rle-set-union (first genkill)
-                     (rle-set-diff in-set
+          (set-union (first genkill)
+                         (set-diff in-set
                                (second genkill))) ;; (gen U (in - kill))
-          (fourth genkill))) ;; valmap
+          ;;(fourth genkill))) ;; valmap
+          (setmap-to-rle-set-map (fourth genkill))))
   )
 
 (defun get-gen-kill (bb instack valmap lsize)
@@ -113,12 +126,14 @@ as its value."
            (optimize (debug 3) (speed 0)))
   (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
          (reduce #'(lambda (&optional x y)
-                     (rle-set-union (aif x
+                     (declare (optimize (debug 3)(speed 0)))
+                     (set-union (aif x
                                      x
                                      empty-s)
                                 ;(map-empty :comp constcmp))
-                                (alist->rle-map* y :empty-m empty-s)))
+                                (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
+                                  (declare (optimize (debug 3)(speed 0)))
                                   (let ((valmap (third st))
                                         (stack (second st))
                                         (lsts (first st)))
@@ -130,10 +145,10 @@ as its value."
                  :initial-value empty-s));(map-empty :comp constcmp)))
         (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
          (reduce #'(lambda (&optional x y)
-                     (rle-set-union (aif x
+                     (set-union (aif x
                                      x
                                      empty-s);(map-empty :comp constcmp))
-                                (alist->rle-map* y :empty-m empty-s)));:comp #'constcmp)))
+                                (alist->map* y :empty-m empty-s)));:comp #'constcmp)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
                                         (valmap (third st))
@@ -167,16 +182,22 @@ as its value."
 (defmacro def-gen-kill (type &key stck vals gen kill)
   `(progn
      (defmethod gen ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons rle-avl-set t))) (list ,gen ,stck 
-                                                           (aif ,vals
-                                                                it
-                                                                valmap))))
+       (declare (optimize (debug 3)(speed 0)))
+       (the (cons list (cons list (cons avl-set t)))
+            ;; cons gen cons stck cons valmap
+            (list ,gen ,stck 
+                  (aif ,vals
+                       it
+                       valmap))))
      
      (defmethod kill ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons rle-avl-set t))) (list ,kill ,stck 
-                                                           (aif ,vals
-                                                                it
-                                                                valmap)))))
+       (declare (optimize (debug 3)(speed 0)))
+       (the (cons list (cons list (cons avl-set t)))
+            ;; cons kill cons stck cons valmap
+            (list ,kill ,stck 
+                  (aif ,vals
+                       it
+                       valmap)))))
   )
 
 (def-gen-kill lcc-instruction
@@ -210,7 +231,7 @@ as its value."
     )
 
 (def-gen-kill addrgp
-    :stck (cons 'glob stack)
+    :stck (cons *glob* stack)
     :gen nil
     :kill nil
     )
@@ -265,9 +286,9 @@ as its value."
                 (op2 (second stack)))
             (cons
              (cond
-               ((or (eql op1 'glob)
-                    (eql op2 'glob)) 
-                'glob)
+               ((or (eql op1 *glob*)
+                    (eql op2 *glob*)) 
+                *glob*)
                ((or (eql op1 'args)
                     (eql op2 'args))
                 'args)
@@ -277,8 +298,8 @@ as its value."
                (t (typecase op1
                     (integer (typecase op2
                                (integer (+ op1 op2))
-                               (t 'glob)))
-                    (t 'glob))))
+                               (t *glob*)))
+                    (t *glob*))))
              (cddr stack)))
     )
 
@@ -292,25 +313,25 @@ as its value."
 (def-gen-kill asgnu
     :stck (cddr stack)
     :vals (cond
-            ((or (eql (second stack) 'glob)
+            ((or (eql (second stack) *glob*)
                  (eql (second stack) 'args)
                  (null (second stack)))
              valmap)
             (t (let ((addr (second stack)))
                  ;(declare (type integer addr))
                  (typecase addr
-                     (integer (rle-map-insert addr (first stack) valmap))
+                     (integer (map-insert addr (first stack) valmap))
                      (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
-           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) *glob*) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
            ((null (second stack)) nil)
            (t (list (cons (the integer (second stack)) (first stack))))
            )
     :kill (cond
-           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) *glob*) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'const)
            ; (loop for i from 0 to lsize collect (* 4 i)))
@@ -321,24 +342,24 @@ as its value."
 (def-gen-kill asgni
     :stck (cddr stack)
     :vals (cond
-            ((or (eql (second stack) 'glob)
+            ((or (eql (second stack) *glob*)
                  (eql (second stack) 'args)
                  (null (second stack)))
              valmap)
             (t (let ((addr (second stack)))
                  ;(declare (type integer addr))
                  (typecase addr
-                     (integer (rle-map-insert addr (first stack) valmap))
+                     (integer (map-insert addr (first stack) valmap))
                      (t valmap)))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
-           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) *glob*) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
            ((null (second stack)) nil)
            (t (list (cons (the integer (second stack)) (first stack)))))
     :kill (cond
-           ((eql (second stack) 'glob) nil)
+           ((eql (second stack) *glob*) nil)
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'const)
            ; (loop for i from 0 to lsize collect (* 4 i)))
@@ -349,7 +370,7 @@ as its value."
 ;; (def-gen-kill asgni
 ;;     :stck (cddr stack)
 ;;     :vals (cond
-;;             ((or (eql (second stack) 'glob)
+;;             ((or (eql (second stack) *glob*)
 ;;                  (eql (second stack) 'args)
 ;;                  (null (second stack)))
 ;;              valmap)
@@ -363,13 +384,13 @@ as its value."
 ;;                )
 ;;             )
 ;;     :gen (cond
-;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) *glob*) nil)
 ;;            ((eql (first stack) 'args) nil)
 ;;            ((eql (second stack) 'not-const) nil)
 ;;            (t (list (the integer (first stack))))
 ;;            )
 ;;     :kill (cond
-;;            ((eql (first stack) 'glob) nil)
+;;            ((eql (first stack) *glob*) nil)
 ;;            ((eql (first stack) 'args) nil)
 ;;            ((eql (second stack) 'const)
 ;;             (loop for i from 0 to lsize collect (* 4 i)))
@@ -379,26 +400,26 @@ as its value."
 
 (def-gen-kill indiru
     :stck (cons (cond
-                  ((or (eql (car stack) 'glob)
+                  ((or (eql (car stack) *glob*)
                        (eql (car stack) 'const))
-                   'glob)
+                   *glob*)
                   ((or (eql (car stack) 'args))
                    'args)
-                  (t (cdr (rle-map-find (car stack) valmap))))
+                  (t (cdr (map-find (car stack) valmap))))
                 (cdr stack))
     )
 
 (def-gen-kill indirp
-    :stck (cons 'glob (cdr stack)))
+    :stck (cons *glob* (cdr stack)))
 
 (def-gen-kill indiri
     :stck (cons (cond
-                  ((or (eql (car stack) 'glob)
+                  ((or (eql (car stack) *glob*)
                        (eql (car stack) 'const))
-                   'glob)
+                   *glob*)
                   ((or (eql (car stack) 'args))
                    'args)
-                  (t (cdr (rle-map-find (car stack) valmap))))
+                  (t (cdr (map-find (car stack) valmap))))
                 (cdr stack))
     ;;    :stck (cons (cdr (map-find (car stack) valmap)) (cdr stack)))
     )
