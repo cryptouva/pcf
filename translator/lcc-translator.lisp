@@ -36,6 +36,8 @@
 ;;; LABELS
 ;;;
 
+(defparameter *glob* -1)
+
 (defgeneric add-label (op idx labs bss base)
   (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
 IDX is the index of a defined label - it will increment per instruction in order to provide the instruction's location within a program;LABS is the hash table that maps labels to their locations; in tandem, these two identify where in the list of opcodes each label is, and the index is how we find the label in the random access list.
@@ -54,7 +56,7 @@ BSS is t/nil depending on if we're in the data section; BASE is the base pointer
 (defmethod add-label ((op labelv) idx labs bss base)
   (with-slots (s-args) op
     (if bss
-        (setf (gethash (first s-args) labs) (cons 'glob base)) ;; cons 'GLOB with the base to indicate a global variable
+        (setf (gethash (first s-args) labs) (cons *glob* base)) ;; cons 'GLOB with the base to indicate a global variable
         (setf (gethash (first s-args) labs) (cons 'labl idx))  ;; cons 'LABL with the index to indicate a code block
         )
     (values labs bss base)
@@ -412,7 +414,7 @@ number of arguments."
     for this, but for some reason that is not working....~%"
           )
 
-    `(let ((,cnstsym (cadr (cdr (rle-map-find #|(write-to-string iidx)|# iidx (cadr (cdr cnsts))))))
+    `(let ((,cnstsym (cadr (cdr (map-find #|(write-to-string iidx)|# iidx (cadr (cdr cnsts))))))
            )
        (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)
@@ -1920,20 +1922,23 @@ number of arguments."
           ;(width (parse-integer (first s-args)))
           )
       (let ((a (gethash (first addr*) labels nil)))
-        (declare (type (or null (cons symbol (integer 1))) a))
+        (declare (type (or null
+                           (cons symbol (integer 1))
+                           (cons integer (integer 1)))
+                           a))
         (let ((addr (if a
-                        (if (equalp (car a) 'glob)
+                        (if (equalp (car a) *glob*)
                             ;; Do not multiply by width here.
                             (+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
                             (second s-args));(gethash (second s-args) labels nil)
                         (second s-args))))
           (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
-          (add-instrs (if (equalp (car a) 'glob)
+          (add-instrs (if (equalp (car a) *glob*)
                           (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0) (cdr a)))))
-            (push-stack stack 1 (if (equalp (car a) 'glob) 
+            (push-stack stack 1 (if (equalp (car a) *glob*) 
                                     (list wires) 
                                     (list addr))
-              (let ((wires (if (equalp (car a) 'glob) (1+ wires) wires)))
+              (let ((wires (if (equalp (car a) *glob*) (1+ wires) wires)))
                 (close-instr)))))))))
 
 
