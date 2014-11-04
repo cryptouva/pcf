@@ -1616,7 +1616,7 @@ number of arguments."
 		(with-temp-wires tmp1 1
 		  (with-temp-wires tmp2 1
 		    ;; Check to see if there is a constant on top of the stack (this is the shift amount)
-		    (let ((cnst (car (cdr (map-find (write-to-string iidx) (cadr (cdr cnsts)))))))
+		    (let ((cnst (car (cdr (map-find #|(write-to-string iidx) |# iidx (cadr (cdr cnsts)))))))
 		      (print cnst)
 		      (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
 		      (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
