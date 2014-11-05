@@ -458,8 +458,12 @@
 
 
 (def-gen-kill mkptr
-    ;;:const-gen (progn (break)(empty-gen)) ;; no consts
-)
+    :const-gen (with-slots (dest) op
+                 (with-true-addresses (dest)
+                   (rle-map-singleton dest (+ base (rle-map-val dest)))))
+    :const-kill (with-slots (dest) op
+                  (with-true-addresses (dest)
+                    (rle-singleton dest))))
 
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
