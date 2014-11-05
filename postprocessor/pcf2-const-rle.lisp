@@ -458,9 +458,9 @@
 
 
 (def-gen-kill mkptr
-    :const-gen (with-slots (dest) op
+    :dep-gen (with-slots (dest) op
                  (with-true-addresses (dest)
-                   (rle-map-singleton dest (+ base (rle-map-val dest)))))
+                   (rle-map-singleton dest (+ base (rle-map-val dest flow-data)))))
     :const-kill (with-slots (dest) op
                   (with-true-addresses (dest)
                     (rle-singleton dest))))
