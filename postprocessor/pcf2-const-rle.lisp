@@ -333,11 +333,13 @@
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
                    ;;(break)
+                   (assert (or (equal o1 0)(equal o1 1)(equal o1 'pcf2-block-graph:pcf-not-const)))
+                   (assert (or (equal o2 0)(equal o2 1)(equal o1 'pcf2-block-graph:pcf-not-const)))
                    (if (or-defined op1 op2 flow-data)
                        (if (and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
                            (progn
-                             (assert (or (equal o1 0)(equal o1 1)))
-                             (assert (or (equal o2 0)(equal o2 1)))
+                             ;;(assert (or (equal o1 0)(equal o1 1)))
+                             ;;(assert (or (equal o2 0)(equal o2 1)))
                              (let ((out-val
                                     (cond
                                       ((equalp truth-table #*0001) (logand o1 o2))
@@ -456,8 +458,12 @@
 
 
 (def-gen-kill mkptr
-    ;;:const-gen (progn (break)(empty-gen)) ;; no consts
-)
+    :const-gen (with-slots (dest) op
+                 (with-true-addresses (dest)
+                   (rle-map-singleton dest (+ base (rle-map-val dest)))))
+    :const-kill (with-slots (dest) op
+                  (with-true-addresses (dest)
+                    (rle-singleton dest))))
 
 (defmacro gen-for-indirection (source-address dest-address length)
   `(if (equal ,length 1)
