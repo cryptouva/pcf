@@ -332,8 +332,8 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data))
-                       (op1-val (rle-map-val op1 flow-data))
-                       (op2-val (rle-map-val op2 flow-data)))
+                       (op1-val (rle-map-val op1 flow-data t)) ;; need to include "t" for fewer-bit instructions
+                       (op2-val (rle-map-val op2 flow-data t)))
                    ;;(break)
                    (assert (or (equal o1 0)(equal o1 1)(equal op1-val 'pcf2-block-graph:pcf-not-const)))
                    (assert (or (equal o2 0)(equal o2 1)(equal op2-val 'pcf2-block-graph:pcf-not-const)))
