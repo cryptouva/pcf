@@ -14,13 +14,14 @@
 
 (defpackage :lcc-const 
   (:use :cl :utils :setmap :setmap-rle :lcc-bc :lcc-dataflow)
-  (:export lcc-const-flow-fn const-dataflow-funs not-const)
+  (:export lcc-const-flow-fn const-dataflow-funs not-const *glob*)
   (:shadow import export)
   )
 (in-package :lcc-const)
 
-(defparameter *glob* -1)
+(defparameter *glob* -99999999)
 
+#|
 (defun constcmp (x y)
   (typecase x
     (number (typecase y
@@ -32,7 +33,7 @@
                 nil
                 t)))
   )
-
+|#
 (defun lcc-const-join-fn (x y)
   "Compute the join operation on the constant propagation lattice."
   (declare (optimize (debug 3)(speed 0)))
@@ -58,8 +59,8 @@
               y)
   )
 
-(defparameter empty-rle-s (rle-map-empty :comp #'constcmp))
-(defparameter empty-s (map-empty :comp #'constcmp))
+(defparameter empty-rle-s (rle-map-empty));; :comp #'constcmp))
+(defparameter empty-s (map-empty));; :comp #'constcmp))
 
 (defun const-dataflow-funs (ops)
   "Compute the locations that store constants in this stream of
@@ -296,10 +297,11 @@ as its value."
                     (eql op2 'not-const))
                 'not-const)
                (t (typecase op1
-                    (integer (typecase op2
+                    (integer 
+                     (typecase op2
                                (integer (+ op1 op2))
-                               (t *glob*)))
-                    (t *glob*))))
+                               (t (error "unknown symbol op2"))));;*glob*)))
+                    (t (error "unknown symbol op1")))));;*glob*))))
              (cddr stack)))
     )
 
@@ -425,20 +427,24 @@ as its value."
     )
 
 (defmacro arithmetic-shift (fn op1 op2)
-  `(cons (typecase ,op1
-           (integer (typecase ,op2
-                      (integer (funcall ,fn ,op1 ,op2))
-                      (t 'not-const)))
-           (t 'not-const))
-         (cddr stack)))
+  `(if (or (eql op1 *glob*)(eql op2 *glob*))
+       (cons 'not-const (cddr stack))
+       (cons (typecase ,op1
+               (integer (typecase ,op2
+                          (integer (funcall ,fn ,op1 ,op2))
+                          (t 'not-const)))
+               (t 'not-const))
+             (cddr stack))))
 
 (defmacro arithmetic-stack (fn op1 op2)
-  `(cons (typecase ,op1
-           (number (typecase ,op2
-                     (number (funcall ,fn ,op1 ,op2))
-                     (t 'not-const)))
-           (t 'not-const))
-         (cddr stack)))
+  `(if (or (eql op1 *glob*)(eql op2 *glob*))
+       (cons 'not-const (cddr stack))
+       (cons (typecase ,op1
+               (number (typecase ,op2
+                         (number (funcall ,fn ,op1 ,op2))
+                         (t 'not-const)))
+               (t 'not-const))
+             (cddr stack))))
 
 (def-gen-kill lshu
     :stck (let ((op1 (first stack))
@@ -562,29 +568,35 @@ as its value."
 
 (def-gen-kill bcomu
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (number (lognot o1))
-               (symbol 'not-const)
-               (t (error "unknown item on stack")))
-             (cddr stack)))
+            (if (eql op1 *glob*)
+                (cons 'not-const (cddr stack))
+                (cons
+                 (typecase o1
+                   (number (lognot o1))
+                   (symbol 'not-const)
+                   (t (error "unknown item on stack")))
+                 (cdr stack))))
     )
 
 (def-gen-kill bcomi
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (integer (lognot o1))
-               (symbol 'not-const)
-               (t (error "unknown item on stack")))
-             (cddr stack)))
+            (if (eql op1 *glob*)
+                (cons 'not-const (cddr stack))
+                (cons
+                 (typecase o1
+                   (integer (lognot o1))
+                   (symbol 'not-const)
+                   (t (error "unknown item on stack")))
+                 (cdr stack))))
     )
 
 (def-gen-kill negi
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (number (* -1 o1))
-               (symbol 'not-const))
-             (cddr stack)))
+            (if (eql op1 *glob*)
+                (cons 'not-const (cddr stack))
+                (cons
+                 (typecase o1
+                   (number (* -1 o1))
+                   (symbol 'not-const))
+                 (cdr stack))))
     )
