@@ -36,7 +36,7 @@
 ;;; LABELS
 ;;;
 
-(defparameter *glob* -1)
+(defparameter *glob* lcc-const:*glob*)
 
 (defgeneric add-label (op idx labs bss base)
   (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
@@ -1953,8 +1953,7 @@ number of arguments."
                   (if (< 2 (length nums))
                       (parse-integer (first nums))
                       (reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0)
-                      ))
-            ))
+                      ))))
       (push-stack stack 1 (list wires)
         (add-instrs (list 
                      (make-instance 'const :dest wires :op1 (+ 1 baseinit (* *byte-width* addr)))
