@@ -44,8 +44,12 @@
                :id ,blkid
                :ops (cons ,op (basic-block-ops ,bb))
                :preds (basic-block-preds ,bb)
-               :succs (basic-block-succs ,bb))))
-     ,@body)
+               :succs (basic-block-succs ,bb)
+               )
+           )
+         )
+     ,@body
+     )
   )
 
 (defmacro add-pred (prd bb blkid &body body)
@@ -53,86 +57,92 @@
                :id ,blkid
                :ops (basic-block-ops ,bb)
                :preds (cons ,prd (basic-block-preds ,bb))
-               :succs (basic-block-succs ,bb))))
-     ,@body)
+               :succs (basic-block-succs ,bb)
+               )
+           )
+         )
+     ,@body
+     )
   )
 
-(defmacro add-succ (suc bb blkid &body body)
+(defmacro add-succ (prd bb blkid &body body)
   `(let ((,bb (make-basic-block
                :id ,blkid
                :ops (basic-block-ops ,bb)
                :preds (basic-block-preds ,bb)
                :succs (typecase ,bb
                         (jumpv (basic-block-succs ,bb))
-                        (otherwise (cons ,suc (basic-block-succs ,bb)))))))
-     ,@body)
+                        (otherwise (cons ,prd (basic-block-succs ,bb)))
+                        )
+               )
+           )
+         )
+     ,@body
+     )
   )
 
 (defgeneric find-basic-blocks (op blocks curblock blkid idx targs)
   (:documentation "Construct a set of basic blocks from a list of opcodes")
   )
 
-;;old way, with strings as keys rather than ints
-
 (defmethod find-basic-blocks ((op lcc-instruction) blocks curblock blkid idx targs)
   ;; (add-op op curblock blkid
   ;;   (list blocks curblock blkid)
   ;;   )
-  (let ((new-block (make-basic-block :ops (list op))))
-    ;;(add-succ (write-to-string idx) curblock blkid
-    (add-succ idx curblock blkid 
-      (list (map-insert blkid curblock blocks) new-block #|(write-to-string idx) |# idx (1+ idx) targs))))
+  (let ((new-block (make-basic-block :ops (list op)))
+        (blkidx idx))
+    (add-succ blkidx curblock blkid
+      (list (map-insert blkid curblock blocks) new-block blkidx (1+ idx) targs))))
 
 (defmethod find-basic-blocks ((op labelv) blocks curblock blkid idx targs)
-  (let ((new-block (make-basic-block :ops (list op))))
+  (let ((new-block (make-basic-block :ops (list op)))
+        )
     (with-slots (s-args) op
-      (let ((str (first s-args)))
-        ;;(let ((bid (write-to-string (map-val str targs))))
-         (let ((bid (map-val str targs)))
-          (add-succ bid curblock blkid
-            (list (map-insert blkid curblock blocks) new-block bid (1+ idx) targs)))))))
+      (let* ((str (first s-args))
+             (strid (map-val str targs)))
+        (add-succ strid curblock blkid
+          (list (map-insert blkid curblock blocks) new-block strid (1+ idx) targs))))))
 
 (defmethod find-basic-blocks ((op proc) blocks curblock blkid idx targs)
-  (let ((new-block (make-basic-block :ops (list op))))
+  (let ((new-block (make-basic-block :ops (list op)))
+        )
     (with-slots (s-args) op
-      (let ((str (first s-args)))
-        ;;(let ((bid (write-to-string (map-val str targs))))
-        (let ((bid (map-val str targs)))
-          (add-succ bid curblock blkid
-            (list (map-insert blkid curblock blocks) new-block bid (1+ idx) targs)))))))
+      (let* ((str (first s-args))
+            (strid (map-val str targs)))
+        (add-succ strid curblock blkid
+          (list (map-insert blkid curblock blocks) new-block strid (1+ idx) targs)
+          )))))
 
 (defmethod find-basic-blocks ((op cnd-jump-instruction) blocks curblock blkid idx targs)
-  (let ((new-block (make-basic-block :ops (list op))))
+  (let ((new-block (make-basic-block :ops (list op)))
+        )
     (with-slots (s-args) op
-      (let ((targ (map-val (first s-args) targs))
-            (fallid idx))
-            ;;(fallid (write-to-string idx))) ;; should this be blkid or idx?
+      (let* ((targ (map-val (first s-args) targs))
+             (fallid idx))
         (add-succ targ curblock blkid
           (add-succ fallid curblock blkid
+                    ;;(add-succ (concatenate 'string "fall" blkid) curblock blkid
             (list (map-insert blkid curblock blocks)
-                  new-block 
+                  new-block
                   fallid
                   (1+ idx) targs))))))
   )
 
 (defmethod find-basic-blocks ((op jumpv) blocks curblock blkid idx targs)
   (let ((new-block (make-basic-block :ops (list op)))
-        (adrop (first (basic-block-ops curblock))))
+        (adrop (first (basic-block-ops curblock)))
+        )
     (declare (type addrgp adrop))
     (with-slots (s-args) adrop
-      (let ((targ (first s-args)))
-        ;;(let ((succ (map-val targ targs)))
-        (let ((succ idx))
-          ;;(let ((succ (write-to-string idx)))
-          ;; maybe we should be adding "targ" here
-          (add-succ succ curblock blkid
-            (list (map-insert blkid curblock blocks) new-block succ (1+ idx) targs))))))
+      (let ((targ (first s-args))
+            (blkidx idx)
+            )
+        (add-succ blkidx curblock blkid
+          (list (map-insert blkid curblock blocks) new-block blkidx (1+ idx) targs)))))
   )
 
 (defmacro find-call ()
   `(let ((new-block (make-basic-block :ops (list op))))
-     ;;(break)
-     ;;(let ((callid (write-to-string idx)))
      (let ((callid idx))
        (add-succ callid curblock blkid
        (list (map-insert blkid curblock blocks) new-block
@@ -143,7 +153,7 @@
   (find-call))
 
 (defmethod find-basic-blocks ((op calli) blocks curblock blkid idx targs)
- (find-call))
+  (find-call))
 
 (defmethod find-basic-blocks ((op callu) blocks curblock blkid idx targs)
   (find-call))
@@ -156,17 +166,14 @@
                  (lambda (st x)
                    (map-insert x
                                (let ((bb (cdr (map-find x st))))
-                               ;;(let ((bb (cdr (write-to-string (map-find x st)))))
                                  (add-pred k bb (basic-block-id bb)
-                                           bb))
+                                   bb))
                                st))
                  (basic-block-succs v)
                  :initial-value st))
               blocks
-              blocks);(map-empty :comp string<)
-  )
-
-
+              blocks;(map-empty :comp string<)
+              ))
 
 (defun make-cfg (ops)
   "Return a control-flow graph from a list of PCF ops.  This is a map
@@ -189,24 +196,20 @@ of basic block IDs to basic blocks."
                                    )
                                ops
                                :initial-value (list (map-empty :comp #'string<) 0))))
-         (cfg (reduce #'(lambda (x y)
+        (cfg (reduce #'(lambda (x y)
                          (declare (optimize (debug 3) (speed 0))
                                   (type lcc-instruction y)
                                   (type list x))
-                         (apply #'find-basic-blocks (cons y x)))
-                     ops
-                     :initial-value (list (map-empty :comp #'<) ;; :comp #'string<  ;;blocks
-                                          (make-basic-block) ;; curblock
-                                          -1 ;;"" ;; blkid
-                                          0 ;;idx
-                                          targs ;;targs
-                                          ))))
-    (let ((cfg (map-insert (third cfg) ;; blkid
-                           (second cfg) ;; curblock (the last block)
-                           (first cfg) ;; blocks
-                           )))
+                         (apply #'find-basic-blocks (cons y x))
+                         )
+                     ops :initial-value (list (map-empty :comp #'<)
+                                              (make-basic-block)
+                                              -1
+                                              0
+                                              targs
+                                              ))))
+    (let ((cfg (map-insert (third cfg) (second cfg) (first cfg))))
       (map-map (lambda (key val)
-                 ;; it is unclear why we should need to reverse the ops at this point.
                  (declare (ignore key))
                  (make-basic-block
                   :id (basic-block-id val)
@@ -240,24 +243,39 @@ assume that each block is exactly one opcode."
                                          :id (typecase x
                                                (labelv (with-slots (s-args) x
                                                          (the string (first s-args))))
-                                               (otherwise (write-to-string (1+ idx))))
+                                               (otherwise (write-to-string (1+ idx)))
+                                               )
                                          :ops (list x)
                                          :preds nil
-                                         :succs nil))
+                                         :succs nil
+                                         )
+                                  )
                                 (cblock (make-basic-block
                                          :id (basic-block-id cblock)
                                          :ops (basic-block-ops cblock)
                                          :preds (basic-block-preds cblock)
                                          :succs (cons (basic-block-id nblock)
-                                                      (basic-block-succs cblock)))))
+                                                      (basic-block-succs cblock))
+                                         )
+                                  )
+                                )
                            (list
                             (map-insert (basic-block-id cblock) cblock cfg)
                             nblock
-                            (1+ idx)))))
+                            (1+ idx)
+                            )
+                           )
+                         )
+                       )
                      ops
-                     :initial-value (list (map-empty :comp #'string<) (make-basic-block) 0))))
-    (let ((cfg (map-insert (basic-block-id (second cfg)) (second cfg) (first cfg))))
-      (find-preds cfg)))
+                     :initial-value (list (map-empty :comp #'string<) (make-basic-block) 0))
+          )
+        )
+    (let ((cfg (map-insert (basic-block-id (second cfg)) (second cfg) (first cfg)))
+          )
+      (find-preds cfg)
+      )
+    )
   )
 
 (defun get-lbls-in-order (ops res &optional (c ""))
@@ -272,7 +290,10 @@ assume that each block is exactly one opcode."
                    (cnd-jump-instruction (concatenate 'string "fall" c))
                    ((or retu reti) (concatenate 'string "ret" c))
                    ((or callu calli callv) (concatenate 'string "call" c))
-                   (t c))))
+                   (t c)
+                   )
+              )
+            )
         (get-lbls-in-order (rest ops) 
                            (typecase
                                (the lcc-instruction (first ops))
@@ -285,7 +306,9 @@ assume that each block is exactly one opcode."
                              ((or callv callu calli)
                               (cons str res))
                              (t res))
-                           str)))
+                           str)
+        )
+      )
   )
 
 (defun ops-from-cfg (cfg lbls-in-order)
@@ -294,8 +317,13 @@ assume that each block is exactly one opcode."
              (if lbls
                  (append
                   (reverse (basic-block-ops (cdr (map-find (first lbls) cfg))))
-                  (flatten-ops (rest lbls))))))
-    (flatten-ops lbls-in-order))
+                  (flatten-ops (rest lbls))
+                  )
+                 )
+             )
+           )
+    (flatten-ops lbls-in-order)
+    )
   )
 
 (defun map-cfg (cfg fn)
@@ -326,8 +354,13 @@ assume that each block is exactly one opcode."
                                    (map-insert (first s-args)
                                                (loop for op in ops 
                                                   until (typep op 'endproc)
-                                                  collect op) rmap))))
-        (otherwise (get-function-body (rest ops) rmap))))
+                                                  collect op) rmap))
+                )
+              )
+        (otherwise (get-function-body (rest ops) rmap)
+                   )
+        )
+    )
   )
 
 (defun flow-backwards (join-fn flow-fn cfg out-sets empty-set)
@@ -390,49 +423,41 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
 (defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks valmaps empty-set &optional (cnt 0))
   (declare (optimize (debug 3) (speed 0))
            (ignorable cnt))
-  ;;(break)
   (the avl-set
     (labels ((do-flow-forwards (cblock in-sets in-stacks valmaps visited done)
                (declare (optimize (debug 3) (speed 0)))
-               ;;(break)
-               ;;(print "in do-flow-forwards")
                (if (or (null cblock) (null (basic-block-id cblock)))
                    (list in-sets in-stacks valmaps done)
                    (let ((new-out (reduce (lambda (state pred)
                                             (print pred)
-                                            ;;(break)
-                                            (let ((res (funcall flow-fn
+                                            (let ((res (funcall flow-fn 
                                                                 (aif (map-find pred in-sets t)
                                                                      (cdr it)
-                                                                     empty-set) ;; shouldn't this be impossible?
-                                                                (cdr (map-find pred in-stacks t)) ;in-stack
-                                                                (cdr (rle-map-find pred valmaps t)) ;valmap 
-                                                                ;;(cdr (map-find pred valmaps t)) ;valmap
-                                                                (cdr (map-find pred cfg t))))) ; cfg
-                                              (list (first res) ;; stack
-                                                    (funcall join-fn ;; state U in-stack??
-                                                             (second state) ;; old flow | empty-set
-                                                             (second res)) ;; new flow
-                                                    (third res)))) ;; valmap
+                                                                     empty-set)
+                                                                (cdr (map-find pred in-stacks t))
+                                                                (cdr (rle-map-find pred valmaps t));(third x) ;valmap 
+                                                                (cdr (map-find pred cfg t)))))
+                                              (list (first res)
+                                                    (funcall join-fn 
+                                                             (second state)
+                                                             (second res))
+                                                    (third res))))
                                           (basic-block-preds cblock)
-                                          :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t))  ;; stack
-                                                               empty-set ;; no in-flow 
-                                                               (aif (cdr 
-                                                                     (rle-map-find (basic-block-id cblock) valmaps t))
-                                                                     ;;(map-find (basic-block-id cblock) valmaps t))
+                                          :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t)) 
+                                                               empty-set
+                                                               (aif (cdr (rle-map-find (basic-block-id cblock) valmaps t))
                                                                     it
-                                                                    ;;(map-empty))))))
                                                                     (rle-map-empty))))))
-                     ;;(print "here")
                      ;;(break)
                      (let* ((nblock 
                              (map-find
                               (loop 
-                                 for id in (basic-block-succs cblock)
+                                for id in (basic-block-succs cblock)
                                  when (not (map-find id visited t))
                                  unless (null id)
                                  return id)
-                              cfg))
+                              cfg)
+                              )
                             (bbid (basic-block-id cblock))
                             (nbid (car nblock))
                             (done (and done (set-equalp 
@@ -442,22 +467,17 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                              (second new-out))))
                             ;(ostack (first (funcall flow-fn (second new-out) (first new-out) (third new-out) cblock)))
                             )
-                       ;;(print "next")
-                       ;;(break)
-                       ;;(declare (type 'integer bbid nbid))
-                       ;;(declare (type string bbid nbid))
-                       ;;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%" bbid nbid nblock)
+                       (declare (type integer bbid nbid))
+                       ;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%new-out: ~A~%" bbid nbid nblock new-out)
                        (do-flow-forwards 
                            (cdr nblock)
                          (map-insert bbid (second new-out) in-sets)
                          (map-insert bbid (first new-out) in-stacks) ;; <-- We need to use bbid here, because new-out is the result of our *predecessor* operations; hence, the stack from new-out is the *input* stack for this operation.
-                         ;;(map-insert nbid (third new-out) valmaps)
                          (rle-map-insert nbid (third new-out) valmaps)
                          (map-insert bbid t visited)
-                         done)))))) 
+                         done))))))
       (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks valmaps (map-empty :comp #'<) t)))
         ;(print (cons (fourth ret) cnt))
-        ;;(print "let ret")
         (if (fourth ret)
             (values (first ret)
                     (second ret)
@@ -479,21 +499,30 @@ out(i) = reduce(join-fn, in-sets(preds(i)))
                                         (let ((res (funcall flow-fn 
                                                           (aif (map-find y in-sets)
                                                                (cdr it)
-                                                               empty-set)
+                                                               empty-set
+                                                               )
                                                           (car x);(map-find y in-stacks)
-                                                          (cdr (map-find y cfg)))))
+                                                          (cdr (map-find y cfg))))
+                                              )
                                           (list (first res)
                                                 (funcall join-fn 
                                                          (second x)
-                                                         (second res)))))
+                                                         (second res)))
+                                          )
+                                        )
                                       (basic-block-preds bb)
-                                      :initial-value (list (map-find (basic-block-id bb) in-stacks) empty-set))))
+                                      :initial-value (list (map-find (basic-block-id bb) in-stacks) empty-set)))
+                     )
                  (list (second new-out)
                        (first new-out)
                        (set-equalp (aif (map-find (basic-block-id bb) in-sets)
                                         (cdr it)
                                         empty-set)
-                                   (second new-out))))))
+                                   (second new-out))
+                       )
+                 )
+               )
+             )
       (let ((res
              (map-reduce #'(lambda (x id y)
                              (declare (optimize (debug 3) (speed 0)))

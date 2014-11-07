@@ -23,12 +23,13 @@
                        )
 	       (:module translator
 			:components (
-				     (:file "lcc-translator"
-					    :depends-on ("lcc-bc" "lcc-dataflow" "lcc-const"))
+				     ;;(:file "lcc-translator"
+                                     (:file "lcc-translator-inter"
+                                            :depends-on ("lcc-bc" "lcc-dataflow-inter" "lcc-const-inter"))
 				     (:file "lcc-bc")
-				     (:file "lcc-const" :depends-on ("lcc-bc" "lcc-dataflow"))
+				     (:file "lcc-const-inter" :depends-on ("lcc-bc" "lcc-dataflow-inter"))
 				    ; (:file "lcc-pointer-analysis" :depends-on ("lcc-bc" "lcc-dataflow" )) not in use
-				     (:file "lcc-dataflow" :depends-on ("lcc-bc"))
+				     (:file "lcc-dataflow-inter" :depends-on ("lcc-bc"))
               			    ; (:file "dataflow")
 				    ; (:file "pointer-analysis" :depends-on ("dataflow" utilities)) not in use
 				    ; (:file "reachingdefs" :depends-on ("datafloww" utilities)) not in use
