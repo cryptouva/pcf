@@ -443,7 +443,7 @@ The functions that operate on pcf2-state objects should treat these objects as i
                          :initial-value state)
                    )
                  )
-             ;(format t "~&Input ~A for ~A: ~A~%" input-pos fname (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
+             ;;(format t "~&Input ~A for ~A: ~A~%" input-pos fname (loop for i from 0 to 31 collect (get-state-val state (+ newbase i))))
              state
              )
            )

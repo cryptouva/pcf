@@ -35,8 +35,8 @@
   "Compute the join operation on the constant propagation lattice."
   (declare (optimize (debug 3)(speed 0)))
   (map-reduce (lambda (map key val)
-                (if (equalp key 'glob)
-                    map
+                ;;(if (equalp key 'glob)
+		;;map
                     (let ((new-val (aif (map-find key map t)
                                         (typecase val
                                           (number (typecase (cdr it)
@@ -53,7 +53,8 @@
                                                       'not-const
                                                       (cdr it))))
                                         'not-const))) ;; not in both maps, so the value is unknown
-                      (map-insert key new-val map)))) ;; computing a join on two value maps
+                      (map-insert key new-val map))) ;; computing a join on two value maps
+	      ;)
               x
               y)
   )
