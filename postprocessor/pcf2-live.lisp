@@ -1,7 +1,7 @@
 ;;; this iterates through a control-flow graph to perform faint-variable analysis. it is adapted from Data Flow Analysis: Theory and Practice by Khedker, Sanyal, and Karkare
 ;;; author: bt3ze@virginia.edu
 (defpackage :pcf2-live
-  (:use :common-lisp :pcf2-bc :setmap :utils :pcf2-block-graph :pcf2-flow-utils)
+  (:use :common-lisp :pcf2-bc :setmap :setmap-rle :utils :pcf2-block-graph :pcf2-flow-utils)
   (:export live-flow-fn
            live-confluence-op
            live-weaker-fn)
@@ -27,23 +27,19 @@
 ;;; note: since we do this analysis without use of consts (the biggest reason for this analysis is to eliminate the amount of consts we carry around), we cannot track all of the pointed-to locations using this analysis. We account for this by simply not eliminating those wires when we don't find them in the use-map (see pcf2-use-map).
 
 
-(defparameter live-confluence-operator #'set-union)  ;;#'set-inter)
+(defparameter live-confluence-operator #'rle-set-union)  ;;#'set-inter)
 ;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
 (defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
 
-
-(defmacro top-set ()
-  `(empty-set))
-
 (defun get-out-sets (blck cfg conf)
   (reduce
    (lambda (temp-out succ)
      (let ((succ-out (get-block-lives (get-block-by-id succ cfg))))
-       (funcall conf temp-out succ-out)))
+       (funcall conf succ-out temp-out)))
    (get-block-succs blck)
-   :initial-value (empty-set)
+   :initial-value (rle-empty-set)
    ;; (get-block-lives blck)
    ))
 
@@ -54,8 +50,8 @@
 
 (defun live-weaker-fn (set1 set2)
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
-  (and (not (set-subset set1 set2))
-       (set-subset set2 set1)
+  (and (not (rle-set-subset-efficient set1 set2))
+       (rle-set-subset-efficient set2 set1)
   ))
 
 (defun live-flow-fn (blck cfg use-map)
@@ -64,28 +60,28 @@
   ;;  (break)
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
-     (set-diff-efficient in-flow (kill (get-block-op blck) blck (get-block-base blck)))
+     (rle-set-diff-efficient in-flow (kill (get-block-op blck) blck (get-block-base blck)))
      (gen (get-block-op blck) blck (get-block-base blck)))))
 
 (defun get-gen-kill (blck base fn)
   (reduce (lambda (state op)
-            (set-union state (funcall fn op blck base)))
+            (rle-set-union state (funcall fn op blck base)))
           (get-block-op-list blck)
-          :initial-value (empty-set)))
+          :initial-value (rle-empty-set)))
 #|
 (defun get-gen (blck base)
   (reduce (lambda (state op)
-            (set-union state (gen op blck base)))
+            (rle-set-union state (gen op blck base)))
           (get-block-op-list blck)
-          :initial-value (empty-set)))
+          :initial-value (rle-empty-set)))
 ;;  (let ((op (get-block-op blck)))
 ;;    (gen op blck base)))
 
 (defun get-kill (blck base)
   (reduce (lambda (state op)
-            (set-union state (kill op blck base)))
+            (rle-set-union state (kill op blck base)))
           (get-block-op-list blck)
-          :initial-value (empty-set)))
+          :initial-value (rle-empty-set)))
 ;;  (let ((op (get-block-op blck)))
 ;;    (kill op blck base)))
 |#
@@ -100,7 +96,7 @@
 
 (defmacro gen-kill-standard ()
   ;; for live variable analysis, standard is always empty set
-  `(empty-set))
+  `(rle-empty-set))
 
 (defmacro def-gen (type &body body)
   `(defmethod gen ((op ,type) blck base)
@@ -142,79 +138,79 @@
     ;; the list of wires being joined are encountering a use
     :gen (with-slots (op1) op
            (with-true-address-list op1
-             (set-from-list op1)))
+             (rle-set-from-list op1)))
     ;; the desintation wire is encourtering a definition
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill bits
     ;; the source wire is encountering a use
     :gen (with-slots (op1) op
            (with-true-address op1
-             (singleton op1)))
+             (rle-singleton op1)))
     ;; the destination wires are being defined
     :kill (with-slots (dest) op
             (with-true-address-list dest
-              (set-from-list dest))))
+              (rle-set-from-list dest))))
 
 (def-gen-kill const
     ;; the destination wire is encountering a definition
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill gate
     ;; the input wires are encountering a use
     :gen (with-slots (op1 op2) op
            (with-true-addresses (op1 op2)
-             (set-from-list (list op1 op2))))
+             (rle-set-from-list (list op1 op2))))
     ;; the destination wire is being defined
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill add
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
            (with-true-addresses (op1 op2)
-             (set-from-list (list op1 op2))))
+             (rle-set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill sub
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
            (with-true-addresses (op1 op2)
-             (set-from-list (list op1 op2))))
+             (rle-set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill mul
     ;; the input wires are being used
     :gen (with-slots (op1 op2) op
            (with-true-addresses (op1 op2)
-             (set-from-list (list op1 op2))))
+             (rle-set-from-list (list op1 op2))))
     ;; the output wire is being defined
     :kill (with-slots (dest) op
             (with-true-address dest
-              (singleton dest))))
+              (rle-singleton dest))))
 
 (def-gen-kill copy
     :gen (with-slots (op1 op2) op
            (with-true-address op1
              (if (equalp op2 1)
-                 (singleton op1)
-                 (set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i)))))
+                 (rle-singleton op1)
+                 (rle-set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i)))))
     :kill (with-slots (dest op2) op
             (with-true-address dest
               (if (equalp op2 1)
-                  (singleton dest)
-                  (set-from-list (loop for i from dest to (+ dest op2 -1) collect i))))))
+                  (rle-singleton dest)
+                  (rle-set-from-list (loop for i from dest to (+ dest op2 -1) collect i))))))
 
 ;; the following instructions need to know more about the previous ones
 ;; it is unlikely that the indirection instructions will really alter the flow of a program, since we seldom perform operations directly on them; however, where global state is important to the program we must keep track
@@ -228,13 +224,13 @@
     ;; definition of wires from dest to dest + op2
     :kill (with-slots (dest op2) op
             (with-true-address dest
-              (set-from-list (loop for i from dest to (+ dest op2 -1) collect i)))))
+              (rle-set-from-list (loop for i from dest to (+ dest op2 -1) collect i)))))
 
 (def-gen-kill indir-copy
     ;; use of wires from op1 to op1 + op2
     :gen (with-slots (op1 op2) op
            (with-true-address op1
-             (set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i))))
+             (rle-set-from-list (loop for i from op1 to (+ op1 op2 -1) collect i))))
     ;; no kill here because we can't dereference
     )
 
@@ -243,28 +239,28 @@
     :gen (with-slots (newbase fname) op
            (with-true-address newbase
              (if (set-member fname output-functions)
-                 (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                 (empty-set))))
+                 (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                 (rle-empty-set))))
     
     ;; definition of wires from (- newbase 32) to (- newbase 1)    
     :kill (with-slots (newbase fname) op
             (with-true-address newbase
               (if (set-member fname input-functions)
-                  (set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
-                  (empty-set))))
+                  (rle-set-from-list (loop for i from (- newbase 32) to (- newbase 1) collect i))
+                  (rle-empty-set))))
     )
 
 
 (def-gen-kill ret
     ;; the last instruction will always be a ret, so we use this opportunity to set 0 as live -- even though it will be repeated however many times 
-    :gen (singleton 0)
+    :gen (rle-singleton 0)
     )
 
 
 (def-gen-kill branch
     :gen (with-slots (cnd) op
            (with-true-address cnd
-             (singleton cnd)))
+             (rle-singleton cnd)))
     )
 
 (def-gen-kill initbase)

@@ -19,7 +19,6 @@
                              :string-tokenizer
                              :common-lisp
                              :setmap
-                             :setmap-rle
                              :lcc-bc
                              :lcc-const
                              :utils
@@ -32,11 +31,11 @@
 (in-package :lcc-translator)
 (use-package :pcf2-bc)
 
+(defparameter *glob* 'glob)
+
 ;;;
 ;;; LABELS
 ;;;
-
-(defparameter *glob* lcc-const:*glob*)
 
 (defgeneric add-label (op idx labs bss base)
   (:documentation "add-label builds the labels hash table and allocates space for global variables. the \"code\" and \"base\" instructions switch on and off whether we append to the global or label section when encountering labels. if the former is true, the skip opcode will allocate space for global variables. if the latter is true, most lcc instructions will not alter the state, but labels will be interned.
@@ -56,7 +55,7 @@ BSS is t/nil depending on if we're in the data section; BASE is the base pointer
 (defmethod add-label ((op labelv) idx labs bss base)
   (with-slots (s-args) op
     (if bss
-        (setf (gethash (first s-args) labs) (cons *glob* base)) ;; cons 'GLOB with the base to indicate a global variable
+        (setf (gethash (first s-args) labs) (cons *glob* base)) ;; cons *GLOB* with the base to indicate a global variable
         (setf (gethash (first s-args) labs) (cons 'labl idx))  ;; cons 'LABL with the index to indicate a code block
         )
     (values labs bss base)
@@ -414,7 +413,7 @@ number of arguments."
     for this, but for some reason that is not working....~%"
           )
 
-    `(let ((,cnstsym (cadr (cdr (map-find #|(write-to-string iidx)|# iidx (cadr (cdr cnsts))))))
+    `(let ((,cnstsym (cadr (cdr (map-find iidx (cadr (cdr cnsts))))))
            )
        (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)
@@ -617,179 +616,6 @@ number of arguments."
    )
   )
 
-(defmacro with-next-wires (sym n &body body)
-  ;; allocate wires programmatically
-  `(let ((,sym (subseq wirepool 0 ,n));;(loop for i from (first wirepool) to (+ ,n (first wirepool)) collect i))
-         (wirepool (subseq wirepool ,n)) )
-          ;;(+ wirepool ,n)))
-     ,@body)
-)
-#|
-(defmacro with-true-addresses ((&rest syms) &body body)
-  `(let ,(loop for sym in syms
-            collect `(,sym (+ ,sym (aif base it 0))))
-     ,@body))
-|#
-#|
-(defmacro with-next-wires-list ((&rest syms) &body body)
-  (if (null syms)
-      `@body
-      (let ((sym (car syms))
-            (rst (cdr syms)))
-        (let ((symbol (car sym))
-              (n (cdr sym)))
-          `(with-next-wires symbol n
-             ,@(with-next-wires-list rst body)))))
-  )
-|#
-(defmacro with-next-wire (sym &body body)
-  ;; allocate wires programmatically
-  `(let ((,sym  (first wirepool))
-         (wirepool (subseq wirepool 1)))
-     ,@body)
-)
-
-(defun karatsuba-mult (xs ys zs xsext ysext zsext wirepool in-len)
-  ;; this is called by the handler
-  ;; xs, ys, and zs are twice as long as they need to be
-  ;; wirepool is huge
-  ;; in-len is 2*width
-  ;;(declare (ignore in-len))
-  (append
-   (list
-    (make-instance 'copy :dest (first xsext) :op1 (first xs) :op2 in-len)
-    (make-instance 'copy :dest (first ysext) :op1 (first ys) :op2 in-len)
-    )
-  (karatsuba xsext ysext zsext wirepool in-len)
-  (list
-   (make-instance 'copy :dest (first zs) :op1 (first zsext) :op2 in-len)
-   )
-  )
-)
-
-#|
-(defun add-overflow-1 (xs yz zs wirepool)
-  (assert (= (length xs)(length ys)(- (length zs) 1)))
-)
-
-(defun mult-n-2n (xs ys zs wirepool)
-  (assert (= (* 2 (length xs)) (* 2 (length xs)) (length zs)))
-  
-  
-)
-|#
-
-(defun karatsuba (xs ys zs wirepool in-len)
-  (declare (optimize (speed 0)(debug 3)))
-  (assert (= (length xs)(length ys)(length zs)))
-  (assert (> in-len 1))
-  (if (= in-len 2) ;; change this param to optimize for gates
-      (with-next-wires accum (* 2 in-len)
-        (with-next-wires tmpr (* 2 in-len)
-          (with-next-wire c-in
-            (with-next-wire tmp1
-              (with-next-wire tmp2
-                (with-next-wire tmp3
-                  (with-next-wire zro
-                    ;;(break)
-                    (shift-and-add-multiplier xs ys zs c-in tmp1 tmp2 tmp3 zro accum tmpr))))))))
-      ;; xs, ys, and zs are 64 bits
-      ;; the temporaries will be in-len (32 bits)
-      ;; recursive calls will half the temporaries
-      (let ((half-len (/ in-len 2)))
-        (with-next-wires z2 in-len
-          (with-next-wires z1 in-len
-            (with-next-wires z0 in-len
-              (with-next-wires x0 in-len
-                (with-next-wires x1 in-len
-                  (with-next-wires y0 in-len
-                    (with-next-wires y1 in-len
-                      (with-next-wires z1-inter in-len
-                        (with-next-wires z-sum in-len
-                          (with-next-wires x01 in-len
-                            (with-next-wires y01 in-len
-                              (with-next-wires zero in-len
-                                (with-next-wire zro
-                                  (with-next-wire c-in
-                                    (with-next-wire tmp1
-                                      (with-next-wire tmp2
-                                        (with-next-wire tmp3
-                                          ;; copy appropriate bits from xs into x1,x0; ys into y1,yo
-                                          (assert (= (* 2 (length x0)) (length xs)))
-                                          (assert (= (* 2 (length y0)) (length ys)))
-                                          (assert (= (* 2 (length z0)) (length zs)))
-                                          (append
-                                           (list ;; first, establish x0,x1,y0,y1, albeit in spaces that are twice their length
-                                            (make-instance 'const :dest zro :op1 0)
-                                            (make-instance 'copy :dest (first x0) :op1 (first xs) :op2 in-len)
-                                            (make-instance 'copy :dest (first x1) :op1 (first (nthcdr in-len xs)) :op2 in-len)
-                                            (make-instance 'copy :dest (first y0) :op1 (first ys) :op2 in-len)
-                                            (make-instance 'copy :dest (first y1) :op1 (first (nthcdr in-len ys)) :op2 in-len)
-                                            )
-                                           ;; zero out the remainder of the wires for x0,x1,y0,y1 in case there are remaining values
-                                           ;; from previous calls to karatsuba (kill those values)
-                                           ;; first, zero out in-len wires
-                                          
-                                           (loop for i from 0 to (- half-len 1) collect
-                                                (make-instance 'copy :dest (+ i (first zero)) :op1 zro :op2 1))
-                                           (list ;; then perform copies. simply to ensure that the larger-order bits are cleared out
-                                            (make-instance 'copy :dest (+ half-len (first x0) -1) :op1 (first zero) :op2 half-len)
-                                            (make-instance 'copy :dest (+ half-len (first x1) -1) :op1 (first zero) :op2 half-len)
-                                            (make-instance 'copy :dest (+ half-len (first y0) -1) :op1 (first zero) :op2 half-len)
-                                            (make-instance 'copy :dest (+ half-len (first y1) -1) :op1 (first zero) :op2 half-len)
-                                           )
-                                           
-                                           ;; at this point, x0 x1 y0 and y1 are in-len sized lists with the first half of their bits set and the second half cleared out.
-                                           
-                                           ;; recursive invocations to compute z2 and z0, telling the next level down to
-                                           ;; only use half of the address space. this will properly split those values
-                                           ;; what's important is that the function recurses on the lsb half
-                                           (karatsuba x1 y1 z2 wirepool half-len)
-                                           (karatsuba x0 y0 z0 wirepool half-len)
-                                           ;; next, we need to compute (x1+x0)(y1+y0) - z2 - z0 = (x1+x0)(y1+y0) - (z2+z0)
-                                           ;; x0 will be the (in-len) sum of its (half-len sized) components
-                                           ;; we can do sublists here for added efficiency later.
-                                           (adder-chain
-                                            ;; x0 x1 x01
-                                            (subseq x0 0 (1+ half-len))
-                                            (subseq x1 0 (1+ half-len))
-                                            (subseq x01 0 (1+ half-len))
-                                            c-in tmp1 tmp2 tmp3)
-                                           (adder-chain
-                                            ;;y0 y1 y01
-                                            (subseq y0 0 (1+ half-len))
-                                            (subseq y1 0 (1+ half-len))
-                                            (subseq y01 0 (1+ half-len))
-                                            c-in tmp1 tmp2 tmp3)
-                                           ;; this follows the same rules as the above 2 additions
-                                           ;; z2 and z0 should be (in-len)-bit registers holding (in-len)-bit values
-                                           ;; there is some question about whether the following is correct, since x01 and y01 could feasibly be half-len+1 bits?
-                                           (karatsuba x01 y01 z1-inter wirepool half-len) ;; is this right? should it be half-len?
-                                           (adder-chain z2 z0 z-sum c-in tmp1 tmp2 tmp3)
-                                           (subtractor-chain z1-inter z-sum z1 c-in tmp1 tmp2 tmp3)
-                                           ;;(subtractor-chain z1-inter z2 z1-inter c-in tmp1 tmp2 tmp3)
-                                           ;;(subtractor-chain z1-inter z0 z1 c-in tmp1 tmp2 tmp3)
-                                           ;; remember, xy = z2*B^2m + z1*B^m + z0
-                                           (assert (= (length zs) (* 2 (length z0)) (* 2 (length z2)) (* 2 (length z1))))
-                                           (list
-                                            (make-instance 'copy :dest (first zs) :op1 (first z0) :op2 in-len)
-                                            (make-instance 'copy :dest (+ in-len (first zs) -1) :op1 (first z2) :op2 in-len)
-                                            )
-                                           ;; the next adder-chain sums z1 into the appropriate place in the z list
-                                           ;; z0 has been stuck in at index 0
-                                           ;; z2 has been stuck in at half the length of the calling register, which is the full length of a subregister
-                                           ;; z1 should be added right in between them
-                                           
-                                           (adder-chain z1
-                                                        (subseq zs half-len (+ in-len half-len)) ;; intermediate bits
-                                                        (subseq zs half-len (+ in-len half-len)) ;; in place
-                                                        c-in tmp1 tmp2 tmp3)
-                                           
-                                           ) ;; end append
-                                          ))))))))))))))))))
-      )
-)
-
 (defun shift-and-add-multiplier (xs ys zs c-in tmp1 tmp2 tmp3 zro acc tmpr)
   "Create a shift-and-add multiplier using ripple-carry adders"
   (declare (optimize (speed 0) (debug 3)))
@@ -803,7 +629,10 @@ number of arguments."
 				    (adder-chain (append (loop for i from 1 to n collect zro) (butlast tmpr n)) acc zs c-in tmp1 tmp2 tmp3) ;; next row to add
 				    (list (make-instance 'copy :dest (first acc) :op1 (first zs) :op2 (length zs))) ;; copy over from the accumulator into our result wires
 				    ;; it is important that the previous op2 is (length acc) and not (length zs) because in the future zs may not be required to be the same size as xs and ys
- 				    )))))
+ 				    ))
+               )
+             )
+           )
     (append  
      (zero-group acc);     (loop for i from (car acc) to (+ (car acc) (length acc) -1) collect (make-instance 'const :dest i :op1 0) )
      (list (zero-gate c-in)
@@ -1476,33 +1305,12 @@ number of arguments."
 				 )
 			      (close-instr))))))))))))))))
 
-(defmacro karatsuba-multiply ()
-  `(with-slots (width) op
-     (let ((width (* *byte-width* width))
-           ;;(widthx2 (* 2 *byte-width* width))
-           )
-       ;; we need a 2K bit value for zs, of which we'll only take the last half
-       (with-temp-wires rwires width
-         (with-temp-wires arg1ext (* 2 width) 
-           (with-temp-wires arg2ext (* 2  width)
-             (with-temp-wires wirepool 2000
-               (with-temp-wires rwiresext (* 2 width)
-                 (pop-arg stack arg1
-                   (pop-arg stack arg2
-                     (push-stack stack width rwires
-                         (add-instrs 
-                             (karatsuba-mult arg1 arg2 rwires arg1ext arg2ext rwiresext wirepool width)
-                           
-                           (close-instr)
-                           ))))))))))))
-
 (definstr muli ; multiply signed
   (shift-add-multiply)
 )
 
 (definstr mulu ; multiply unsigned
-    ;;(shift-add-multiply)
-    (karatsuba-multiply)
+  (shift-add-multiply)
   )
 
 (definstr divu
@@ -1616,7 +1424,7 @@ number of arguments."
 		(with-temp-wires tmp1 1
 		  (with-temp-wires tmp2 1
 		    ;; Check to see if there is a constant on top of the stack (this is the shift amount)
-		    (let ((cnst (car (cdr (map-find #|(write-to-string iidx) |# iidx (cadr (cdr cnsts)))))))
+		    (let ((cnst (car (cdr (map-find iidx (cadr (cdr cnsts)))))))
 		      (print cnst)
 		      (assert (or (equalp cnst 'not-const) (typep cnst 'number)))
 		      (format *error-output* "right-or-left-shift cnst: ~D, iidx: ~D~%" cnst iidx)
@@ -1922,10 +1730,7 @@ number of arguments."
           ;(width (parse-integer (first s-args)))
           )
       (let ((a (gethash (first addr*) labels nil)))
-        (declare (type (or null
-                           (cons symbol (integer 1))
-                           (cons integer (integer 1)))
-                           a))
+        (declare (type (or null (cons symbol (integer 1))) a))
         (let ((addr (if a
                         (if (equalp (car a) *glob*)
                             ;; Do not multiply by width here.
@@ -1953,7 +1758,8 @@ number of arguments."
                   (if (< 2 (length nums))
                       (parse-integer (first nums))
                       (reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0)
-                      ))))
+                      ))
+            ))
       (push-stack stack 1 (list wires)
         (add-instrs (list 
                      (make-instance 'const :dest wires :op1 (+ 1 baseinit (* *byte-width* addr)))

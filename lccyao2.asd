@@ -23,13 +23,12 @@
                        )
 	       (:module translator
 			:components (
-				     ;;(:file "lcc-translator"
-                                     (:file "lcc-translator-inter"
-                                            :depends-on ("lcc-bc" "lcc-dataflow-inter" "lcc-const-inter"))
+                                     (:file "lcc-translator"
+                                            :depends-on ("lcc-bc" "lcc-dataflow" "lcc-const"))
 				     (:file "lcc-bc")
-				     (:file "lcc-const-inter" :depends-on ("lcc-bc" "lcc-dataflow-inter"))
+				     (:file "lcc-const" :depends-on ("lcc-bc" "lcc-dataflow"))
 				    ; (:file "lcc-pointer-analysis" :depends-on ("lcc-bc" "lcc-dataflow" )) not in use
-				     (:file "lcc-dataflow-inter" :depends-on ("lcc-bc"))
+				     (:file "lcc-dataflow" :depends-on ("lcc-bc"))
               			    ; (:file "dataflow")
 				    ; (:file "pointer-analysis" :depends-on ("dataflow" utilities)) not in use
 				    ; (:file "reachingdefs" :depends-on ("datafloww" utilities)) not in use
@@ -46,21 +45,13 @@
 			)
 	       (:module postprocessor
 			:components (
-                                      ;; (:file "pcf2-block-graph")
-                                      ;; (:file "pcf2-flow-utils" :depends-on ("pcf2-block-graph"))
-                                      ;; (:file "pcf2-dataflow" :depends-on ("pcf2-block-graph" "pcf2-use-map" "pcf2-flow-utils"))
-                                      ;; (:file "pcf2-faintgate" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
-                                      ;; (:file "pcf2-const" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
-                                      ;; (:file "pcf2-use-map" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
-                                      ;; (:file "pcf2-live" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
-                                     
-                                     (:file "pcf2-block-graph-rle")
-                                     (:file "pcf2-flow-utils" :depends-on ("pcf2-block-graph-rle"))
-				     (:file "pcf2-dataflow-rle" :depends-on ("pcf2-block-graph-rle" "pcf2-use-map" "pcf2-flow-utils"))
-				     (:file "pcf2-faintgate-rle" :depends-on ("pcf2-block-graph-rle" "pcf2-flow-utils"))
-                                     (:file "pcf2-const-rle" :depends-on ("pcf2-block-graph-rle" "pcf2-flow-utils"))
-                                     (:file "pcf2-use-map" :depends-on ("pcf2-block-graph-rle" "pcf2-flow-utils"))
-                                     (:file "pcf2-live-rle" :depends-on ("pcf2-block-graph-rle" "pcf2-flow-utils"))
+                                     (:file "pcf2-block-graph")
+                                     (:file "pcf2-flow-utils" :depends-on ("pcf2-block-graph"))
+                                     (:file "pcf2-dataflow" :depends-on ("pcf2-block-graph" "pcf2-use-map" "pcf2-flow-utils"))
+                                     (:file "pcf2-faintgate" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
+                                     (:file "pcf2-const" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
+                                     (:file "pcf2-use-map" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
+                                     (:file "pcf2-live" :depends-on ("pcf2-block-graph" "pcf2-flow-utils"))
                                      )
 			:depends-on (utilities)
 			)
