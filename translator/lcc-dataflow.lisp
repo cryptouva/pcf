@@ -385,14 +385,14 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
     )
   )
 
-(defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks #|valmaps|# empty-set &optional (cnt 0))
+(defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks empty-set &optional (cnt 0))
   (declare (optimize (debug 3) (speed 0))
            (ignorable cnt))
   (the avl-set
-    (labels ((do-flow-forwards (cblock in-sets in-stacks #|valmaps|# visited done)
+    (labels ((do-flow-forwards (cblock in-sets in-stacks visited done)
                (declare (optimize (debug 3) (speed 0)))
                (if (or (null cblock) (null (basic-block-id cblock)))
-                   (list in-sets in-stacks #|valmaps|# done)
+                   (list in-sets in-stacks done)
                    (let ((new-out (reduce (lambda (state pred)
                                             (print pred)
                                             (let ((res (funcall flow-fn 
@@ -408,9 +408,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                                     )))
                                           (basic-block-preds cblock)
                                           :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t)) 
-                                                               empty-set
-                                                               ))))
-                     ;;(break)
+                                                               empty-set))))
                      (let* ((nblock 
                              (map-find
                               (loop 
@@ -429,22 +427,17 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                             ;(ostack (first (funcall flow-fn (second new-out) (first new-out) (third new-out) cblock)))
                             )
                        (declare (type integer bbid nbid))
-                       ;(format *error-output* "~&bbid: ~A~%nbid: ~A~%nblock: ~A~%new-out: ~A~%" bbid nbid nblock new-out)
                        (do-flow-forwards 
                            (cdr nblock)
                          (map-insert bbid (second new-out) in-sets)
                          (map-insert bbid (first new-out) in-stacks) ;; <-- We need to use bbid here, because new-out is the result of our *predecessor* operations; hence, the stack from new-out is the *input* stack for this operation.
-                         ;;(rle-map-insert nbid (third new-out) valmaps)
                          (map-insert bbid t visited)
                          done))))))
-      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks #|valmaps|# (map-empty :comp #'<) t)))
-        ;(print (cons (fourth ret) cnt))
+      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks (map-empty :comp #'<) t)))
         (if (third ret)
             (values (first ret)
-                    (second ret)
-                    #| (third ret)
-                    |# )
-            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) #|(third ret)|# empty-set (1+ cnt)))))))
+                    (second ret))
+            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) empty-set (1+ cnt)))))))
 
 (defun flow-forwards* (join-fn flow-fn cfg in-sets in-stacks empty-set &optional (cnt 0))
   "Perform a forwards dataflow analysis i.e.:

@@ -66,38 +66,34 @@ as its value."
   (let ((funs (lcc-dataflow:get-function-body ops)))
     (setmap:map-map (lambda (k v)
                       (declare (ignore k))
-                      (multiple-value-bind (in-set in-stack valmap) 
+                      (multiple-value-bind (in-set in-stack) 
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
-                                                      (lcc-dataflow:make-cfg-single-ops v)
-                                                      (setmap:map-empty :comp #'<) 
-                                                      (setmap:map-empty :comp #'<) 
-                                                      ;;(setmap-rle:rle-map-empty :comp #'<) 
-                                                      empty-s
+                                                      (lcc-dataflow:make-cfg-single-ops v) ;; cfg
+                                                      (setmap:map-empty :comp #'<) ;; in-sets
+                                                      (setmap:map-empty :comp #'<) ;; in-stacks
+                                                      empty-s ;; empty-set
                                                       )
                         (declare (ignore valmap))
                         (list in-set in-stack)))
                     funs)))
 
-(defgeneric gen (op stack valmap lsize)
+(defgeneric gen (op stack valmap)
   (:documentation "Get the gen set for this op")
   )
 
-(defgeneric kill (op stack valmap lsize)
+(defgeneric kill (op stack valmap)
   (:documentation "Get the kill set for this op")
   )
 
-(defun lcc-const-flow-fn (in-set in-stack #| valmap |# bb &optional (lsize *byte-width*))
-  ;; this functionr returns
-  ;; (list stack ((in-set - kill) U gen) valmap)
+(defun lcc-const-flow-fn (in-set in-stack bb )
   (declare (optimize (debug 3)(speed 0)))
-  (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
-    (list (third genkill)
-          (set-union (first genkill)
+  (let ((genkill (get-gen-kill bb in-stack in-set)))
+    (list (third genkill) ;; new stack
+          (set-union (first genkill) ;; new value set
                      (set-diff in-set
-                               (second genkill)))
-          (fourth genkill))))
+                               (second genkill))))))
 
-(defun get-gen-kill (bb instack valmap lsize)
+(defun get-gen-kill (bb instack valmap)
   "Get the gen and kill sets for a basic block"
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
@@ -113,7 +109,7 @@ as its value."
                                   (let ((valmap (third st))
                                         (stack (second st))
                                         (lsts (first st)))
-                                    (let ((val (gen x stack valmap lsize)))
+                                    (let ((val (gen x stack valmap)))
                                       (cons (cons (car val) lsts)
                                             (cdr val)))))
                               (basic-block-ops bb)
@@ -129,7 +125,7 @@ as its value."
                                   (let ((stack (second st))
                                         (valmap (third st))
                                         (lsts (first st)))
-                                    (let ((val (kill x stack valmap lsize)))
+                                    (let ((val (kill x stack valmap)))
                                       (cons (cons (car val) lsts)
                                             (cdr val)))))
                               (basic-block-ops bb)
@@ -139,31 +135,32 @@ as its value."
                                (let ((stack (second st))
                                      (lsts (first st))
                                      (valmap (third st)))
-                                 (let ((val (kill x stack valmap lsize)))
+                                 (let ((val (kill x stack valmap)))
                                    (cons (cons (car val) lsts)
                                          (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap))))
-        (valmap (third (reduce #'(lambda (st x)
+        #| (valmap (third (reduce #'(lambda (st x)
                                  (let ((stack (second st))
                                        (lsts (first st))
                                        (valmap (third st)))
-                                   (let ((val (kill x stack valmap lsize)))
+                                   (let ((val (kill x stack valmap)))
                                      (cons (cons (car val) lsts)
                                            (cdr val)))))
                                (basic-block-ops bb)
-                               :initial-value (list nil instack valmap)))))
-    (list gen kill stck valmap)))
+                               :initial-value (list nil instack valmap)))) |#
+        )
+    (list gen kill stck)))
 
 (defmacro def-gen-kill (type &key stck vals gen kill)
   `(progn
-     (defmethod gen ((op ,type) stack valmap lsize)
+     (defmethod gen ((op ,type) stack valmap)
        (the (cons list (cons list (cons avl-set t)))
             (list ,gen ,stck 
                   (aif ,vals
                        it
                        valmap))))
-     (defmethod kill ((op ,type) stack valmap lsize)
+     (defmethod kill ((op ,type) stack valmap )
        (the (cons list (cons list (cons avl-set t)))
             (list ,kill ,stck 
                   (aif ,vals
@@ -306,11 +303,8 @@ as its value."
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'const)
-           ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack))))
-           )
+           (t (list (cons (the integer (second stack)) (first stack)))))
     )
 
 (def-gen-kill asgni
@@ -337,8 +331,6 @@ as its value."
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'const)
-           ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
            (t (list (cons (the integer (second stack)) (first stack))))
            )
