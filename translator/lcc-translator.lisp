@@ -1657,13 +1657,8 @@ number of arguments."
   (with-slots (width) op
     (pop-arg stack arg
       (assert (= 1 (length arg)))
-      (let ((arglist (append arglist (list (make-arg :len (* *byte-width* width) :loc arg))))
-            )
-        (close-instr)
-        )
-      )
-    )
-  )
+      (let ((arglist (append arglist (list (make-arg :len (* *byte-width* width) :loc arg)))))
+        (close-instr)))))
 
 (definstr addrgp ; address of a global pointer
 ;  (declare (optimize (debug 3) (speed 0)))
@@ -1696,7 +1691,7 @@ number of arguments."
   (with-slots (s-args) op
     (let ((addr (let ((nums (string-tokenizer:tokenize (second s-args) #\+)))
                   ;;(parse-integer (second s-args)))
-                  (if (< 2 (length nums))
+                  (if (< (length nums) 2)
                       (parse-integer (first nums))
                       (reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0)))))
       (push-stack stack 1 (list wires)

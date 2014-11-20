@@ -132,12 +132,13 @@ as its value."
                               :initial-value (list nil instack valmap)))
                  :initial-value empty-s))
         (stck (second (reduce #'(lambda (st x)
-                               (let ((stack (second st))
-                                     (lsts (first st))
-                                     (valmap (third st)))
-                                 (let ((val (kill x stack valmap)))
-                                   (cons (cons (car val) lsts)
-                                         (cdr val)))))
+                                  (declare (optimize (debug 3)(speed 0)))
+                                  (let ((stack (second st))
+                                        (lsts (first st))
+                                        (valmap (third st)))
+                                    (let ((val (kill x stack valmap)))
+                                      (cons (cons (car val) lsts)
+                                            (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap))))
         #| (valmap (third (reduce #'(lambda (st x)
@@ -212,12 +213,13 @@ as its value."
             (cons
              (let ((nums (string-tokenizer:tokenize (second (slot-value op 's-args)) #\+)))
                (declare (optimize (debug 3)(speed 0)))
-               (if (< 2 (length nums))
-                     (parse-integer (first nums))
+               (if (< (length nums) 2)
+                   (parse-integer (first nums))
                    (progn
                      (print nums)
+                     ;;(reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0))))
                      (parse-integer (second (slot-value op 's-args))))))
-             ;; this is a bug! parse-integer cannot handle arguments of the form "x+y"
+            ;; this is be a bug!
              stack))
     )
 
