@@ -102,24 +102,6 @@
           flow))))
 ;;      flow)))
 
-#|      (typecase (get-block-op blck)
-        (gate
-         (let ((base (get-block-base blck)))
-           (with-slots (op1 op2 dest) (get-block-op blck)
-             (with-true-addresses (op1 op2 dest)
-               (let ((o1 (rle-map-extract-val op1 in-flow))
-                     (o2 (rle-map-extract-val op2 in-flow))
-                     (o1* (rle-map-extract-val op1 flow))
-                     (o2* (rle-map-extract-val op2 flow))
-                     (d (rle-map-extract-val dest flow)))
-                 (progn
-                   (format ostream "~A ~%" (get-block-id blck))
-                   (format ostream "~A ~%" (get-block-op blck))
-                   (format ostream "~A ~A // ~A ~A // ~A ~%" o1 o2 o1* o2* d)
-                   ;;(if (and (< (get-block-id blck) 300) (> (get-block-id blck) 293)) (break))
-                   ))))))
-        (otherwise t)) |#
-;;flow)))
       
 (defun const-weaker-fn (map1 map2)
   (rle-map-weaker-fn map1 map2))
@@ -341,8 +323,6 @@
                    (if (or-defined op1 op2 flow-data)
                        (if (and-defined op1 op2 flow-data) ;; if both are constant, we can precompute the gate
                            (progn
-                             ;;(assert (or (equal o1 0)(equal o1 1)))
-                             ;;(assert (or (equal o2 0)(equal o2 1)))
                              (let ((out-val
                                     (cond
                                       ((equalp truth-table #*0001) (logand o1 o2))
@@ -383,7 +363,6 @@
 (def-gen-kill const
     :const-gen (with-slots (dest op1) op
                  (with-true-addresses (dest)
-                   ;;(break)
                    (rle-map-singleton dest op1)))
     :dep-kill (with-slots (dest) op
                   (with-true-addresses (dest)
@@ -395,7 +374,6 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
-                   ;;(format t "o1: ~A o2: ~A~%" o1 o2) ;; can only add on constants
                    (rle-map-singleton dest (if (and o1 o2) (+ o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
@@ -407,8 +385,6 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
-                   ;;(format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
-                   ;;(assert (and o1 o2))
                    (rle-map-singleton dest (if (and o1 o2) (- o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
@@ -420,7 +396,6 @@
                (with-true-addresses (dest op1 op2)
                  (let ((o1 (rle-map-extract-val op1 flow-data))
                        (o2 (rle-map-extract-val op2 flow-data)))
-                   ;;(format t "o1: ~A ot ~A~%" o1 o2) ;; can only add on constants
                    (rle-map-singleton dest (if (and o1 o2) (* o1 o2) 'pcf2-block-graph:pcf-not-const)))))
     :dep-kill (with-slots (dest) op
                 (with-true-address dest
