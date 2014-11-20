@@ -35,8 +35,6 @@
   "Compute the join operation on the constant propagation lattice."
   (declare (optimize (debug 3)(speed 0)))
   (map-reduce (lambda (map key val)
-                ;;(if (equalp key 'glob)
-		;;map
                     (let ((new-val (aif (map-find key map t)
                                         (typecase val
                                           (number (typecase (cdr it)
@@ -54,42 +52,10 @@
                                                       (cdr it))))
                                         'not-const))) ;; not in both maps, so the value is unknown
                       (map-insert key new-val map))) ;; computing a join on two value maps
-	      ;)
               x
               y)
   )
 
-#|
-(defun lcc-const-join-fn (x y)
-  "Compute the join operation on the constant propagation lattice."
-  (declare (optimize (debug 3)(speed 0)))
-  ;;(break)
-  (let ((ret
-         (map-map (lambda (k v)
-                    (aif (map-find k y t)
-                         (typecase v
-                           (number (typecase (cdr it)
-                                     (number (if (= v (cdr it))
-                                                 v
-                                                 'not-const))
-                                     (symbol (cond
-                                               ((equalp (cdr it) 'not-const)
-                                                'not-const)
-                                               ((equalp (cdr it) 'unknown) v)
-                                               (t (error "Bad value for (cdr it)"))))))
-                           (symbol (if (equalp v 'not-const)
-                                       'not-const
-                                       (cdr it))))
-                         ;;(error "Address is not present in map of values?!")
-                         v ; 'not-const
-                         ))
-                  x)))
-    ;;(break)
-    ret))
-|#
-
-
-;;(defparameter empty-s (map-empty :comp #'constcmp))
 (defparameter empty-s (map-empty :comp #'constcmp))
 
 (defun const-dataflow-funs (ops)
@@ -105,15 +71,7 @@ as its value."
                                                       (lcc-dataflow:make-cfg-single-ops v)
                                                       (setmap:map-empty :comp #'<) 
                                                       (setmap:map-empty :comp #'<) 
-                                                      (setmap-rle:rle-map-empty :comp #'<) 
-                                        ;(setmap:set-from-list (loop for i from 0 to 8 collect 
-                                        ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
-                                                      #|(reduce (lambda (x y)
-                                                                (setmap:map-insert (car y) (cdr y) x)
-                                                                )
-                                                              (loop for i from 0 to 128 collect (cons i 'unknown))
-                                                              :initial-value empty-s
-                                                              )|#
+                                                      ;;(setmap-rle:rle-map-empty :comp #'<) 
                                                       empty-s
                                                       )
                         (declare (ignore valmap))
@@ -128,16 +86,16 @@ as its value."
   (:documentation "Get the kill set for this op")
   )
 
-(defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
+(defun lcc-const-flow-fn (in-set in-stack #| valmap |# bb &optional (lsize *byte-width*))
+  ;; this functionr returns
+  ;; (list stack ((in-set - kill) U gen) valmap)
+  (declare (optimize (debug 3)(speed 0)))
   (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
     (list (third genkill)
           (set-union (first genkill)
                      (set-diff in-set
                                (second genkill)))
-          (fourth genkill)
-          )
-    )
-  )
+          (fourth genkill))))
 
 (defun get-gen-kill (bb instack valmap lsize)
   "Get the gen and kill sets for a basic block"
@@ -255,7 +213,15 @@ as its value."
 (def-gen-kill addrlp
     :stck (the (cons integer t)
             (cons
-             (parse-integer (second (slot-value op 's-args))) stack))
+             (let ((nums (string-tokenizer:tokenize (second (slot-value op 's-args)) #\+)))
+               (declare (optimize (debug 3)(speed 0)))
+               (if (< 2 (length nums))
+                     (parse-integer (first nums))
+                   (progn
+                     (print nums)
+                     (parse-integer (second (slot-value op 's-args))))))
+             ;; this is a bug! parse-integer cannot handle arguments of the form "x+y"
+             stack))
     )
 
 (def-gen-kill cnstu

@@ -44,26 +44,16 @@
                :id ,blkid
                :ops (cons ,op (basic-block-ops ,bb))
                :preds (basic-block-preds ,bb)
-               :succs (basic-block-succs ,bb)
-               )
-           )
-         )
-     ,@body
-     )
-  )
+               :succs (basic-block-succs ,bb))))
+     ,@body))
 
 (defmacro add-pred (prd bb blkid &body body)
   `(let ((,bb (make-basic-block
                :id ,blkid
                :ops (basic-block-ops ,bb)
                :preds (cons ,prd (basic-block-preds ,bb))
-               :succs (basic-block-succs ,bb)
-               )
-           )
-         )
-     ,@body
-     )
-  )
+               :succs (basic-block-succs ,bb))))
+     ,@body))
 
 (defmacro add-succ (prd bb blkid &body body)
   `(let ((,bb (make-basic-block
@@ -73,13 +63,8 @@
                :succs (typecase ,bb
                         (jumpv (basic-block-succs ,bb))
                         (otherwise (cons ,prd (basic-block-succs ,bb)))
-                        )
-               )
-           )
-         )
-     ,@body
-     )
-  )
+                        ))))
+     ,@body))
 
 (defgeneric find-basic-blocks (op blocks curblock blkid idx targs)
   (:documentation "Construct a set of basic blocks from a list of opcodes")
@@ -290,10 +275,7 @@ assume that each block is exactly one opcode."
                    (cnd-jump-instruction (concatenate 'string "fall" c))
                    ((or retu reti) (concatenate 'string "ret" c))
                    ((or callu calli callv) (concatenate 'string "call" c))
-                   (t c)
-                   )
-              )
-            )
+                   (t c))))
         (get-lbls-in-order (rest ops) 
                            (typecase
                                (the lcc-instruction (first ops))
@@ -306,10 +288,7 @@ assume that each block is exactly one opcode."
                              ((or callv callu calli)
                               (cons str res))
                              (t res))
-                           str)
-        )
-      )
-  )
+                           str))))
 
 (defun ops-from-cfg (cfg lbls-in-order)
   (declare (optimize (debug 3) (speed 0)))
@@ -317,14 +296,8 @@ assume that each block is exactly one opcode."
              (if lbls
                  (append
                   (reverse (basic-block-ops (cdr (map-find (first lbls) cfg))))
-                  (flatten-ops (rest lbls))
-                  )
-                 )
-             )
-           )
-    (flatten-ops lbls-in-order)
-    )
-  )
+                  (flatten-ops (rest lbls))))))
+    (flatten-ops lbls-in-order)))
 
 (defun map-cfg (cfg fn)
   "Change the CFG according to \"fn\", which rewrites the operations in this cfg node"
@@ -337,10 +310,8 @@ assume that each block is exactly one opcode."
                                  :ops (funcall fn k
                                                (basic-block-ops bb))
                                  :preds (basic-block-preds bb)
-                                 :succs (basic-block-succs bb))
-               )
-           cfg)
-  )
+                                 :succs (basic-block-succs bb)))
+           cfg))
 
 (defun get-function-body (ops &optional (rmap (map-empty :comp #'string<)))
   "Divide the list of ops into a map of function names to function bodies."
@@ -354,14 +325,8 @@ assume that each block is exactly one opcode."
                                    (map-insert (first s-args)
                                                (loop for op in ops 
                                                   until (typep op 'endproc)
-                                                  collect op) rmap))
-                )
-              )
-        (otherwise (get-function-body (rest ops) rmap)
-                   )
-        )
-    )
-  )
+                                                  collect op) rmap))))
+        (otherwise (get-function-body (rest ops) rmap)))))
 
 (defun flow-backwards (join-fn flow-fn cfg out-sets empty-set)
   "Perform a backwards dataflow analysis i.e.:
@@ -420,14 +385,14 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
     )
   )
 
-(defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks valmaps empty-set &optional (cnt 0))
+(defun flow-forwards (join-fn flow-fn cfg in-sets in-stacks #|valmaps|# empty-set &optional (cnt 0))
   (declare (optimize (debug 3) (speed 0))
            (ignorable cnt))
   (the avl-set
-    (labels ((do-flow-forwards (cblock in-sets in-stacks valmaps visited done)
+    (labels ((do-flow-forwards (cblock in-sets in-stacks #|valmaps|# visited done)
                (declare (optimize (debug 3) (speed 0)))
                (if (or (null cblock) (null (basic-block-id cblock)))
-                   (list in-sets in-stacks valmaps done)
+                   (list in-sets in-stacks #|valmaps|# done)
                    (let ((new-out (reduce (lambda (state pred)
                                             (print pred)
                                             (let ((res (funcall flow-fn 
@@ -435,19 +400,16 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                                                      (cdr it)
                                                                      empty-set)
                                                                 (cdr (map-find pred in-stacks t))
-                                                                (cdr (rle-map-find pred valmaps t));(third x) ;valmap 
                                                                 (cdr (map-find pred cfg t)))))
-                                              (list (first res)
+                                              (list (first res) ;; stack
                                                     (funcall join-fn 
                                                              (second state)
-                                                             (second res))
-                                                    (third res))))
+                                                             (second res)) ;; join(previous out, new out)
+                                                    )))
                                           (basic-block-preds cblock)
                                           :initial-value (list (cdr (map-find (basic-block-id cblock) in-stacks t)) 
                                                                empty-set
-                                                               (aif (cdr (rle-map-find (basic-block-id cblock) valmaps t))
-                                                                    it
-                                                                    (rle-map-empty))))))
+                                                               ))))
                      ;;(break)
                      (let* ((nblock 
                              (map-find
@@ -456,8 +418,7 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                                  when (not (map-find id visited t))
                                  unless (null id)
                                  return id)
-                              cfg)
-                              )
+                              cfg))
                             (bbid (basic-block-id cblock))
                             (nbid (car nblock))
                             (done (and done (set-equalp 
@@ -473,16 +434,17 @@ out(i) = reduce(join-fn, in-sets(succs(i)))
                            (cdr nblock)
                          (map-insert bbid (second new-out) in-sets)
                          (map-insert bbid (first new-out) in-stacks) ;; <-- We need to use bbid here, because new-out is the result of our *predecessor* operations; hence, the stack from new-out is the *input* stack for this operation.
-                         (rle-map-insert nbid (third new-out) valmaps)
+                         ;;(rle-map-insert nbid (third new-out) valmaps)
                          (map-insert bbid t visited)
                          done))))))
-      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks valmaps (map-empty :comp #'<) t)))
+      (let ((ret (do-flow-forwards (cdr (map-find 1 cfg)) in-sets in-stacks #|valmaps|# (map-empty :comp #'<) t)))
         ;(print (cons (fourth ret) cnt))
-        (if (fourth ret)
+        (if (third ret)
             (values (first ret)
                     (second ret)
-                    (third ret))
-            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) (third ret) empty-set (1+ cnt)))))))
+                    #| (third ret)
+                    |# )
+            (flow-forwards join-fn flow-fn cfg (first ret) (second ret) #|(third ret)|# empty-set (1+ cnt)))))))
 
 (defun flow-forwards* (join-fn flow-fn cfg in-sets in-stacks empty-set &optional (cnt 0))
   "Perform a forwards dataflow analysis i.e.:
