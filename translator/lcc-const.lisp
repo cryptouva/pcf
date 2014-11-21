@@ -98,6 +98,7 @@ as its value."
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
   ;;(break)
+  (print (basic-block-ops bb))
   (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
@@ -219,7 +220,7 @@ as its value."
                      (print nums)
                      ;;(reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0))))
                      (parse-integer (second (slot-value op 's-args))))))
-            ;; this is be a bug!
+             ;; arg! this be a bug!
              stack))
     )
 

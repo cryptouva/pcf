@@ -1671,7 +1671,11 @@ number of arguments."
         (let ((addr (if a
                         (if (equalp (car a) *glob*)
                             ;; Do not multiply by width here.
-                            (+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
+                            (reduce (lambda (accum x)
+                                      (+ accum (* *byte-width* (parse-integer x))))
+                                    (rest addr*)
+                                    :initial-value (cdr a))
+                            ;;(+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
                             (second s-args));(gethash (second s-args) labels nil)
                         (second s-args))))
           (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
