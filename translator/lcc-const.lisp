@@ -99,12 +99,11 @@ as its value."
            (optimize (debug 3) (speed 0)))
   ;;(break)
   (print (basic-block-ops bb))
-  (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
+  (let ((gen 
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
                                      empty-s)
-                                ;(map-empty :comp constcmp))
                                 (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((valmap (third st))
@@ -115,12 +114,12 @@ as its value."
                                             (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap)))
-                 :initial-value empty-s));(map-empty :comp constcmp)))
+                 :initial-value empty-s))
         (kill 
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
-                                     empty-s);(map-empty :comp constcmp))
+                                     empty-s)
                                 (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
@@ -142,15 +141,6 @@ as its value."
                                             (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap))))
-        #| (valmap (third (reduce #'(lambda (st x)
-                                 (let ((stack (second st))
-                                       (lsts (first st))
-                                       (valmap (third st)))
-                                   (let ((val (kill x stack valmap)))
-                                     (cons (cons (car val) lsts)
-                                           (cdr val)))))
-                               (basic-block-ops bb)
-                               :initial-value (list nil instack valmap)))) |#
         )
     (list gen kill stck)))
 
