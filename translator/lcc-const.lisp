@@ -218,8 +218,9 @@ as its value."
                    (parse-integer (first nums))
                    (progn
                      (print nums)
-                     ;;(reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0))))
-                     (parse-integer (second (slot-value op 's-args))))))
+                     (break)
+                     (reduce #'(lambda (x y) (+ x (parse-integer y))) nums :initial-value 0))))
+                     ;;(parse-integer (second (slot-value op 's-args))))))
              ;; arg! this be a bug!
              stack))
     )
@@ -375,8 +376,7 @@ as its value."
            ((or (eql (car stack) 'glob)
                 (eql (car stack) 'const))
             'glob)
-           ((or (eql (car stack) 'args)
-                )
+           ((eql (car stack) 'args)
             'args)
            (t (cdr (map-find (car stack) valmap))))
          (cdr stack)))
