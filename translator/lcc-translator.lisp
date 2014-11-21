@@ -1663,24 +1663,21 @@ number of arguments."
 (definstr addrgp ; address of a global pointer
 ;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
-    (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
-          ;(width (parse-integer (first s-args)))
-          )
+    (let ((addr* (string-tokenizer:tokenize (second s-args) #\+)))
       (let ((a (gethash (first addr*) labels nil)))
         (declare (type (or null (cons symbol (integer 1))) a))
         (let ((addr (if a
                         (if (equalp (car a) *glob*)
-                            ;; Do not multiply by width here.
+                            ;; Do not multiply by width 
                             (reduce (lambda (accum x)
                                       (+ accum (* *byte-width* (parse-integer x))))
                                     (rest addr*)
                                     :initial-value (cdr a))
-                            ;;(+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
-                            (second s-args));(gethash (second s-args) labels nil)
+                            (second s-args))
                         (second s-args))))
           (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
           (add-instrs (if (equalp (car a) *glob*)
-                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0) (cdr a)))))
+                          (list (make-instance 'const :dest wires :op1 addr)))
             (push-stack stack 1 (if (equalp (car a) *glob*) 
                                     (list wires) 
                                     (list addr))
