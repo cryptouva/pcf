@@ -1668,7 +1668,7 @@ number of arguments."
         (declare (type (or null (cons symbol (integer 1))) a))
         (let ((addr (if a
                         (if (equalp (car a) *glob*)
-                            ;; Do not multiply by width 
+                            ;; Global address: do not multiply by with, but calculate location based on offsets 
                             (reduce (lambda (accum x)
                                       (+ accum (* *byte-width* (parse-integer x))))
                                     (rest addr*)
