@@ -13,7 +13,7 @@
 ;; This can be viewed as "constant propagation lite"
 
 (defpackage :lcc-const 
-  (:use :cl :utils :setmap :lcc-bc :lcc-dataflow)
+  (:use :cl :utils :setmap :setmap-rle :lcc-bc :lcc-dataflow)
   (:export lcc-const-flow-fn const-dataflow-funs not-const)
   (:shadow import export)
   )
@@ -23,34 +23,35 @@
   (typecase x
     (number (typecase y
               (number (< x y))
-              (symbol (if (equalp y 'not-const) ;unknown)
+              (symbol (if (equalp y 'glob)
                           t
                           nil))))
-    (symbol (if (equalp x 'not-const) ;'unknown)
+    (symbol (if (equalp x 'glob)
                 nil
-                t)))
-  )
+                t))))
+
 
 (defun lcc-const-join-fn (x y)
   "Compute the join operation on the constant propagation lattice."
+  (declare (optimize (debug 3)(speed 0)))
   (map-reduce (lambda (map key val)
-                (let ((new-val (aif (map-find key map t)
-                                    (typecase val
-                                      (number (typecase (cdr it)
-                                                (number (if (= val (cdr it))
-                                                            val
-                                                            'not-const))
-                                                (symbol (cond
-                                                          ((equalp (cdr it) 'not-const)
-                                                           'not-const)
-                                                          ;;((equalp (cdr it) 'unknown) val)
-                                                          (t (error "Bad value for (cdr it)"))))
-                                                (t (error "Bad value for it - not symbol or number"))))
-                                      (symbol (if (equalp val 'not-const)
-                                                  'not-const
-                                                  (cdr it))))
-                                    'not-const))) ;; not in both maps, so the value is unknown
-                  (map-insert key new-val map))) ;; computing a join on two value maps
+                    (let ((new-val (aif (map-find key map t)
+                                        (typecase val
+                                          (number (typecase (cdr it)
+                                                    (number (if (= val (cdr it))
+                                                                val
+                                                                'not-const))
+                                                    (symbol (cond
+                                                              ((equalp (cdr it) 'not-const)
+                                                               'not-const)
+                                                              ;;((equalp (cdr it) 'unknown) val)
+                                                              (t (error "Bad value for (cdr it)"))))
+                                                    (t (error "Bad value for it - not symbol or number"))))
+                                          (symbol (if (equalp val 'not-const)
+                                                      'not-const
+                                                      (cdr it))))
+                                        'not-const))) ;; not in both maps, so the value is unknown
+                      (map-insert key new-val map))) ;; computing a join on two value maps
               x
               y)
   )
@@ -65,51 +66,38 @@ as its value."
   (let ((funs (lcc-dataflow:get-function-body ops)))
     (setmap:map-map (lambda (k v)
                       (declare (ignore k))
-                      (multiple-value-bind (in-set in-stack valmap) 
+                      (multiple-value-bind (in-set in-stack) 
                           (lcc-dataflow:flow-forwards #'lcc-const-join-fn #'lcc-const:lcc-const-flow-fn
-                                                      (lcc-dataflow:make-cfg-single-ops v) ; cfg
-                                                      (setmap:map-empty :comp #'string<) ; in-sets
-                                                      (setmap:map-empty :comp #'string<) ; in-stacks
-                                                      (setmap:map-empty :comp #'string<) ; valmaps
-                                        ;(setmap:set-from-list (loop for i from 0 to 8 collect 
-                                        ;                           (cons (* 4 i) 'unknown)) :comp #'constcmp)
-                                                      #|
-                                                      (reduce (lambda (x y)
-                                                                (setmap:map-insert (car y) (cdr y) x)
-                                                                )
-                                                              (loop for i from 0 to 128 collect (cons i 'unknown))
-                                                              :initial-value empty-s)) |#
-                                                      empty-s) ;; empty-set (may not be needed soon)
+                                                      (lcc-dataflow:make-cfg-single-ops v) ;; cfg
+                                                      (setmap:map-empty :comp #'<) ;; in-sets
+                                                      (setmap:map-empty :comp #'<) ;; in-stacks
+                                                      empty-s ;; empty-set
+                                                      )
                         (declare (ignore valmap))
                         (list in-set in-stack)))
-                    funs))
-  )
+                    funs)))
 
-
-;; a note: lsize is currently unused and can be removed during cleaning
-(defgeneric gen (op stack valmap lsize)
+(defgeneric gen (op stack valmap)
   (:documentation "Get the gen set for this op")
   )
 
-(defgeneric kill (op stack valmap lsize)
+(defgeneric kill (op stack valmap)
   (:documentation "Get the kill set for this op")
   )
 
-(defun lcc-const-flow-fn (in-set in-stack valmap bb &optional (lsize *byte-width*))
-  ;;(declare (optimize (debug 3)(speed 0)))
-  ;;(break)
-  (let ((genkill (get-gen-kill bb in-stack in-set #|valmap|# lsize)))
-    (list (third genkill) ;; stack
-          (set-union (first genkill)
+(defun lcc-const-flow-fn (in-set in-stack bb )
+  (declare (optimize (debug 3)(speed 0)))
+  (let ((genkill (get-gen-kill bb in-stack in-set)))
+    (list (third genkill) ;; new stack
+          (set-union (first genkill) ;; new value set
                      (set-diff in-set
-                               (second genkill))) ;; (gen U (in - kill))
-          (fourth genkill))) ;; valmap
-  )
+                               (second genkill))))))
 
-(defun get-gen-kill (bb instack valmap lsize)
+(defun get-gen-kill (bb instack valmap)
   "Get the gen and kill sets for a basic block"
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
+  ;;(break)
   (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
@@ -121,62 +109,63 @@ as its value."
                                   (let ((valmap (third st))
                                         (stack (second st))
                                         (lsts (first st)))
-                                    (let ((val (gen x stack valmap lsize)))
+                                    (let ((val (gen x stack valmap)))
                                       (cons (cons (car val) lsts)
                                             (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap)))
                  :initial-value empty-s));(map-empty :comp constcmp)))
-        (kill ;(set-from-list (mapcan #'kill (basic-block-ops bb)))
+        (kill 
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
                                      empty-s);(map-empty :comp constcmp))
-                                (alist->map* y :empty-m empty-s)));:comp #'constcmp)))
+                                (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
                                         (valmap (third st))
                                         (lsts (first st)))
-                                    (let ((val (kill x stack valmap lsize)) )
+                                    (let ((val (kill x stack valmap)))
                                       (cons (cons (car val) lsts)
                                             (cdr val)))))
-                              (basic-block-ops bb) 
+                              (basic-block-ops bb)
                               :initial-value (list nil instack valmap)))
-                 :initial-value empty-s));(map-empty :comp constcmp)))
+                 :initial-value empty-s))
         (stck (second (reduce #'(lambda (st x)
                                (let ((stack (second st))
                                      (lsts (first st))
                                      (valmap (third st)))
-                                 (let ((val (kill x stack valmap lsize)))
+                                 (let ((val (kill x stack valmap)))
                                    (cons (cons (car val) lsts)
                                          (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap))))
-        (valmap (third (reduce #'(lambda (st x)
-                                   (let ((stack (second st))
-                                         (lsts (first st))
-                                         (valmap (third st)))
-                                     (let ((val (kill x stack valmap lsize)))
-                                       (cons (cons (car val) lsts)
-                                             (cdr val)))))
+        #| (valmap (third (reduce #'(lambda (st x)
+                                 (let ((stack (second st))
+                                       (lsts (first st))
+                                       (valmap (third st)))
+                                   (let ((val (kill x stack valmap)))
+                                     (cons (cons (car val) lsts)
+                                           (cdr val)))))
                                (basic-block-ops bb)
-                               :initial-value (list nil instack valmap)))))
-    (list gen kill stck valmap)))
+                               :initial-value (list nil instack valmap)))) |#
+        )
+    (list gen kill stck)))
 
 (defmacro def-gen-kill (type &key stck vals gen kill)
   `(progn
-     (defmethod gen ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons avl-set t))) (list ,gen ,stck 
-                                                           (aif ,vals
-                                                                it
-                                                                valmap))))
-     
-     (defmethod kill ((op ,type) stack valmap lsize)
-       (the (cons list (cons list (cons avl-set t))) (list ,kill ,stck 
-                                                           (aif ,vals
-                                                                it
-                                                                valmap)))))
-  )
+     (defmethod gen ((op ,type) stack valmap)
+       (the (cons list (cons list (cons avl-set t)))
+            (list ,gen ,stck 
+                  (aif ,vals
+                       it
+                       valmap))))
+     (defmethod kill ((op ,type) stack valmap )
+       (the (cons list (cons list (cons avl-set t)))
+            (list ,kill ,stck 
+                  (aif ,vals
+                       it
+                       valmap))))))
 
 (def-gen-kill lcc-instruction
     :stck stack
@@ -223,7 +212,15 @@ as its value."
 (def-gen-kill addrlp
     :stck (the (cons integer t)
             (cons
-             (parse-integer (second (slot-value op 's-args))) stack))
+             (let ((nums (string-tokenizer:tokenize (second (slot-value op 's-args)) #\+)))
+               (declare (optimize (debug 3)(speed 0)))
+               (if (< 2 (length nums))
+                     (parse-integer (first nums))
+                   (progn
+                     (print nums)
+                     (parse-integer (second (slot-value op 's-args))))))
+             ;; this is a bug! parse-integer cannot handle arguments of the form "x+y"
+             stack))
     )
 
 (def-gen-kill cnstu
@@ -248,8 +245,7 @@ as its value."
             (if (or (eql 'not-const o1)
                     (eql 'not-const o2))
                 (cons 'not-const (cddr stack))
-                (cons 'const (cddr stack))))
-    )
+                (cons 'const (cddr stack)))))
 
 (def-gen-kill argu
     :stck (cdr stack)
@@ -278,15 +274,13 @@ as its value."
                                (integer (+ op1 op2))
                                (t 'glob)))
                     (t 'glob))))
-             (cddr stack)))
-    )
+             (cddr stack))))
 
 (def-gen-kill one-arg-instruction
     :stck (let ((op (first stack)))
             (if (eql 'not-const op)
                 (cons 'not-const (cdr stack))
-                (cons 'const (cdr stack))))
-    )
+                (cons 'const (cdr stack)))))
 
 (def-gen-kill asgnu
     :stck (cddr stack)
@@ -306,13 +300,10 @@ as its value."
            ((eql (second stack) 'args) nil)
            ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
            ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack))))
-           )
+           (t (list (cons (the integer (second stack)) (first stack)))))
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'const)
-           ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
            (t (list (cons (the integer (second stack)) (first stack)))))
     )
@@ -328,7 +319,8 @@ as its value."
                  ;(declare (type integer addr))
                  (typecase addr
                      (integer (map-insert addr (first stack) valmap))
-                     (t valmap)))))
+                     (t valmap)
+                     ))))
     :gen (cond
            ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
            ((eql (second stack) 'glob) nil)
@@ -339,8 +331,6 @@ as its value."
     :kill (cond
            ((eql (second stack) 'glob) nil)
            ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'const)
-           ; (loop for i from 0 to lsize collect (* 4 i)))
            ((null (second stack)) nil)
            (t (list (cons (the integer (second stack)) (first stack)))))
     )
@@ -376,31 +366,45 @@ as its value."
 ;;            )
 ;;     )
 
+(defmacro indir-stack ()
+  `(cons (cond
+           ((or (eql (car stack) 'glob)
+                (eql (car stack) 'const))
+            'glob)
+           ((or (eql (car stack) 'args)
+                )
+            'args)
+           (t (cdr (map-find (car stack) valmap))))
+         (cdr stack)))
+
 (def-gen-kill indiru
-    :stck (cons (cond
-                  ((or (eql (car stack) 'glob)
-                       (eql (car stack) 'const))
-                   'glob)
-                  ((or (eql (car stack) 'args))
-                   'args)
-                  (t (cdr (map-find (car stack) valmap))))
-                (cdr stack))
-    )
+    :stck (indir-stack))
 
 (def-gen-kill indirp
     :stck (cons 'glob (cdr stack)))
 
 (def-gen-kill indiri
-    :stck (cons (cond
-                  ((or (eql (car stack) 'glob)
-                       (eql (car stack) 'const))
-                   'glob)
-                  ((or (eql (car stack) 'args))
-                   'args)
-                  (t (cdr (map-find (car stack) valmap))))
-                (cdr stack))
-    ;;    :stck (cons (cdr (map-find (car stack) valmap)) (cdr stack)))
-    )
+    :stck (indir-stack))
+
+(defmacro arithmetic-shift (fn op1 op2)
+  `(if (or (eql op1 'glob)(eql op2 'glob))
+       (cons 'not-const (cddr stack))
+       (cons (typecase ,op1
+               (integer (typecase ,op2
+                          (integer (funcall ,fn ,op1 ,op2))
+                          (t 'not-const)))
+               (t 'not-const))
+             (cddr stack))))
+
+(defmacro arithmetic-stack (fn op1 op2)
+  `(if (or (eql op1 'glob)(eql op2 'glob))
+       (cons 'not-const (cddr stack))
+       (cons (typecase ,op1
+               (number (typecase ,op2
+                         (number (funcall ,fn ,op1 ,op2))
+                         (t 'not-const)))
+               (t 'not-const))
+             (cddr stack))))
 
 (defmacro arithmetic-shift (fn op1 op2)
   `(cons (typecase ,op1
@@ -522,7 +526,7 @@ as its value."
 
 (def-gen-kill bandi
     :stck (let ((op1 (first stack))
-               (op2 (second stack)))
+                (op2 (second stack)))
            (arithmetic-stack #'logand op2 op1)
   ))
 
@@ -540,29 +544,35 @@ as its value."
 
 (def-gen-kill bcomu
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (number (lognot o1))
-               (symbol 'not-const)
-               (t (error "unknown item on stack")))
-             (cddr stack)))
+            (if (eql o1 'glob)
+                (cons 'not-const (cdr stack))
+                (cons
+                 (typecase o1
+                   (number (lognot o1))
+                   (symbol 'not-const)
+                   (t (error "unknown item on stack")))
+                 (cdr stack))))
     )
 
 (def-gen-kill bcomi
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (integer (lognot o1))
-               (symbol 'not-const)
-               (t (error "unknown item on stack")))
-             (cddr stack)))
+            (if (eql o1 'glob)
+                (cons 'not-const (cdr stack))
+                (cons
+                 (typecase o1
+                   (integer (lognot o1))
+                   (symbol 'not-const)
+                   (t (error "unknown item on stack")))
+                 (cdr stack))))
     )
 
 (def-gen-kill negi
     :stck (let ((o1 (first stack)))
-            (cons
-             (typecase o1
-               (number (* -1 o1))
-               (symbol 'not-const))
-             (cddr stack)))
+            (if (eql o1 'glob)
+                (cons 'not-const (cdr stack))
+                (cons
+                 (typecase o1
+                   (number (* -1 o1))
+                   (symbol 'not-const))
+                 (cdr stack))))
     )

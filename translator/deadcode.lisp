@@ -15,7 +15,7 @@
   "Use the dead code elimination framework to remove dead variables from the CFG"
   (declare (optimize (debug 3) (speed 0)))
   (let* ((cfg (dataflow:make-cfg ops))
-         (ops* (dataflow:flow-backwards #'setmap:set-union #'liveness-flow-fn cfg (setmap:map-empty :comp string<) (setmap:empty-set)))
+         (ops* (dataflow:flow-backwards #'setmap:set-union #'liveness-flow-fn cfg (setmap:map-empty :comp #'string<) (setmap:empty-set)))
          (lbls-in-order (dataflow:get-lbls-in-order ops nil))
          )
     ;; For each CFG block, rewrite the block without the dead operations

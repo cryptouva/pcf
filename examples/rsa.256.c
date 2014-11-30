@@ -1,3 +1,4 @@
+
 unsigned int alice(unsigned int);
 unsigned int bob(unsigned int);
 void output_alice(unsigned int);
@@ -5,7 +6,7 @@ void output_bob(unsigned int);
 
 #define N 8
 
-unsigned int a[N], b[N], bb[N], s[N], d[N];
+unsigned int a[N], b[N], bb[N], s[N], mod[N];
 
 void add(unsigned int * aa, unsigned int * ss, unsigned int q)
 {
@@ -47,7 +48,7 @@ void shift_r(unsigned int * aa)
   for(i = N-1; i != 0; i--)
     {
       k = 0;
-      if((aa[i] & 0x01) != 0)
+      if(aa[i] & 0x01)
         k = 0x80000000;
       aa[i] = (aa[i] >> 1) | c;
       c = k;
@@ -108,7 +109,7 @@ void main(void)
   for(i = 0; i < N; i++)
     {
       /* modulus = XOR of alice and bob inputs*/
-      d[i] = alice(i * 32) ^ bob(i * 32);
+      mod[i] = alice(i * 32) ^ bob(i * 32);
 
       /*      a[i] = alice((i + N) * 32);*/
 
@@ -124,10 +125,10 @@ void main(void)
         {
           /* Shift and add*/
           q = 0;
-          if(d[0] & 0x01)
+          if(mod[0] & 0x01)
             q = 0xFFFFFFFF;
           if(b[0] & 0x01)
-            q = q & 0xFFFFFFFF;
+            q = q & 0xFFFFFFFF; // why is this line necessary?
 
           z = 0;
           g1 = 0;
@@ -138,8 +139,8 @@ void main(void)
 
           shift_r(b);
 
-          g1 = 0;
-          g2 = 0;
+          g1 = 0; // looks unnecessary
+          g2 = 0; // looks unnecessary
           for(i = 0; i < N; i++)
             {
               /* Check for overflowing the modulus */
@@ -178,12 +179,12 @@ void main(void)
       for(i = N-1; i != 0; i--)
         {
           k = 0;
-          if(d[i] & 0x01)
+          if(mod[i] & 0x01)
             k = 0x80000000;
-          d[i] = (d[i] >> 1) | c;
+          mod[i] = (mod[i] >> 1) | c;
           c = k;
         }
-      d[0] = (d[0] >> 1) | c;
+      mod[0] = (mod[0] >> 1) | c;
     }
 
   for(i = 0; i < N; i++)

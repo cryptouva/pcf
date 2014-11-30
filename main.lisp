@@ -11,16 +11,29 @@
                                :common-lisp
                                :skew-list
                                :lcc-dataflow
-			       :pcf2-dataflow)
+                               :pcf2-block-graph
+			       :pcf2-dataflow
+                               :pcf2-faintgate
+                               :pcf2-const
+                               :pcf2-live
+                               )
             (:export test-interp
+                     pcf-cfg
+                     pcf-deadgates
                      pcf-compile
                      save-pcf-ops
                      load-pcf-ops
                      pcf-simulate
-                     test-get-ops-from-cfg)
+                     test-get-ops-from-cfg
+                     faint-analyze-cfg
+                     const-analyze-cfg
+                     live-analyze-cfg
+                     test-analyze-cfg
+                     compute-wire-uses)
             (:import-from :lcc-bc read-instructions)
             )
 (in-package :lccyao-main)
+
 
 (defun pcf-compile (fname)
   "Compile the bytecode in \"fname\" and return a list of PCF2 instructions"
@@ -48,6 +61,39 @@
     (read-bytecode inpt)
     )
   )
+ 
+(defun pcf-cfg (ops)
+  (make-pcf-cfg ops))
+
+(defun compute-wire-uses (ops)
+  (wire-use-map ops)
+  )
+
+#|
+(defun live-analyze-cfg (ops)
+  (flow-backward-test ops #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives))
+
+
+(defun const-analyze-cfg (ops)
+  (flow-forward-test ops #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts))
+|#
+
+(defun faint-analyze-cfg (ops)
+  (let* ((cfg (make-pcf-cfg ops))
+         (wiremap (find-wire-uses cfg))
+         (live-cfg (flow-backward cfg #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives wiremap))
+         (const-cfg (flow-forward live-cfg #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts wiremap))
+         (faint-cfg (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints wiremap)))
+    faint-cfg))
+
+(defun test-analyze-cfg (ops)
+  (let* ((cfg (make-pcf-cfg ops))
+         (wiremap (find-wire-uses cfg))
+         (live-cfg (flow-backward cfg #'live-flow-fn #'live-confluence-op #'live-weaker-fn #'get-block-preds #'get-block-lives #'block-with-lives wiremap))
+         (const-cfg (flow-forward live-cfg #'const-flow-fn #'const-confluence-op #'const-weaker-fn #'get-block-succs #'get-block-consts #'block-with-consts wiremap))
+         (faint-cfg (flow-backward const-cfg #'faint-flow-fn #'faint-confluence-op #'faint-weaker-fn #'get-block-preds #'get-block-faints #'block-with-faints wiremap)))
+    (optimize-circuit faint-cfg)))
+
 
 (defun pcf-simulate (ops inpname)
   "Simulate the execution of the instructions in \"ops\" using inputs from \"inpname\""
@@ -55,12 +101,12 @@
   (restart-case
       (let ((state (setup-labels ops
                                  (with-open-file (inputs inpname :direction :input)
-                                   (init-state 20000 ops inputs 16384 16384)
+                                   (init-state 2000000 ops inputs 16384 16384)
                                    )
                                  )
               )
             )
-        (run-opcodes state)
+        (print (run-opcodes state))
         )
     (set-watch ()
       (format t "~&Enter watched address:~%")

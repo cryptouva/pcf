@@ -1,4 +1,5 @@
 #!/usr/bin/sbcl --script
+
 (require :asdf)
 
 (declaim (sb-ext:muffle-conditions style-warning)
@@ -7,7 +8,6 @@
 
 (asdf:operate 'asdf:compile-op :lccyao2 :verbose nil :print nil)
 (asdf:operate 'asdf:load-op :lccyao2 :verbose nil :print nil)
-
 
 (handler-bind
     ((file-error #'(lambda (c)
@@ -18,7 +18,7 @@
             (format *error-output* "~&General error: ~A~%" c) (quit)))
      )
   (assert (= 3 (length sb-ext:*posix-argv*)))
-  (lccyao-main:pcf-simulate (lccyao-main:load-pcf-ops (second sb-ext:*posix-argv*))
-                            (third sb-ext:*posix-argv*)
-                            )
+  (lccyao-main:save-pcf-ops (third sb-ext:*posix-argv*)
+                (lccyao-main:test-analyze-cfg (lccyao-main:load-pcf-ops (second sb-ext:*posix-argv*)))
+                )
   )
