@@ -125,37 +125,21 @@ to some extent."
                           )
                         ops
                         ;; baseinit starts at 1, so that the global mux condition is not overwritten
-                        (list 
-                         nil
-                         0 
-                         nil 
-                         (enqueue (cons 1000000
-                                        (make-branch-target :label "$$$END$$$"
-                                                            :cnd-wire 0
-                                                            :glob-cnd 0
-                                                            :mux-list (map-empty)
-                                                            )) (make-queue))
-                         nil 
-                         0 
-                         0 
-                         nil 
-                         1 
-                         nil
-                         0
-                         (cons cnsts nil))
-                        )
-            )
-          )
+                        (list nil 0 nil
+                              (enqueue (cons 1000000
+                                             (make-branch-target :label "$$$END$$$"
+                                                                 :cnd-wire 0
+                                                                           :glob-cnd 0
+                                                                           :mux-list (map-empty)
+                                                                           )) (make-queue))
+                              nil 0 0 nil 1 nil 0 (cons cnsts nil)))))
       (assert (>= (ninth rvl) 1))
       (format *error-output* "~&Initial base pointer: ~D~%" (ninth rvl))
       (cons
        (cons (make-instance 'label :str "pcfentry")
              (cons (make-instance 'initbase :base (ninth rvl)) 
                    (reverse (third rvl))))
-       (rest rvl))
-      )
-    )
-  )
+       (rest rvl)))))
 
 #|
 exec-instruction, as its name implies, executes an instruction. Explanation of the variables:
@@ -387,21 +371,17 @@ number of arguments."
   "Emit a chain of muxes for condition \"cnd\".  It should be safe for \"res\" to be equal to either \"olds\" or \"news\"."
   (assert (= (length olds) (length news) (length res)))
   (append
-  (mapcan (lambda (x y r)
-            (list
-             (make-xor tmp1 x y)
-             (make-and tmp2 tmp1 cnd)
-             (make-xor r tmp2 x)
-             )
-            )
-          olds news res))
-  )
+   (mapcan (lambda (x y r)
+             (list
+              (make-xor tmp1 x y)
+              (make-and tmp2 tmp1 cnd)
+              (make-xor r tmp2 x)))
+           olds news res)))
 
 (defmacro asgn-mux (&body body)
   ;; We need to *always* emit the muxes, so that conditional calls to
   ;; functions will work.
-  (let ((cnstsym (gensym))
-        )
+  (let ((cnstsym (gensym)))
     (format *error-output* 
             "~&TODO: Need to implement the proper behavior for
     assignments that occur outside of conditional branches, to
@@ -411,10 +391,8 @@ number of arguments."
 
     We should able to use the constant propagation dataflow framework
     for this, but for some reason that is not working....~%"
-          )
-
-    `(let ((,cnstsym (cadr (cdr (map-find iidx (cadr (cdr cnsts))))))
-           )
+            )
+    `(let ((,cnstsym (cadr (cdr (map-find iidx (cadr (cdr cnsts)))))))
        (format *error-output* "asgn-mux: ~A, iidx: ~D~%" ,cnstsym iidx)
        (if (and (or (queue-emptyp targets)
                     (string= (branch-target-label (peek-queue targets)) "$$$END$$$"))
@@ -424,15 +402,12 @@ number of arguments."
            ,(progn
              `(progn
                 (add-instrs (list (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width))
-                ,@body)
-                )
-             )
+                ,@body)))
            (add-instrs
                (list
                 (make-instance 'copy-indir :dest wires :op1 (first ptr) :op2 width)
                 (make-instance 'indir-copy :dest (the integer (first ptr)) :op1 (car val) :op2 width)
-                (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1)
-                )
+                (make-instance 'copy-indir :dest (+ wires width) :op1 0 :op2 1))
              (let* ((mtarget (peek-queue targets))
                     (targets 
                      (update-queue-min targets
@@ -445,22 +420,11 @@ number of arguments."
                                                                              :width width
                                                                              :old-copy (loop for i from 0 to (1- width) collect (+ i wires))
                                                                              :cnd-wire (+ wires width))
-                                                              (branch-target-mux-list mtarget)
-                                                              )
-                                        )
-                                       )
-                      )
-                    )
-               (let ((wires (+ wires width 1))
-                     )
-                 ,@body
-                 )
-               )
-             )
-           )
-         )
-    )
-  ;; (add-instrs 
+                                                              (branch-target-mux-list mtarget))))))
+               (let ((wires (+ wires width 1)))
+                 ,@body)))))))
+
+ ;; (add-instrs 
   ;;          (if (not (queue-emptyp targets))
   ;;          (append 
   ;;           (list 
@@ -483,7 +447,6 @@ number of arguments."
   ;;          )
   ;;        )
   ;;)
-  )
 
 (defstruct mux-item
   (address  0 :type integer)
@@ -1657,31 +1620,27 @@ number of arguments."
   (with-slots (width) op
     (pop-arg stack arg
       (assert (= 1 (length arg)))
-      (let ((arglist (append arglist (list (make-arg :len (* *byte-width* width) :loc arg))))
-            )
-        (close-instr)
-        )
-      )
-    )
-  )
+      (let ((arglist (append arglist (list (make-arg :len (* *byte-width* width) :loc arg)))))
+        (close-instr)))))
 
 (definstr addrgp ; address of a global pointer
 ;  (declare (optimize (debug 3) (speed 0)))
   (with-slots (s-args) op
-    (let ((addr* (string-tokenizer:tokenize (second s-args) #\+))
-          ;(width (parse-integer (first s-args)))
-          )
+    (let ((addr* (string-tokenizer:tokenize (second s-args) #\+)))
       (let ((a (gethash (first addr*) labels nil)))
         (declare (type (or null (cons symbol (integer 1))) a))
         (let ((addr (if a
                         (if (equalp (car a) *glob*)
-                            ;; Do not multiply by width here.
-                            (+ (cdr a) (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0))
-                            (second s-args));(gethash (second s-args) labels nil)
+                            ;; Global address: do not multiply by with, but calculate location based on offsets 
+                            (reduce (lambda (accum x)
+                                      (+ accum (* *byte-width* (parse-integer x))))
+                                    (rest addr*)
+                                    :initial-value (cdr a))
+                            (second s-args))
                         (second s-args))))
           (format t "~&Address for ~A is ~A (at ~A)~%" (second s-args) addr wires)
           (add-instrs (if (equalp (car a) *glob*)
-                          (list (make-instance 'const :dest wires :op1 (+ (if (second addr*) (* *byte-width* (parse-integer (second addr*))) 0) (cdr a)))))
+                          (list (make-instance 'const :dest wires :op1 addr)))
             (push-stack stack 1 (if (equalp (car a) *glob*) 
                                     (list wires) 
                                     (list addr))
@@ -1696,7 +1655,7 @@ number of arguments."
   (with-slots (s-args) op
     (let ((addr (let ((nums (string-tokenizer:tokenize (second s-args) #\+)))
                   ;;(parse-integer (second s-args)))
-                  (if (< 2 (length nums))
+                  (if (< (length nums) 2)
                       (parse-integer (first nums))
                       (reduce #'(lambda (x y) (+ (parse-integer y) x)) nums :initial-value 0)))))
       (push-stack stack 1 (list wires)

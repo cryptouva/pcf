@@ -28,7 +28,6 @@
 
 
 (defparameter live-confluence-operator #'rle-set-union)  ;;#'set-inter)
-;; "top" is Var and is represented by *lattice-top* from pcf2-dataflow
 
 (defparameter output-functions (set-from-list (list "output_alice" "output_bob") :comp #'string<))
 (defparameter input-functions (set-from-list (list "alice" "bob") :comp #'string<))
@@ -39,25 +38,19 @@
      (let ((succ-out (get-block-lives (get-block-by-id succ cfg))))
        (funcall conf succ-out temp-out)))
    (get-block-succs blck)
-   :initial-value (rle-empty-set)
-   ;; (get-block-lives blck)
-   ))
+   :initial-value (rle-empty-set)))
 
 (defun live-confluence-op (set1 set2)
   ;; if either set is "top," return the other set
-  ;;(declare (optimize (debug 3)(speed 0)))
   (funcall live-confluence-operator set1 set2))
 
 (defun live-weaker-fn (set1 set2)
   ;; set1 is weaker than (safely estimates) set2 if set1 is a superset of set2 
   (and (not (rle-set-subset-efficient set1 set2))
-       (rle-set-subset-efficient set2 set1)
-  ))
+       (rle-set-subset-efficient set2 set1)))
 
-(defun live-flow-fn (blck cfg use-map)
-  (declare ;;(optimize (speed 0) (debug 3))
-   (ignore use-map))
-  ;;  (break)
+(defun live-flow-fn (blck cfg use-map) 
+  (declare  (ignore use-map))
   (let* ((in-flow (get-out-sets blck cfg #'live-confluence-op))) 
     (live-confluence-op
      (rle-set-diff-efficient in-flow (kill (get-block-op blck) blck (get-block-base blck)))
@@ -68,23 +61,6 @@
             (rle-set-union state (funcall fn op blck base)))
           (get-block-op-list blck)
           :initial-value (rle-empty-set)))
-#|
-(defun get-gen (blck base)
-  (reduce (lambda (state op)
-            (rle-set-union state (gen op blck base)))
-          (get-block-op-list blck)
-          :initial-value (rle-empty-set)))
-;;  (let ((op (get-block-op blck)))
-;;    (gen op blck base)))
-
-(defun get-kill (blck base)
-  (reduce (lambda (state op)
-            (rle-set-union state (kill op blck base)))
-          (get-block-op-list blck)
-          :initial-value (rle-empty-set)))
-;;  (let ((op (get-block-op blck)))
-;;    (kill op blck base)))
-|#
 
 (defgeneric gen (op blck base)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 

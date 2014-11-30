@@ -3,8 +3,6 @@
 (defpackage :pcf2-dataflow
   (:use :common-lisp :pcf2-bc :setmap :setmap-rle :pairing-heap #| :hashset |# :utils :pcf2-block-graph :pcf2-use-map :pcf2-flow-utils)
   (:export make-pcf-cfg
-           ;;flow-forward-test
-           ;;flow-backward-test
            flow-forward
            flow-backward
            optimize-circuit
@@ -13,9 +11,6 @@
            )
   )
 (in-package :pcf2-dataflow)
-
-
-(defparameter ostream (open "rle-weaker-out.txt" :direction :output :if-exists :supersede))
 
 ;; these special functions are included by the PCF interpreters and therefore will not have lookups in the .PCF2 file
 ;; alice and bob return unsigned integers
@@ -134,7 +129,6 @@
          (t (add-standard-block)))))))
 
 
-
 (defun get-label-and-fn-map (ops)
   ;; iterate through all of the ops; when hit a label, insert its (name->idx) pair into lbls
   ;; also get the names of all of the functions (other than main) that are called
@@ -194,14 +188,11 @@
 
 (defun find-preds (f-cfg)
   (declare (optimize (debug 3) (speed 0)))
-  ;;(print "find preds")
   ;; for every item in blocks, get its successors and update those to identify a predecessor
   (map-reduce #'(lambda(cfg blockid blck) 
 		  (reduce (lambda (cfg* succ)
 			    (declare (optimize (debug 3)(speed 0)))
-                            (let ((updateblock (get-block-by-id succ cfg*))
-				  ;; (blockid (parse-integer blockid)
-                                  )
+                            (let ((updateblock (get-block-by-id succ cfg*)))
 			      (add-pred blockid updateblock
                                   (insert-block (get-block-id updateblock) updateblock cfg*
                                     cfg*))))
@@ -214,8 +205,6 @@
 (defun update-ret-succs (f-cfg call-addrs ret-addrs)
   ;; reduce over all the calling addresses in the cfg to update their return addresses. 1:1 map of call to return addresses
   (declare (optimize (debug 3)(speed 0)))
-  ;;(print "update-ret-succs")
-  ;;(print call-addrs)
   (first (map-reduce #'(lambda (state address fname)
                          (let ((cfg (first state))
                                (call-addrs (second state))
@@ -236,7 +225,6 @@
   (let ((op1 (first ops))
         (restops (rest ops))
 	(lbl-fn-map (get-label-and-fn-map ops)))
-    ;;(print lbl-fn-map)
     (let* ((reduce-forward
             (reduce #'(lambda(x y)
                         (declare (optimize (debug 3)(speed 0)))
@@ -275,31 +263,6 @@
 ;;; 4. faint-variable
 ;;; (although one and two are interchangeable, usage-map is simpler to perform 
 
-
-;; when flowing,
-;; each node carries info about its own data
-;; and updates its information using predecessors' inputs
-;; then, if changed, it adds its successors to the worklist
-;; flow functions should be parameterizable by method used to get successors
-
-;; need:
-;; make sure that every node is touched by the worklist at least once
-;; then, pull from the worklist until it is nil, remembering to add successors every time a node's value changes
-
-;; need to construct some functions for comparing datas with those that are just "top". Any confluence operation with "top" (conf x top) = x
-
-
-;; a couple of functions to test forward and backward flows
-#|
-(defun flow-backward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (let ((worklist (map-keys (get-graph-map cfg))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'>) #'> (set-from-list worklist) use-map)))
-
-(defun flow-forward-test (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  (let* ((worklist (reverse (map-keys (get-graph-map cfg)))))
-    (do-flow cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn (heapify (reverse worklist) :comp #'<) #'< (set-from-list worklist) use-map)))
-|#
-
 ;; the actual flow-forward and flow-backward functions (could be replaced with macros and a single flow function, but not necessary
 (defun flow-forward (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
   (let ((worklist (reverse (map-keys (get-graph-map cfg)))))
@@ -311,15 +274,9 @@
 
 
 (defun flow-once (cur-node cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn use-map)
-  ;;(declare (optimize (debug 3)(speed 0)))
   (format t "~A~%" (get-block-id cur-node))
-  ;;(break)
-  ;;(if (equalp (get-block-id cur-node) 6974) (break))
-  ;;(if (equalp get-data-fn #'pcf2-block-graph:get-block-consts)
-  ;;    (format ostream "~A~%" (get-block-id cur-node)))
   (let ((new-flow (funcall flow-fn cur-node cfg use-map)))
     (insert-block (get-block-id cur-node) (funcall set-data-fn new-flow cur-node) cfg
-      ;;(if (equal (get-block-id cur-node) 4)(break))
       (let ((vals (reduce (lambda (state neighbor-id)
                             (let* ((cfg (first state))
                                    (worklist (second state))
@@ -335,7 +292,6 @@
 
 
 (defun do-flow (cfg flow-fn join-fn weaker-fn get-neighbor-fn get-data-fn set-data-fn worklist wlist-comp worklist-set use-map)
-  ;;(declare (optimize (debug 3)(speed 0)))
   (if (heap-emptyp worklist)
       cfg ; done
       (let* ((cur-node-id (heap-getmin worklist))
@@ -412,7 +368,6 @@
         (let ((op1-val (rle-map-val op1 consts t))
               (op2-val (rle-map-val op2 consts t)))
           ;; if an output is live, both of its inputs will be live
-          ;;(break)                      
           (if (not (and (rle-set-member op1 faints)
                         (rle-set-member op2 faints)))
               nil
@@ -432,7 +387,6 @@
                                 ((equal op2-val 1)
                                  (block-with-copy* pre-dest pre-op1))
                                 (t (error "const gate not handled: should be 0"))))
-                                 ;;(make-instance 'const :dest pre-dest :op1 0)))) ;; one of the inputs is const, but it is 0. this should have been handles above though.
                              ((equalp truth-table #*0111) ;; x OR 0 = x, replace gate with copy
                               (cond
                                 ((equal op1-val 0)
@@ -440,7 +394,6 @@
                                 ((equal op2-val 0)
                                  (block-with-copy* pre-dest pre-op1))
                                 (t (error " const gate not handled: should be 1"))))
-                                 ;;(make-instance 'const :dest pre-dest :op1 1)))) ;; one of the inputs is const, and neither is 0 (so one is 1). this should have been handled above though.
                              ((equalp truth-table #*0110) ;; x XOR 0 = x, replace gate with copy
                               (cond
                                 ((equal op1-val 0)
@@ -457,30 +410,24 @@
   (declare (optimize (debug 3)(speed 0)))
   (with-slots (dest) op
     (with-true-addresses (dest)
-      (let ((useful (reduce (lambda (st succ)
+      (let ((op-is-useful (reduce (lambda (st succ)
                               (let ((succ-faints
                                      (get-block-faints (map-val succ cfg)))
                                     (succ-lives
                                      (get-block-lives (map-val succ cfg))))
-                                ;;(break)
                                 (or st (rle-set-member dest succ-faints))))
                             (get-block-succs blk)
                             :initial-value nil)))
-        (if useful
-            op
-            nil)))))
+        (when op-is-useful
+            op)))))
 
 
 (defmethod transform-op ((op instruction) blk cfg base faints lives consts)
-  op
-  )
+  op)
 
 (defun eliminate-extra-gates (cfg)
-  ;;(declare (optimize (debug 3)(speed 0)))
-  ;;(break)
   (map-reduce (lambda (cfg* blckid blk)
                 (declare (optimize (debug 3)(speed 0)))
-                ;;(break)
                 (declare (ignore blk))
                 (aif (map-val blckid cfg* t)
                      (let* ((blk it)
@@ -504,7 +451,6 @@
               cfg))
 
 
-
 (defun extract-ops (cfg)
   (map-reduce (lambda (ops id blck)
                 (declare (ignore id))
@@ -512,13 +458,6 @@
               cfg
               nil))
 
-
 ;; the big cahoona
 (defun optimize-circuit (cfg)
-  ;;(print cfg)
-  (prog1
-      (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg))))
-    (close ostream)
-    )
-  )
-
+  (reverse (extract-ops (eliminate-extra-gates (get-graph-map cfg)))))

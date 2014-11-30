@@ -82,26 +82,14 @@
   ))
 
 (defun faint-flow-fn (blck cfg use-map)
-  ;;(declare (optimize (speed 0) (debug 3)))
   (let ((in-flow (get-out-sets blck cfg #'faint-confluence-op))) 
     (let ((flow (faint-confluence-op
                  ;; set-union should have the smaller set come second
                  (rle-set-diff-efficient in-flow (kill blck in-flow))
                  (gen blck in-flow))))
-      #|(typecase (get-block-op blck)
-        (bits (break))
-        (copy (if (< (get-block-id blck) 40)
-                  (break)))
-        (copy-indir (if (< (get-block-id blck) 40)
-                        (break)))
-        (indir-copy (if (< (get-block-id blck) 40)
-                        (break)))
-        (otherwise t))|#
       (if (zerop (mod (get-block-id blck) 100))
           (eliminate-extra-faints flow blck use-map)
           flow))))
-      ;;(break)
-      ;;flow)))                           
 
 (defgeneric gen (blck flow-data)
   (:documentation "this function describes how to compute the gen part of the flow function for each op") 

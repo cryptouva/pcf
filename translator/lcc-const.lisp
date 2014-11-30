@@ -73,7 +73,6 @@ as its value."
                                                       (setmap:map-empty :comp #'<) ;; in-stacks
                                                       empty-s ;; empty-set
                                                       )
-                        (declare (ignore valmap))
                         (list in-set in-stack)))
                     funs)))
 
@@ -98,12 +97,12 @@ as its value."
   (declare (type basic-block bb)
            (optimize (debug 3) (speed 0)))
   ;;(break)
-  (let ((gen ;(set-from-list (mapcan #'gen (basic-block-ops bb))))
+  (print (basic-block-ops bb))
+  (let ((gen 
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
                                      empty-s)
-                                ;(map-empty :comp constcmp))
                                 (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((valmap (third st))
@@ -114,12 +113,12 @@ as its value."
                                             (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap)))
-                 :initial-value empty-s));(map-empty :comp constcmp)))
+                 :initial-value empty-s))
         (kill 
          (reduce #'(lambda (&optional x y)
                      (set-union (aif x
                                      x
-                                     empty-s);(map-empty :comp constcmp))
+                                     empty-s)
                                 (alist->map* y :empty-m empty-s)))
                  (car (reduce #'(lambda (st x)
                                   (let ((stack (second st))
@@ -132,23 +131,15 @@ as its value."
                               :initial-value (list nil instack valmap)))
                  :initial-value empty-s))
         (stck (second (reduce #'(lambda (st x)
-                               (let ((stack (second st))
-                                     (lsts (first st))
-                                     (valmap (third st)))
-                                 (let ((val (kill x stack valmap)))
-                                   (cons (cons (car val) lsts)
-                                         (cdr val)))))
+                                  (declare (optimize (debug 3)(speed 0)))
+                                  (let ((stack (second st))
+                                        (lsts (first st))
+                                        (valmap (third st)))
+                                    (let ((val (kill x stack valmap)))
+                                      (cons (cons (car val) lsts)
+                                            (cdr val)))))
                               (basic-block-ops bb)
                               :initial-value (list nil instack valmap))))
-        #| (valmap (third (reduce #'(lambda (st x)
-                                 (let ((stack (second st))
-                                       (lsts (first st))
-                                       (valmap (third st)))
-                                   (let ((val (kill x stack valmap)))
-                                     (cons (cons (car val) lsts)
-                                           (cdr val)))))
-                               (basic-block-ops bb)
-                               :initial-value (list nil instack valmap)))) |#
         )
     (list gen kill stck)))
 
@@ -174,19 +165,24 @@ as its value."
     )
 
 (def-gen-kill callu
+    ;; pop the call address off the stack
+    ;; and add 'not-const (usually a safe assumption)
     :stck (cons 'not-const (cdr stack))
     :gen nil
     :kill nil
     )
 
 (def-gen-kill calli
-    :stck (cons 'not-const (cdr stack)) ;; pop off location of the call, make room for the return value
+    ;; pop the call address off the stack
+    ;; and add 'not-const (usually a safe assumption)
+    :stck (cons 'not-const (cdr stack))
     :gen nil
     :kill nil
     )
 
 (def-gen-kill callv
-    :stck (cdr stack) ;; pop off the location of the call
+    ;; pop the call address off the stack
+    :stck (cdr stack)
     :gen nil
     :kill nil
     )
@@ -194,32 +190,47 @@ as its value."
 ;; note: ret is still unimplemented
 
 (def-gen-kill jumpv
-    :stck (cdr stack) ;; pop off location of the jump
+    ;; pop the jump address off the stack
+    :stck (cdr stack)
     )
 
 (def-gen-kill addrgp
+    ;; address of global 
+    ;; look to the glob section
     :stck (cons 'glob stack)
     :gen nil
     :kill nil
     )
 
 (def-gen-kill addrfp
+    ;; address of parameter
+    ;; stack gains a pointer to the args
     :stck (cons 'args stack)
     :gen nil
     :kill nil
     )
 
 (def-gen-kill addrlp
+    ;; address of a local
+    ;; stack gains the address of a specific variable in the flow data
+    ;; if the address is offset, this uses a pointer to the base of the array
+    ;; the above line is a bug inserted as a quick workaround, since otherwise
+    ;; it will run into "object not found in map" errors when the address
+    ;; is dereferenced. looking into where the array base is assigned a value,
+    ;; but till now, I have only seen 'glob in that spot, which is OK
     :stck (the (cons integer t)
             (cons
              (let ((nums (string-tokenizer:tokenize (second (slot-value op 's-args)) #\+)))
                (declare (optimize (debug 3)(speed 0)))
-               (if (< 2 (length nums))
-                     (parse-integer (first nums))
+               (if (< (length nums) 2)
+                   (parse-integer (first nums))
                    (progn
                      (print nums)
-                     (parse-integer (second (slot-value op 's-args))))))
-             ;; this is a bug! parse-integer cannot handle arguments of the form "x+y"
+                     ;;(break)
+                     (parse-integer (first nums)))))
+                     ;;(reduce #'(lambda (x y) (+ x (parse-integer y))) nums :initial-value 0))))
+                     ;;(parse-integer (second (slot-value op 's-args))))))
+             ;; arg! this be a bug!
              stack))
     )
 
@@ -240,6 +251,8 @@ as its value."
     )
 
 (def-gen-kill cmp-jump-instruction
+    ;; check first two spots on stack,
+    ;; push const or not-const depending on their values
     :stck (let ((o1 (first stack))
                 (o2 (second stack)))
             (if (or (eql 'not-const o1)
@@ -256,6 +269,8 @@ as its value."
     )
 
 (def-gen-kill addp
+    ;; pointer addition
+    ;; 
     :stck (let ((op1 (first stack))
                 (op2 (second stack)))
             (cons
@@ -273,7 +288,8 @@ as its value."
                     (integer (typecase op2
                                (integer (+ op1 op2))
                                (t 'glob)))
-                    (t 'glob))))
+                    (t 'const))))
+                    ;;(t 'glob))))
              (cddr stack))))
 
 (def-gen-kill one-arg-instruction
@@ -282,97 +298,60 @@ as its value."
                 (cons 'not-const (cdr stack))
                 (cons 'const (cdr stack)))))
 
+(defmacro asgn-vals ()
+  ;; 
+  `(cond
+     ((or (eql (second stack) 'glob)
+          (eql (second stack) 'args)
+          (null (second stack)))
+      valmap)
+     (t (let ((addr (second stack)))
+          ;;(declare (type integer addr))
+          (typecase addr
+            (integer (map-insert addr (first stack) valmap))
+            (t valmap))))))
+
+(defmacro asgn-gen ()
+  `(cond
+    ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
+    ((eql (second stack) 'glob) nil)
+    ((eql (second stack) 'args) nil)
+    ;;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
+    ((null (second stack)) nil)
+    ((eql (second stack) 'not-const) nil)
+    (t (list (cons (the integer (second stack)) (first stack))))))
+
+(defmacro asgn-kill ()
+  `(cond
+     ((eql (second stack) 'glob) nil)
+     ((eql (second stack) 'args) nil)
+     ((null (second stack)) nil)
+     (t (list (cons (the integer (second stack)) (first stack))))))
+
 (def-gen-kill asgnu
     :stck (cddr stack)
-    :vals (cond
-            ((or (eql (second stack) 'glob)
-                 (eql (second stack) 'args)
-                 (null (second stack)))
-             valmap)
-            (t (let ((addr (second stack)))
-                 ;(declare (type integer addr))
-                 (typecase addr
-                     (integer (map-insert addr (first stack) valmap))
-                     (t valmap)))))
-    :gen (cond
-           ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
-           ((eql (second stack) 'glob) nil)
-           ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
-           ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack)))))
-    :kill (cond
-           ((eql (second stack) 'glob) nil)
-           ((eql (second stack) 'args) nil)
-           ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack)))))
+    :vals (asgn-vals)
+    :gen (asgn-gen)
+    :kill (asgn-kill)
     )
 
 (def-gen-kill asgni
     :stck (cddr stack)
-    :vals (cond
-            ((or (eql (second stack) 'glob)
-                 (eql (second stack) 'args)
-                 (null (second stack)))
-             valmap)
-            (t (let ((addr (second stack)))
-                 ;(declare (type integer addr))
-                 (typecase addr
-                     (integer (map-insert addr (first stack) valmap))
-                     (t valmap)
-                     ))))
-    :gen (cond
-           ((eql (first stack) 'not-const) (list (cons (second stack) 'not-const)))
-           ((eql (second stack) 'glob) nil)
-           ((eql (second stack) 'args) nil)
-           ;((eql (second stack) 'not-const) (error "Bad address -- address is indeterminate and not global?"))
-           ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack)))))
-    :kill (cond
-           ((eql (second stack) 'glob) nil)
-           ((eql (second stack) 'args) nil)
-           ((null (second stack)) nil)
-           (t (list (cons (the integer (second stack)) (first stack)))))
+    :vals (asgn-vals)
+    :gen (asgn-gen)
+    :kill (asgn-kill)
     )
 
-;; (def-gen-kill asgni
-;;     :stck (cddr stack)
-;;     :vals (cond
-;;             ((or (eql (second stack) 'glob)
-;;                  (eql (second stack) 'args)
-;;                  (null (second stack)))
-;;              valmap)
-;;             (t (let ((addr (second stack)))
-;;                                         ;(declare (type integer addr))
-;;                  (typecase addr
-;;                    (integer (map-insert addr (the integer (first stack)) valmap))
-;;                    (t valmap)
-;;                    )
-;;                  )
-;;                )
-;;             )
-;;     :gen (cond
-;;            ((eql (first stack) 'glob) nil)
-;;            ((eql (first stack) 'args) nil)
-;;            ((eql (second stack) 'not-const) nil)
-;;            (t (list (the integer (first stack))))
-;;            )
-;;     :kill (cond
-;;            ((eql (first stack) 'glob) nil)
-;;            ((eql (first stack) 'args) nil)
-;;            ((eql (second stack) 'const)
-;;             (loop for i from 0 to lsize collect (* 4 i)))
-;;            (t (list (the integer (first stack))))
-;;            )
-;;     )
-
 (defmacro indir-stack ()
+  ;; dereference a pointer that's on the stack
+  ;; unknown const and globs go to glob
+  ;; args go to the args section
+  ;; and specific consts go to the valmap
   `(cons (cond
            ((or (eql (car stack) 'glob)
                 (eql (car stack) 'const))
             'glob)
-           ((or (eql (car stack) 'args)
-                )
+           ((eql (car stack) 'args)
             'args)
            (t (cdr (map-find (car stack) valmap))))
          (cdr stack)))
@@ -385,6 +364,10 @@ as its value."
 
 (def-gen-kill indiri
     :stck (indir-stack))
+
+(def-gen-kill indirp
+    ;; this may be buggy -- pointer fetch is not well supported
+    :stck (cons 'glob (cdr stack)))
 
 (defmacro arithmetic-shift (fn op1 op2)
   `(if (or (eql op1 'glob)(eql op2 'glob))
