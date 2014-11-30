@@ -15,12 +15,11 @@
 
 ;;; f_n(x) = (x-Kill_n(x) Union Gen_n
 
-;;; Constant propagation is forward data flow problem
-;;; we represent the constants available at a program point as a map from variable to constant. if the variable is not a constant, we exclude it from the map (this is a memory consideration)
+;;; Constant propagation is a forward data flow problem
+;;; we represent the constants available at a program point as a map from wire index  to constant. if the variable is not a constant, we exclude it from the map (this is a memory consideration)
 ;;; the confluence operation is defined in terms of applying conf-hat on pairs of the same variable
 ;; ForAll x1,x2 e L, x1 conf x2 = { <z, dx conf-hat dy > | <z,dx> e x1, <z,dy> e x2, x e Var }
 ;; our analysis will merge maps of constant values by taking all of the key-value pairs that are common to both maps and all of the key-value pairs for which the keys are unique to one map. Pairs from two maps with the same key but different values will be discarded.
-;; Our hmap-intersect operation uses the same idea, but takes only the key-value pairs that the maps have in common, discarding everything else.
 
 ;;; Gen_n(x) = ConstGen_n Union DepGen_n(x)
 ;;; Kill_n(x) = ConstKill_n Union DepKill_n(x)
@@ -57,8 +56,6 @@
 
 (defparameter confluence-operator #'rle-map-union-without-conflicts) ;; this is not set-inter, needs to be updated with a form of hmap-inter
 
-;;(defparameter ostream (open "rle-const-out.txt" :direction :output :if-exists :supersede))
-
 ;;; macros to define const-gen, dep-gen, const-kill, and dep-kill
 (defmacro empty-gen ()
   `(rle-map-empty))
@@ -90,9 +87,6 @@
 
 (defun const-flow-fn (blck cfg use-map)
   ;; this function contains a bit at the end to eliminate extraneous const information we may be carrying around
-  ;;(declare 
-  ;;  (optimize (speed 0) (debug 3)))
-  ;;(if (equal (get-block-id blck) 2844) (break))
   (let ((in-flow (get-out-sets blck cfg #'rle-map-union-without-conflicts)))
     (let ((flow (rle-map-union-without-conflicts
                  (rle-map-remove-key-set in-flow (kill blck in-flow))
@@ -100,18 +94,14 @@
       (if (zerop (mod (get-block-id blck) 50))
           (eliminate-extra-consts flow blck use-map)          
           flow))))
-;;      flow)))
-
       
 (defun const-weaker-fn (map1 map2)
   (rle-map-weaker-fn map1 map2))
 
 (defun get-out-sets (blck cfg conf)
-  ;;(format t "block preds: ~A~%" (get-block-preds blck))
   (reduce
    (lambda (temp-out pred)
      (let ((pred-out (get-block-consts (get-block-by-id pred cfg))))
-       ;;(format t "pred out: ~A~%" pred-out)
        (funcall conf pred-out temp-out)))
    (get-block-preds blck)
    :initial-value (rle-map-empty)
@@ -151,7 +141,6 @@
 
 (defmethod kill (blck flow-data)
   ;; kill = const-kill union gep_kill
-  ;;(break)
   (reduce (lambda (state op)
             (rle-set-union state
                        (rle-set-union (const-kill op (get-block-base blck)) (dep-kill op (get-block-base blck) flow-data))))
@@ -200,20 +189,24 @@
 
 
 (defmacro with-true-addresses ((&rest syms) &body body)
+  ;; add stack base to the wire's location for a list of wires
   `(let ,(loop for sym in syms
             collect `(,sym (+ ,sym (aif base it 0))))
      ,@body))
 
 (defmacro with-true-address (sym &body body)
+  ;; add stack base to the location of a single wire
   `(let ((,sym (+ ,sym base)))
      ,@body))
 
 (defmacro with-true-address-list (lst &body body)
+  ;; add stack base to each member of a wire list
   `(let ((,lst (mapcar (lambda(x) (+ x base)) ,lst)))
      ,@body))
 
 
 (defmacro with-not-nil-from (a b &body body)
+  ;; proceed with whichever of a and b
   `(let ((it (if ,a ,a ,b)))
      ,@body ))
 
