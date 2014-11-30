@@ -187,8 +187,6 @@ as its value."
     :kill nil
     )
 
-;; note: ret is still unimplemented
-
 (def-gen-kill jumpv
     ;; pop the jump address off the stack
     :stck (cdr stack)
@@ -358,9 +356,6 @@ as its value."
 
 (def-gen-kill indiru
     :stck (indir-stack))
-
-(def-gen-kill indirp
-    :stck (cons 'glob (cdr stack)))
 
 (def-gen-kill indiri
     :stck (indir-stack))
