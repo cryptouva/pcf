@@ -389,22 +389,6 @@ as its value."
                (t 'not-const))
              (cddr stack))))
 
-(defmacro arithmetic-shift (fn op1 op2)
-  `(cons (typecase ,op1
-           (integer (typecase ,op2
-                      (integer (funcall ,fn ,op1 ,op2))
-                      (t 'not-const)))
-           (t 'not-const))
-         (cddr stack)))
-
-(defmacro arithmetic-stack (fn op1 op2)
-  `(cons (typecase ,op1
-           (number (typecase ,op2
-                     (number (funcall ,fn ,op1 ,op2))
-                     (t 'not-const)))
-           (t 'not-const))
-         (cddr stack)))
-
 (def-gen-kill lshu
     :stck (let ((op1 (first stack))
                 (op2 (second stack)))
