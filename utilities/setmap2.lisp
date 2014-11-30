@@ -57,8 +57,10 @@
 
 (defmacro empty-set (&key comp)
   (if comp
-      `(make-avl-set :tree nil :comp ,comp)
-      `(make-avl-set :tree nil :comp #'<)
+      ;;`(make-avl-set :tree (empty-avl-tree :comp ,comp) :comp ,comp)
+      ;;`(make-avl-set :tree (empty-avl-tree :comp #'<) :comp #'<)
+      `(make-avl-set :tree (empty-avl-tree) :comp ,comp)
+      `(make-avl-set :tree (empty-avl-tree) :comp #'<)
       )
   )
 
@@ -73,7 +75,8 @@
 (defun singleton (x &key (comp #'<))
   "Create a new singleton set"
   (make-avl-set :tree
-                (avl-tree-insert x nil :comp comp)
+                ;;(avl-tree-insert x (empty-avl-tree :comp comp) :comp comp)
+                (avl-tree-insert x (empty-avl-tree) :comp comp)
                 :comp comp)
   )
 
@@ -156,6 +159,7 @@
                   )))
 
 (defun set-insert (set x)
+  (declare (optimize (debug 3)(speed 0)))
   (let ((comp (avl-set-comp set)))
     (make-avl-set :tree
                   (avl-tree-insert-unique x (avl-set-tree set) :comp comp)
@@ -236,13 +240,16 @@
   (funcall (carcomp #'<) x y)
   )
 
-(defmacro map-empty (&key comp)
-  (if comp
-      `(make-avl-set :tree nil :comp (carcomp ,comp))
-      `(make-avl-set :tree nil :comp #'default-comp)
+(defmacro map-empty (&key (comp nil))
+  (if (null comp)
+      ;;`(make-avl-set :tree (empty-avl-tree :comp #'default-comp) :comp #'default-comp)
+      ;;`(make-avl-set :tree (empty-avl-tree :comp (carcomp ,comp)) :comp (carcomp ,comp))
+      `(make-avl-set :tree (empty-avl-tree) :comp #'default-comp)
+      `(make-avl-set :tree (empty-avl-tree) :comp (carcomp ,comp))
       )
   )
 
+;; for some reason, this returns a list
 (defun map-keys (mp)
   (declare (type avl-set mp))
   (map-reduce (lambda (state key val)
@@ -253,7 +260,7 @@
               nil ;;(empty-set :comp cmp)
               ))
 
-
+;; and this returns a set
 (defun map-vals (mp &key (cmp #'<))
   (declare (type avl-set mp) (type function cmp))
   (map-reduce (lambda (state key val)
@@ -264,11 +271,17 @@
 
 (defun map-insert (x y mp)
   "Insert \"x -> y\" into the map \"mp\", returning the new map containing x->y"
-  (declare (type avl-set mp))
+  (declare (type avl-set mp)
+           (optimize (debug 3)(speed 0)))
   (let ((comp (avl-set-comp mp))
         )
+    ;;(break)
     (make-avl-set :tree
-                  (avl-tree-insert-unique (cons x y) (avl-set-tree mp) :comp comp)
+                  (avl-tree-insert-unique (cons x y)
+                                          (avl-set-tree mp)
+                                          :comp comp
+                                          )
+                  ;;:comp (avl-comp (avl-set-tree mp))) ;;comp)
                   :comp comp)
     )
   )
@@ -314,7 +327,7 @@
 (defmacro map-singleton (x y &key (comp nil))
   (if (null comp)
       `(map-insert ,x ,y (map-empty))
-      `(map-insert ,x ,y (map-empty :comp comp))))
+      `(map-insert ,x ,y (map-empty :comp comp) :comp comp)))
 
 (defun map-map (fn mp)
   "Apply \"fn\" to each element of the map \"mp\" to create a new map.
@@ -326,7 +339,8 @@
                 (avl-tree-map (lambda (x)
                                 (cons (car x)
                                       (funcall fn (car x) (cdr x))))
-                              (avl-set-tree mp) :comp (avl-set-comp mp))
+                              (avl-set-tree mp)
+                              :comp (avl-set-comp mp))
                 :comp (avl-set-comp mp))
   )
 

@@ -7,6 +7,7 @@ void output_bob(unsigned int);
 
 unsigned int a[2*N], b[2*N], bb[2*N], s[2*N], d[2*N];
 
+/*
 void add(unsigned int * aa, unsigned int * ss, unsigned int q)
 {
   unsigned int c = 0;
@@ -20,6 +21,7 @@ void add(unsigned int * aa, unsigned int * ss, unsigned int q)
         c = 1;
     }
 }
+*/
 
 void shift_add(unsigned int * aa, unsigned int * ss, unsigned int c, unsigned int q)
 {
@@ -56,6 +58,7 @@ void shift_r(unsigned int * aa)
   aa[0] = (aa[0] >> 1) | c;
 }
 
+/*
 void shift_l(unsigned int * aa)
 {
   unsigned int q=0,k=0,i=0;
@@ -93,6 +96,7 @@ void mul(unsigned int * aa_, unsigned int * bb_, unsigned int * ss_)
       shift_r(bb);
     }
 }
+*/
 
 #ifdef _TEST
 #include <stdio.h>
@@ -204,7 +208,6 @@ int main(int argc, char ** argv)
               z = k;
             }
         }
-
 
       c = 0;
       for(i = N-1; i != 0; i--)
