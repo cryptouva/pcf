@@ -1,9 +1,11 @@
-lccyao
+PCF
 ======
 
-the LCCyao compiler
+This repo is contains the LCCyao compiler and BetterYao interpreter for Portable Circuit Format
+See the USENIX paper: https://www.usenix.org/conference/usenixsecurity13/technical-sessions/paper/kreuter
 
-This project was written by Benjamin Kreuter (brkb7x@virginia.edu), Chih-Hao Shen (), and Benjamin Terner (bt3ze@virginia.edu) and is currently upkept by Benjamin Terner and Benjamin Kreuter.
+This project was written by Benjamin Kreuter (brkb7x@virginia.edu), Chih-Hao Shen (), and Benjamin Terner (bt3ze@virginia.edu) and is currently upkept by Benjamin Terner and Benjamin Kreuter. Please contact Ben Terner with questions or issues.
+
 
 Usage
 
