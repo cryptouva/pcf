@@ -1,7 +1,7 @@
 #The PCF2 Manual
 
 This document contains an exlanation of the PCF2 bytecode format with some examples  
-authors: bt3ze@virginia.edu, brkb7x@virginia.edu
+authors: bt3ze@virginia.edu, brk7bx@virginia.edu
 
 #####A note about integer representation
 while PCF2 is implemented independent of this decision, the LCCyao translator generally treats integers carried by wires as a list with the LSB given first and the MSB given last.
